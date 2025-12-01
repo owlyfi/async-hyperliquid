@@ -92,3 +92,10 @@ MULTI_SIG_ENVELOPE_SIGN_TYPES = [
     {"name": "multiSigActionHash", "type": "bytes32"},
     {"name": "nonce", "type": "uint64"},
 ]
+
+USER_DEX_ABSTRACTION_SIGN_TYPES = [
+    {"name": "hyperliquidChain", "type": "string"},
+    {"name": "user", "type": "address"},
+    {"name": "enabled", "type": "bool"},
+    {"name": "nonce", "type": "uint64"},
+]

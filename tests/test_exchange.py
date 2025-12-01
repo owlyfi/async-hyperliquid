@@ -352,3 +352,15 @@ async def test_token_delegate(hl: AsyncHyperliquid):
     resp = await hl.token_delegate(validator, amount, is_undelegate)
     print(resp)
     assert resp["status"] == "ok"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_user_dex_abstraction(hl: AsyncHyperliquid):
+    resp = await hl.user_dex_abstraction()
+    print(resp)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agent_enable_dex_abstraction(hl: AsyncHyperliquid):
+    resp = await hl.agent_enable_dex_abstraction()
+    print(resp)

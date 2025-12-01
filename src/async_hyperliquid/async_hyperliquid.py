@@ -56,6 +56,7 @@ from async_hyperliquid.utils.signing import (
     sign_usd_class_transfer_action,
     sign_approve_builder_fee_action,
     sign_convert_to_multi_sig_user_action,
+    sign_user_dex_abstraction_action,
 )
 from async_hyperliquid.utils.constants import (
     USD_FACTOR,
@@ -951,6 +952,29 @@ class AsyncHyperliquid(AsyncAPI):
         }
 
         return await self.place_order(**close_order)
+
+    async def user_dex_abstraction(
+        self, user: str | None = None, enabled: bool = True
+    ):
+        nonce = get_timestamp_ms()
+        if user is None:
+            user = self.address
+        action = {
+            "type": "userDexAbstraction",
+            "user": user.lower(),
+            "enabled": enabled,
+            "nonce": nonce,
+        }
+        sig = sign_user_dex_abstraction_action(
+            self.account, action, self.is_mainnet
+        )
+        return await self.exchange.post_action_with_sig(action, sig, nonce)
+
+    async def agent_enable_dex_abstraction(self):
+        action = {"type": "agentEnableDexAbstraction"}
+        return await self.exchange.post_action(
+            action, vault=self.vault, expires=self.expires
+        )
 
 
 AsyncHyper = AsyncHyperliquid

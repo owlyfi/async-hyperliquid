@@ -29,6 +29,7 @@ from async_hyperliquid.utils.constants import (
     MULTI_SIG_ENVELOPE_SIGN_TYPES,
     USD_CLASS_TRANSFER_SIGN_TYPES,
     CONVERT_TO_MULTI_SIG_USER_SIGN_TYPES,
+    USER_DEX_ABSTRACTION_SIGN_TYPES,
 )
 
 
@@ -342,5 +343,17 @@ def sign_multi_sig_action(
         envelope,
         MULTI_SIG_ENVELOPE_SIGN_TYPES,
         "HyperliquidTransaction:SendMultiSig",
+        is_mainnet,
+    )
+
+
+def sign_user_dex_abstraction_action(
+    wallet: LocalAccount, action: dict, is_mainnet: bool
+):
+    return sign_user_signed_action(
+        wallet,
+        action,
+        USER_DEX_ABSTRACTION_SIGN_TYPES,
+        "HyperliquidTransaction:UserDexAbstraction",
         is_mainnet,
     )
