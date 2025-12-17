@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
+from tests.conftest import get_is_mainnet
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.utils.types import Cloid, LimitOrder
-from tests.conftest import get_is_mainnet
 
 is_mainnet = get_is_mainnet()
 is_testnet = not is_mainnet
@@ -274,7 +274,7 @@ async def test_use_big_block(hl: AsyncHyperliquid):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_usd_transfer(hl: AsyncHyperliquid):
     # This action requires account private key
-    amount = 1.126
+    amount = 10.01
     dest = ""  # Setup another account on testnet
     resp = await hl.usd_transfer(amount, dest)
     print(resp, end=" ")
@@ -363,4 +363,37 @@ async def test_user_dex_abstraction(hl: AsyncHyperliquid):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_agent_enable_dex_abstraction(hl: AsyncHyperliquid):
     resp = await hl.agent_enable_dex_abstraction()
+    print(resp)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_approve_builder_fee(hl: AsyncHyperliquid):
+    # Builder fees charged can be at most 0.1% on perps and 1% on spot.
+    fee_rate = 5.5 * 1 / 10_000  # 5.5 bps
+    assert fee_rate <= 0.001
+    builder = "0xbcc2c3ccc4282990d4c979c3c7cb6148c4dd266a"
+    resp = await hl.approve_builder_fee(fee_rate, builder)
+    print(resp)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_place_order_with_builder(hl: AsyncHyperliquid):
+    # 5.5 bps
+    # fee_rate = 5.5 * 10 * 1 / 10_000
+    builder = {
+        "b": "0xbcc2c3ccc4282990d4c979c3c7cb6148c4dd266a",
+        "f": 55,  # 5.5 bps, 0.055%
+    }
+
+    coin = "xyz:NVDA"
+    payload = {
+        "coin": coin,
+        "is_buy": True,
+        "sz": 0.1,
+        "px": 175,
+        "is_market": False,
+        "order_type": LimitOrder.ALO.value,
+        "builder": builder,
+    }
+    resp = await hl.place_order(**payload)
     print(resp)
