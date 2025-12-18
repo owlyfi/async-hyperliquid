@@ -18,29 +18,29 @@ from async_hyperliquid.utils.miscs import (
     round_token_amount,
 )
 from async_hyperliquid.utils.types import (
-    ClearinghouseState,
     Cloid,
-    OrderWithStatus,
+    Metas,
     PerpMeta,
-    Portfolio,
     Position,
-    SpotClearinghouseState,
     SpotMeta,
     OrderType,
+    Portfolio,
     LimitOrder,
+    UserDeposit,
     AccountState,
     GroupOptions,
     OrderBuilder,
-    SpotTokenMeta,
-    PlaceOrderRequest,
-    BatchCancelRequest,
-    BatchPlaceOrderRequest,
-    Metas,
-    UserDeposit,
-    UserNonFundingDelta,
-    UserOpenOrders,
     UserTransfer,
     UserWithdraw,
+    SpotTokenMeta,
+    UserOpenOrders,
+    OrderWithStatus,
+    PlaceOrderRequest,
+    BatchCancelRequest,
+    ClearinghouseState,
+    UserNonFundingDelta,
+    BatchPlaceOrderRequest,
+    SpotClearinghouseState,
 )
 from async_hyperliquid.utils.signing import (
     encode_order,
@@ -55,8 +55,8 @@ from async_hyperliquid.utils.signing import (
     sign_staking_withdraw_action,
     sign_usd_class_transfer_action,
     sign_approve_builder_fee_action,
-    sign_convert_to_multi_sig_user_action,
     sign_user_dex_abstraction_action,
+    sign_convert_to_multi_sig_user_action,
 )
 from async_hyperliquid.utils.constants import (
     USD_FACTOR,
@@ -85,7 +85,7 @@ class AsyncHyperliquid(AsyncAPI):
     spot_tokens: dict[str, SpotTokenMeta]
 
     # HIP 3
-    perp_dexs: list[str] | None
+    perp_dexs: list[str]
 
     enable_evm: bool
     evm_info: EVMInfo
@@ -100,6 +100,7 @@ class AsyncHyperliquid(AsyncAPI):
         evm_rpc_url: str | None = None,
         private_key: str | None = None,
         vault: str | None = None,
+        perp_dexs: list[str] = [""],
     ):
         self.address = address
         self.is_mainnet = is_mainnet
@@ -122,6 +123,8 @@ class AsyncHyperliquid(AsyncAPI):
         self.vault = vault
         # expires will cause actions to be rejected after that timestamp in milliseconds
         self.expires: int | None = None
+
+        self.perp_dexs: list[str] = perp_dexs
 
         if enable_evm:
             self._init_evm_client(private_key, evm_rpc_url)
@@ -190,8 +193,8 @@ class AsyncHyperliquid(AsyncAPI):
         self._init_spot_meta(spot_meta)
 
         # HIP-3: perp dexs
-        dexs = await self.get_all_dex_name()
-        for i, dex in enumerate(dexs[1:]):
+        self.perp_dexs = await self.get_all_dex_name()
+        for i, dex in enumerate(self.perp_dexs[1:]):
             dex_meta = await self.info.get_perp_meta(dex)
             dex_asset_offset = PERP_DEX_OFFSET + i * 10000
             self._init_perp_meta(dex_meta, dex_asset_offset)
@@ -321,8 +324,7 @@ class AsyncHyperliquid(AsyncAPI):
 
     async def get_all_mids(self) -> dict[str, float]:
         all_mids = {}
-        dexs = await self.get_all_dex_name()
-        for dex in dexs:
+        for dex in self.perp_dexs:
             mids = await self.info.get_all_mids(dex)
             all_mids.update(mids)
 
@@ -356,8 +358,7 @@ class AsyncHyperliquid(AsyncAPI):
         account_state["perp"] = await self.get_perp_account_state(address)
         account_state["spot"] = await self.get_spot_account_state(address)
 
-        dexs = await self.get_all_dex_name()
-        for dex in dexs[1:]:
+        for dex in self.perp_dexs[1:]:
             account_state["dexs"][dex] = await self.get_perp_account_state(
                 address, dex
             )
@@ -452,9 +453,8 @@ class AsyncHyperliquid(AsyncAPI):
     ) -> list[Position]:
         if not address:
             address = self.address
-        dexs = await self.get_all_dex_name()
         positions = []
-        for dex in dexs:
+        for dex in self.perp_dexs:
             positions.extend(await self.get_dex_positions(address, dex))
         return positions
 
