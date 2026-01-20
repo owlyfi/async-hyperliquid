@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-01-20
+
+### Added
+- Add `close_dex_position` to close all positions in a specific DEX.
+- Add `dexs` parameter to `get_all_positions` and `close_all_positions` for granular control.
+
+### Changed
+- Optimize request count by caching `perp_dexs` during initialization.
+- Significant performance boost: `get_all_positions` now uses `asyncio.gather` for parallel fetching from multiple DEXs.
+- `close_all_positions` and `close_position` now return `None` instead of raising `ValueError` when no positions are found, improving bot stability for long-running processes.
+- `close_position` now only queries the specific DEX the coin belongs to, reducing Info API usage in multi-DEX environments.
+
+### Fixed
+- Correct parameter passing in `get_dex_positions` and `get_all_positions`.
+- Ensure proper import of `get_coin_dex` and `asyncio`.
+
 ## [0.3.2] - 2025-12-01
 
 ### Added

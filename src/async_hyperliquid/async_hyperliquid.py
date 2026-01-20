@@ -1,4 +1,5 @@
 import math
+import asyncio
 from typing import Literal
 
 from aiohttp import ClientSession, ClientTimeout
@@ -14,6 +15,7 @@ from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.miscs import (
     round_px,
     round_float,
+    get_coin_dex,
     get_timestamp_ms,
     round_token_amount,
 )
@@ -202,7 +204,7 @@ class AsyncHyperliquid(AsyncAPI):
         self._update_coin_symbols()
 
     async def get_metas(self, perp_only: bool = False) -> Metas:
-        metas: Metas = {"perp": {}, "spot": [], "dexs": {}}
+        metas: Metas = {"perp": {}, "spot": [], "dexs": {}}  # type: ignore
         perp_meta = await self.info.get_perp_meta()
         if perp_only:
             metas["perp"] = perp_meta
@@ -318,20 +320,21 @@ class AsyncHyperliquid(AsyncAPI):
         return prices
 
     async def get_mid_price(self, coin: str) -> float:
+        dex = get_coin_dex(coin)
         coin_name = await self.get_coin_name(coin)
-        all_mids = await self.get_all_mids()
-        return all_mids[coin_name]
+        dex_mids = await self.info.get_all_mids(dex)
+        return float(dex_mids[coin_name])
 
-    async def get_all_mids(self) -> dict[str, float]:
+    async def get_dexs_mids(self, dexs: list[str]) -> dict[str, float]:
         all_mids = {}
-        for dex in self.perp_dexs:
+        for dex in dexs:
             mids = await self.info.get_all_mids(dex)
             all_mids.update(mids)
 
-        for k, v in all_mids.items():
-            all_mids[k] = float(v)
+        return {k: float(v) for k, v in all_mids.items()}
 
-        return all_mids
+    async def get_all_mids(self) -> dict[str, float]:
+        return await self.get_dexs_mids(self.perp_dexs)
 
     async def get_perp_account_state(
         self, address: str | None = None, dex: str = ""
@@ -351,7 +354,7 @@ class AsyncHyperliquid(AsyncAPI):
     async def get_account_state(
         self, address: str | None = None
     ) -> AccountState:
-        account_state: AccountState = {"perp": {}, "spot": {}, "dexs": {}}
+        account_state: AccountState = {"perp": {}, "spot": {}, "dexs": {}}  # type: ignore
         if not address:
             address = self.address
 
@@ -449,13 +452,20 @@ class AsyncHyperliquid(AsyncAPI):
         return positions
 
     async def get_all_positions(
-        self, address: str | None = None
+        self, address: str | None = None, dexs: list[str] | None = None
     ) -> list[Position]:
         if not address:
             address = self.address
+
         positions = []
-        for dex in self.perp_dexs:
-            positions.extend(await self.get_dex_positions(address, dex))
+        if dexs is None:
+            dexs = self.perp_dexs
+
+        tasks = [self.get_dex_positions(address, dex) for dex in dexs]
+
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            positions.extend(result)
         return positions
 
     # Exchange API
@@ -546,7 +556,8 @@ class AsyncHyperliquid(AsyncAPI):
         slippage: float = 0.05,  # Default slippage is 5%
     ):
         reqs = []
-        all_mids = await self.get_all_mids()
+        dexs = list(set(get_coin_dex(o["coin"]) for o in orders))
+        all_mids = await self.get_dexs_mids(dexs)
         order_type = LimitOrder.IOC.value
         for o in orders:
             coin = o["coin"]
@@ -906,10 +917,10 @@ class AsyncHyperliquid(AsyncAPI):
         action = {"type": "evmUserModify", "usingBigBlocks": enable}
         return await self.exchange.post_action(action)
 
-    async def close_all_positions(self):
-        positions = await self.get_all_positions()
+    async def close_all_positions(self, dexs: list[str] | None = None):
+        positions = await self.get_all_positions(dexs=dexs)
         if not positions:
-            raise ValueError(f"User({self.address}) has no positions.")
+            return None
         orders = []
         for p in positions:
             coin = p["coin"]
@@ -925,17 +936,19 @@ class AsyncHyperliquid(AsyncAPI):
 
         return await self.batch_place_orders(orders, is_market=True)
 
-    async def close_position(self, coin: str, dex: str = ""):
-        positions = await self.get_all_positions()
+    async def close_dex_position(self, dex: str):
+        return await self.close_all_positions(dexs=[dex])
+
+    async def close_position(self, coin: str):
+        dex = get_coin_dex(coin)
+        positions = await self.get_dex_positions(dex=dex)
         target = {}
         for position in positions:
             if coin == position["coin"]:
                 target = position
 
         if not target:
-            raise ValueError(
-                "User({self.address}) doesn't have position for {coin}"
-            )
+            return None
 
         size = float(target["szi"])
         price = await self.get_mid_price(coin)
@@ -951,7 +964,7 @@ class AsyncHyperliquid(AsyncAPI):
             "ro": True,
         }
 
-        return await self.place_order(**close_order)
+        return await self.place_order(**close_order)  # type: ignore
 
     async def user_dex_abstraction(
         self, user: str | None = None, enabled: bool = True
