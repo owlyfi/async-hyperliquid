@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.5] - 2026-01-20
 
 ### Added
-- Add `close_dex_position` to close all positions in a specific DEX.
+- Add `close_dex_positions` to close all positions in a specific DEX.
 - Add `dexs` parameter to `get_all_positions` and `close_all_positions` for granular control.
 
 ### Changed
