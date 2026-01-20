@@ -936,7 +936,7 @@ class AsyncHyperliquid(AsyncAPI):
 
         return await self.batch_place_orders(orders, is_market=True)
 
-    async def close_dex_position(self, dex: str):
+    async def close_dex_positions(self, dex: str):
         return await self.close_all_positions(dexs=[dex])
 
     async def close_position(self, coin: str):
