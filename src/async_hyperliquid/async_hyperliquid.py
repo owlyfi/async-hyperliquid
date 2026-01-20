@@ -188,18 +188,27 @@ class AsyncHyperliquid(AsyncAPI):
         }
 
     async def init_metas(self) -> None:
-        meta = await self.info.get_perp_meta()
-        self._init_perp_meta(meta, 0)
+        # First wave: get core perp meta, spot meta, and all dex names
+        meta_task = self.info.get_perp_meta()
+        spot_meta_task = self.info.get_spot_meta()
+        dex_names_task = self.get_all_dex_name()
 
-        spot_meta = await self.info.get_spot_meta()
+        meta, spot_meta, self.perp_dexs = await asyncio.gather(
+            meta_task, spot_meta_task, dex_names_task
+        )
+
+        self._init_perp_meta(meta, 0)
         self._init_spot_meta(spot_meta)
 
-        # HIP-3: perp dexs
-        self.perp_dexs = await self.get_all_dex_name()
-        for i, dex in enumerate(self.perp_dexs[1:]):
-            dex_meta = await self.info.get_perp_meta(dex)
-            dex_asset_offset = PERP_DEX_OFFSET + i * 10000
-            self._init_perp_meta(dex_meta, dex_asset_offset)
+        # Second wave: get each perp dex meta
+        if len(self.perp_dexs) > 1:
+            dex_meta_tasks = [
+                self.info.get_perp_meta(dex) for dex in self.perp_dexs[1:]
+            ]
+            dex_metas = await asyncio.gather(*dex_meta_tasks)
+            for i, dex_meta in enumerate(dex_metas):
+                dex_asset_offset = PERP_DEX_OFFSET + (i + 1) * 10000
+                self._init_perp_meta(dex_meta, dex_asset_offset)
 
         self._update_coin_symbols()
 
@@ -326,9 +335,11 @@ class AsyncHyperliquid(AsyncAPI):
         return float(dex_mids[coin_name])
 
     async def get_dexs_mids(self, dexs: list[str]) -> dict[str, float]:
+        tasks = [self.info.get_all_mids(dex) for dex in dexs]
+        results = await asyncio.gather(*tasks)
+
         all_mids = {}
-        for dex in dexs:
-            mids = await self.info.get_all_mids(dex)
+        for mids in results:
             all_mids.update(mids)
 
         return {k: float(v) for k, v in all_mids.items()}
@@ -354,17 +365,26 @@ class AsyncHyperliquid(AsyncAPI):
     async def get_account_state(
         self, address: str | None = None
     ) -> AccountState:
-        account_state: AccountState = {"perp": {}, "spot": {}, "dexs": {}}  # type: ignore
         if not address:
             address = self.address
 
-        account_state["perp"] = await self.get_perp_account_state(address)
-        account_state["spot"] = await self.get_spot_account_state(address)
+        # Parallelize requests for perp, spot, and each dex
+        tasks = [
+            self.get_perp_account_state(address),
+            self.get_spot_account_state(address),
+        ]
 
-        for dex in self.perp_dexs[1:]:
-            account_state["dexs"][dex] = await self.get_perp_account_state(
-                address, dex
-            )
+        dexs = self.perp_dexs[1:]
+        for dex in dexs:
+            tasks.append(self.get_perp_account_state(address, dex))
+
+        results = await asyncio.gather(*tasks)
+
+        account_state: AccountState = {
+            "perp": results[0],
+            "spot": results[1],
+            "dexs": {dex: results[i + 2] for i, dex in enumerate(dexs)},
+        }
 
         return account_state
 
