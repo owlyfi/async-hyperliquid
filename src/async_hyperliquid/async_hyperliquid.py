@@ -191,23 +191,34 @@ class AsyncHyperliquid(AsyncAPI):
         # First wave: get core perp meta, spot meta, and all dex names
         meta_task = self.info.get_perp_meta()
         spot_meta_task = self.info.get_spot_meta()
-        dex_names_task = self.get_all_dex_name()
+        all_dex_names_task = self.get_all_dex_name()
 
-        meta, spot_meta, self.perp_dexs = await asyncio.gather(
-            meta_task, spot_meta_task, dex_names_task
+        meta, spot_meta, all_dex_names = await asyncio.gather(
+            meta_task, spot_meta_task, all_dex_names_task
         )
 
         self._init_perp_meta(meta, 0)
         self._init_spot_meta(spot_meta)
 
         # Second wave: get each perp dex meta
-        if len(self.perp_dexs) > 1:
-            dex_meta_tasks = [
-                self.info.get_perp_meta(dex) for dex in self.perp_dexs[1:]
-            ]
+        # Only fetch for specified DEXs and avoid overwriting self.perp_dexs
+        dex_meta_tasks = []
+        dex_indices = []
+        for dex in self.perp_dexs:
+            if dex == "":
+                continue
+            try:
+                idx = all_dex_names.index(dex)
+                if idx > 0:
+                    dex_meta_tasks.append(self.info.get_perp_meta(dex))
+                    dex_indices.append(idx)
+            except ValueError:
+                continue
+
+        if dex_meta_tasks:
             dex_metas = await asyncio.gather(*dex_meta_tasks)
-            for i, dex_meta in enumerate(dex_metas):
-                dex_asset_offset = PERP_DEX_OFFSET + (i + 1) * 10000
+            for idx, dex_meta in zip(dex_indices, dex_metas):
+                dex_asset_offset = PERP_DEX_OFFSET + idx * 10000
                 self._init_perp_meta(dex_meta, dex_asset_offset)
 
         self._update_coin_symbols()
