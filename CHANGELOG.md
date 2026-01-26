@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-01-26
+
+### Optimized
+- `init_metas` in `AsyncHyperliquid` now only fetches metadata for DEXs explicitly specified in `perp_dexs`, reducing unnecessary HTTP calls.
+- Corrected `dex_asset_offset` calculation to align with the full DEX list index, ensuring data consistency when fetching a subset of DEXs.
+
+### Changed
+- Updated `tests/conftest.py` to include common DEXs (`flx`, `vntl`, `xyz`) by default in the test client for better coverage.
+
 ## [0.3.5] - 2026-01-20
 
 ### Added
