@@ -218,7 +218,7 @@ class AsyncHyperliquid(AsyncAPI):
         if dex_meta_tasks:
             dex_metas = await asyncio.gather(*dex_meta_tasks)
             for idx, dex_meta in zip(dex_indices, dex_metas):
-                dex_asset_offset = PERP_DEX_OFFSET + idx * 10000
+                dex_asset_offset = PERP_DEX_OFFSET + (idx - 1) * 10000
                 self._init_perp_meta(dex_meta, dex_asset_offset)
 
         self._update_coin_symbols()
