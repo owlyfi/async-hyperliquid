@@ -183,6 +183,10 @@ class InfoAPI(AsyncAPI):
         payload = {"type": "userDexAbstraction", "user": address}
         return await self.post(payload)
 
+    async def get_user_abstraction_state(self, address: str) -> str:
+        payload = {"type": "userAbstraction", "user": address}
+        return await self.post(payload)
+
     async def get_aligned_quote_token_status(self, token: int):
         payload = {"type": "alignedQuoteTokenInfo", "token": token}
         return await self.post(payload)

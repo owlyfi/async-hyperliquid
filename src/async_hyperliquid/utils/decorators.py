@@ -11,7 +11,7 @@ def private_key_required(
     async def wrapper(self, *args, **kwargs) -> T:
         if self.account.address.lower() != self.address.lower():
             raise ValueError(
-                f"Private key is required for account {self.address} in {func.__name__}"
+                f"Private key is required for account {self.address} in {func.__name__}"  # type: ignore
             )
         return await func(self, *args, **kwargs)
 

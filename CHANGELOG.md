@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9]
+
+### Added
+- Add `get_user_abstraction_state` to `InfoAPI` plus AsyncHyperliquid wrappers for user abstraction queries (`get_user_dex_abstraction`, `get_user_abstraction_state`).
+- Add tests for `get_user_dex_abstraction` and `get_user_abstraction_state`.
+
+### Changed
+- Add targeted type-check ignores in `tests/test_info.py` and `utils/decorators.py` to quiet mypy/pyright warnings.
+
 ## [0.3.8] - 2026-01-27
 
 ### Fixed

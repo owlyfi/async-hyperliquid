@@ -1,8 +1,7 @@
 import pytest
 
-from async_hyperliquid import AsyncHyperliquid
-
 from tests.conftest import get_is_mainnet
+from async_hyperliquid import AsyncHyperliquid
 
 is_mainnet = get_is_mainnet()
 is_testnet = not is_mainnet
@@ -29,7 +28,7 @@ async def test_get_all_metas(hl: AsyncHyperliquid) -> None:
     assert "universe" in metas["perp"]
 
     assert "spots" in metas
-    spot_metas = metas["spots"]
+    spot_metas = metas["spots"]  # type: ignore
     assert "tokens" in spot_metas
     assert "universe" in spot_metas
 
@@ -330,3 +329,18 @@ async def test_get_all_positions(hl: AsyncHyperliquid):
     positions = await hl.get_all_positions(address)
 
     assert isinstance(positions, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_user_dex_abstraction(hl: AsyncHyperliquid):
+    address = "0xf97ad6704baec104d00b88e0c157e2b7b3a1ddd1"
+    resp = await hl.get_user_dex_abstraction(address)
+    assert isinstance(resp, bool)
+    assert resp is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_user_abstraction_state(hl: AsyncHyperliquid):
+    address = "0xf97ad6704baec104d00b88e0c157e2b7b3a1ddd1"
+    abstraction_state = await hl.get_user_abstraction_state(address)
+    assert abstraction_state == "dexAbstraction"

@@ -499,6 +499,18 @@ class AsyncHyperliquid(AsyncAPI):
             positions.extend(result)
         return positions
 
+    async def get_user_dex_abstraction(self, address: str | None) -> bool:
+        if not address:
+            address = self.address
+        return await self.info.get_user_dex_abstraction(address)
+
+    async def get_user_abstraction_state(
+        self, address: str | None = None
+    ) -> str:
+        if not address:
+            address = self.address
+        return await self.info.get_user_abstraction_state(address)
+
     # Exchange API
     async def _round_sz_px(self, coin: str, sz: float, px: float):
         asset = await self.get_coin_asset(coin)
