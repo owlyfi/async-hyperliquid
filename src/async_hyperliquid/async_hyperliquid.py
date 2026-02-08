@@ -28,6 +28,7 @@ from async_hyperliquid.utils.types import (
     OrderType,
     Portfolio,
     LimitOrder,
+    Abstraction,
     UserDeposit,
     AccountState,
     GroupOptions,
@@ -58,6 +59,7 @@ from async_hyperliquid.utils.signing import (
     sign_usd_class_transfer_action,
     sign_approve_builder_fee_action,
     sign_user_dex_abstraction_action,
+    sign_user_set_abstraction_action,
     sign_convert_to_multi_sig_user_action,
 )
 from async_hyperliquid.utils.constants import (
@@ -1031,6 +1033,25 @@ class AsyncHyperliquid(AsyncAPI):
         return await self.exchange.post_action(
             action, vault=self.vault, expires=self.expires
         )
+
+    async def user_set_abstraction(
+        self, abstraction: Abstraction, address: str | None = None
+    ):
+        if address is None:
+            address = self.address
+
+        nonce = get_timestamp_ms()
+        action = {
+            "type": "userSetAbstraction",
+            "user": address.lower(),
+            "abstraction": abstraction,
+            "nonce": nonce,
+        }
+        sig = sign_user_set_abstraction_action(
+            self.account, action, self.is_mainnet
+        )
+
+        return await self.exchange.post_action_with_sig(action, sig, nonce)
 
 
 AsyncHyper = AsyncHyperliquid

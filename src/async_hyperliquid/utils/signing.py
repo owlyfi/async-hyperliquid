@@ -28,8 +28,9 @@ from async_hyperliquid.utils.constants import (
     STAKING_TRANSFER_SIGN_TYPES,
     MULTI_SIG_ENVELOPE_SIGN_TYPES,
     USD_CLASS_TRANSFER_SIGN_TYPES,
-    CONVERT_TO_MULTI_SIG_USER_SIGN_TYPES,
     USER_DEX_ABSTRACTION_SIGN_TYPES,
+    USER_SET_ABSTRACTION_SIGN_TYPES,
+    CONVERT_TO_MULTI_SIG_USER_SIGN_TYPES,
 )
 
 
@@ -40,7 +41,7 @@ def address_to_bytes(address: str) -> bytes:
 def hash_action(
     action: dict, vault: str | None, nonce: int, expires: int | None = None
 ) -> bytes:
-    data: bytes = msgpack.packb(action)  # type: ignore
+    data: bytes = msgpack.packb(action)
     data += nonce.to_bytes(8, "big")
 
     if vault is None:
@@ -114,7 +115,7 @@ def round_float(x: float) -> str:
 
 def ensure_order_type(order_type: OrderType) -> OrderType:
     if "limit" in order_type:
-        return {"limit": order_type["limit"]}
+        return {"limit": order_type["limit"]}  # type: ignore
     elif "trigger" in order_type:
         return {
             "trigger": {
@@ -355,5 +356,17 @@ def sign_user_dex_abstraction_action(
         action,
         USER_DEX_ABSTRACTION_SIGN_TYPES,
         "HyperliquidTransaction:UserDexAbstraction",
+        is_mainnet,
+    )
+
+
+def sign_user_set_abstraction_action(
+    wallet: LocalAccount, action: dict, is_mainnet: bool
+):
+    return sign_user_signed_action(
+        wallet,
+        action,
+        USER_SET_ABSTRACTION_SIGN_TYPES,
+        "HyperliquidTransaction:UserSetAbstraction",
         is_mainnet,
     )

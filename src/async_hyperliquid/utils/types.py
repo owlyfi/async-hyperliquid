@@ -837,3 +837,7 @@ class Metas(TypedDict):
 class SignType(str, Enum):
     SINGLE_SIG = "singleSig"
     MULTI_SIG = "multiSig"
+
+
+Abstraction = Literal["unifiedAccount", "portfolioMargin", "disabled"]
+AgentAbstraction = Literal["u", "p", "i"]

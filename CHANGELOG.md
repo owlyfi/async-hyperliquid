@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-02-08
+
+### Added
+- Add `user_set_abstraction` to `AsyncHyperliquid` plus signing support (`sign_user_set_abstraction_action`) and constants for the new action.
+- Add `Abstraction` and `AgentAbstraction` typing literals.
+
+### Changed
+- Remove unnecessary `type: ignore` on `ExchangeAPI.address` assignment and `msgpack.packb` call; keep a targeted ignore for `ensure_order_type`.
+
 ## [0.3.9]
 
 ### Added

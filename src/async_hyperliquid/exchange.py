@@ -25,7 +25,7 @@ class ExchangeAPI(AsyncAPI):
         address: str | None = None,
     ):
         self.account = account
-        self.address = address or account.address  # type: ignore
+        self.address = address or account.address
         self.is_mainnet = base_url == MAINNET_API_URL
         super().__init__(Endpoint.EXCHANGE, base_url, session)
 
