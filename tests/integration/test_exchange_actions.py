@@ -154,7 +154,7 @@ async def test_user_set_abstraction(hl: AsyncHyperliquid):
             "Current abstraction is not directly settable by user_set_abstraction"
         )
 
-    resp = await hl.user_set_abstraction(abstraction)  # type: ignore
+    resp = await hl.user_set_abstraction(abstraction)
     print(resp)
     assert resp["status"] == "ok"
 
