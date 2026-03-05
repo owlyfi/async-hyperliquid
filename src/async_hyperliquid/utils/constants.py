@@ -99,3 +99,10 @@ USER_DEX_ABSTRACTION_SIGN_TYPES = [
     {"name": "enabled", "type": "bool"},
     {"name": "nonce", "type": "uint64"},
 ]
+
+USER_SET_ABSTRACTION_SIGN_TYPES = [
+    {"name": "hyperliquidChain", "type": "string"},
+    {"name": "user", "type": "address"},
+    {"name": "abstraction", "type": "string"},
+    {"name": "nonce", "type": "uint64"},
+]

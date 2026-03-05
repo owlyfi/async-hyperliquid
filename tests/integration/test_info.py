@@ -331,3 +331,15 @@ async def test_get_all_positions(hl: AsyncHyperliquid):
     positions = await hl.get_all_positions(address)
 
     assert isinstance(positions, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_user_abstraction(hl: AsyncHyperliquid):
+    abstraction = await hl.get_user_abstraction()
+    assert abstraction in {
+        "unifiedAccount",
+        "portfolioMargin",
+        "disabled",
+        "default",
+        "dexAbstraction",
+    }

@@ -140,6 +140,40 @@ async def test_agent_enable_dex_abstraction(hl: AsyncHyperliquid):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_user_set_abstraction(hl: AsyncHyperliquid):
+    abstraction = await hl.get_user_abstraction()
+    print(abstraction)
+    if abstraction not in {
+        "disabled",
+        "unifiedAccount",
+        "portfolioMargin",
+        "default",
+        "dexAbstraction",
+    }:
+        pytest.skip(
+            "Current abstraction is not directly settable by user_set_abstraction"
+        )
+
+    resp = await hl.user_set_abstraction(abstraction)  # type: ignore
+    print(resp)
+    assert resp["status"] == "ok"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agent_set_abstraction(hl: AsyncHyperliquid):
+    abstraction = await hl.get_user_abstraction()
+    mapping = {"disabled": "i", "unifiedAccount": "u", "portfolioMargin": "p"}
+    if abstraction not in mapping:
+        pytest.skip(
+            "Current abstraction is not directly settable by agent_set_abstraction"
+        )
+
+    resp = await hl.agent_set_abstraction(mapping[abstraction])  # type: ignore[arg-type]
+    print(resp)
+    assert resp["status"] == "ok"
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_approve_builder_fee(hl: AsyncHyperliquid):
     # Builder fees charged can be at most 0.1% on perps and 1% on spot.
     fee_rate = 5.5 * 1 / 10_000  # 5.5 bps

@@ -4,6 +4,7 @@ from aiohttp import ClientSession
 
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.types import (
+    Abstraction,
     Depth,
     Candles,
     Endpoint,
@@ -181,6 +182,10 @@ class InfoAPI(AsyncAPI):
 
     async def get_user_dex_abstraction(self, address: str) -> bool:
         payload = {"type": "userDexAbstraction", "user": address}
+        return await self.post(payload)
+
+    async def get_user_abstraction(self, address: str) -> Abstraction:
+        payload = {"type": "userAbstraction", "user": address}
         return await self.post(payload)
 
     async def get_aligned_quote_token_status(self, token: int):

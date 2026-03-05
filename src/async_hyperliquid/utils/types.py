@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypeGuard, TypedDict
 
 from typing_extensions import NotRequired
 
@@ -93,6 +93,19 @@ def trigger_order_type(
 OrderType = LimitOrderType | TriggerOrderType
 
 GroupOptions = Literal["na", "normalTpsl", "positionTpsl"]
+Abstraction = Literal[
+    "unifiedAccount", "portfolioMargin", "disabled", "default", "dexAbstraction"
+]
+UserSetAbstraction = Literal["disabled", "unifiedAccount", "portfolioMargin"]
+AgentAbstraction = Literal["i", "u", "p"]
+
+
+def is_limit_order_type(order_type: OrderType) -> TypeGuard[LimitOrderType]:
+    return "limit" in order_type and "trigger" not in order_type
+
+
+def is_trigger_order_type(order_type: OrderType) -> TypeGuard[TriggerOrderType]:
+    return "trigger" in order_type and "limit" not in order_type
 
 
 class BasicPlaceOrderRequest(TypedDict):

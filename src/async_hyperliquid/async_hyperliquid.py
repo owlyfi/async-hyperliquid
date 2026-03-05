@@ -1,5 +1,7 @@
 import math
 import asyncio
+import re
+import warnings
 from typing import Literal
 
 from aiohttp import ClientSession, ClientTimeout
@@ -20,11 +22,14 @@ from async_hyperliquid.utils.miscs import (
     round_token_amount,
 )
 from async_hyperliquid.utils.types import (
+    Abstraction,
+    AgentAbstraction,
     Cloid,
     Metas,
     PerpMeta,
     Position,
     SpotMeta,
+    UserSetAbstraction,
     OrderType,
     Portfolio,
     LimitTif,
@@ -59,6 +64,7 @@ from async_hyperliquid.utils.signing import (
     sign_usd_class_transfer_action,
     sign_approve_builder_fee_action,
     sign_user_dex_abstraction_action,
+    sign_user_set_abstraction_action,
     sign_convert_to_multi_sig_user_action,
 )
 from async_hyperliquid.utils.constants import (
@@ -499,6 +505,13 @@ class AsyncHyperliquid(AsyncAPI):
         for result in results:
             positions.extend(result)
         return positions
+
+    async def get_user_abstraction(
+        self, address: str | None = None
+    ) -> Abstraction:
+        if not address:
+            address = self.address
+        return await self.info.get_user_abstraction(address)
 
     # Exchange API
     async def _round_sz_px(self, coin: str, sz: float, px: float):
@@ -1057,6 +1070,12 @@ class AsyncHyperliquid(AsyncAPI):
     async def user_dex_abstraction(
         self, user: str | None = None, enabled: bool = True
     ):
+        warnings.warn(
+            "user_dex_abstraction is deprecated and may be removed in a "
+            "future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         nonce = get_timestamp_ms()
         if user is None:
             user = self.address
@@ -1071,8 +1090,41 @@ class AsyncHyperliquid(AsyncAPI):
         )
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
+    async def user_set_abstraction(
+        self, abstraction: UserSetAbstraction, user: str | None = None
+    ):
+        nonce = get_timestamp_ms()
+        if user is None:
+            user = self.address
+        if re.fullmatch(r"0x[a-fA-F0-9]{40}", user) is None:
+            raise ValueError(
+                f"user must be a 42-char hex address, got: {user!r}"
+            )
+        action = {
+            "type": "userSetAbstraction",
+            "user": user.lower(),
+            "abstraction": abstraction,
+            "nonce": nonce,
+        }
+        sig = sign_user_set_abstraction_action(
+            self.account, action, self.is_mainnet
+        )
+        return await self.exchange.post_action_with_sig(action, sig, nonce)
+
     async def agent_enable_dex_abstraction(self):
+        warnings.warn(
+            "agent_enable_dex_abstraction is deprecated and may be removed "
+            "in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         action = {"type": "agentEnableDexAbstraction"}
+        return await self.exchange.post_action(
+            action, vault=self.vault, expires=self.expires
+        )
+
+    async def agent_set_abstraction(self, abstraction: AgentAbstraction):
+        action = {"type": "agentSetAbstraction", "abstraction": abstraction}
         return await self.exchange.post_action(
             action, vault=self.vault, expires=self.expires
         )
