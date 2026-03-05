@@ -73,6 +73,23 @@ class TriggerOrderType(TypedDict):
     trigger: TriggerOrderOptions
 
 
+class TriggerTpsl(str, Enum):
+    TP = "tp"
+    SL = "sl"
+
+
+def trigger_order_type(
+    *, is_market: bool, trigger_px: float | str, tpsl: TriggerTpsl
+) -> TriggerOrderType:
+    return {
+        "trigger": {
+            "isMarket": is_market,
+            "triggerPx": str(trigger_px),
+            "tpsl": tpsl.value,
+        }
+    }
+
+
 OrderType = LimitOrderType | TriggerOrderType
 
 GroupOptions = Literal["na", "normalTpsl", "positionTpsl"]

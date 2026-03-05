@@ -29,7 +29,7 @@ async def test_get_all_metas(hl: AsyncHyperliquid) -> None:
     assert "universe" in metas["perp"]
 
     assert "spots" in metas
-    spot_metas = metas["spots"]
+    spot_metas = metas["spots"]  # type: ignore
     assert "tokens" in spot_metas
     assert "universe" in spot_metas
 
@@ -72,7 +72,7 @@ async def test_get_all_dex_name(hl: AsyncHyperliquid) -> None:
     ],
 )
 async def test_get_coin_name(
-    hl: AsyncHyperliquid, coin: str, name: str
+    hl: AsyncHyperliquid, coin: str, name: str | None
 ) -> None:
     coin_name = await hl.get_coin_name(coin)
     assert coin_name == name
@@ -123,7 +123,7 @@ async def test_get_coin_asset(
     ],
 )
 async def test_get_coin_symbol(
-    hl: AsyncHyperliquid, coin: str, symbol: str
+    hl: AsyncHyperliquid, coin: str, symbol: str | None
 ) -> None:
     coin_symbol = await hl.get_coin_symbol(coin)
     assert coin_symbol == symbol
@@ -306,9 +306,10 @@ async def test_get_order_status(hl: AsyncHyperliquid):
 
     order_status = await hl.get_order_status(order_id, address=address)
     assert order_status["status"] == "order"
-    assert order_status["order"] is not None
+    status_order = order_status["order"]
+    assert status_order is not None
 
-    inner_order = order_status["order"]["order"]
+    inner_order = status_order["order"]
     assert inner_order["oid"] == order_id
     assert inner_order["coin"] == order["coin"]
     assert inner_order["side"] == order["side"]
