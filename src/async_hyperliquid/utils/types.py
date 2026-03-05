@@ -153,7 +153,7 @@ class EncodedOrder(TypedDict):
 
 class OrderBuilder(TypedDict):
     b: str  # builder address
-    f: float
+    f: int
 
 
 class OrderAction(TypedDict):
