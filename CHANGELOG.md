@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-05
+
+### Added
+- Add dedicated order APIs: `place_market_order` and `place_typed_order` while keeping `place_order` for compatibility.
+- Add order-type builder utilities and enums: `LimitTif`, `TriggerTpsl`, `limit_order_type`, and `trigger_order_type`.
+- Add user abstraction query APIs: `InfoAPI.get_user_abstraction` and `AsyncHyperliquid.get_user_abstraction`.
+- Add abstraction setting APIs: `AsyncHyperliquid.user_set_abstraction` and `AsyncHyperliquid.agent_set_abstraction`, including signing support (`USER_SET_ABSTRACTION_SIGN_TYPES` and `sign_user_set_abstraction_action`).
+
+### Changed
+- Reorganize tests into `tests/unit` and `tests/integration`, and split exchange integration tests into `test_exchange_orders.py` and `test_exchange_actions.py`.
+- Improve `ensure_order_type` typing with `TypeGuard` helpers and use the limit-order builder path to avoid loose TypedDict narrowing.
+
+### Deprecated
+- Mark `user_dex_abstraction` and `agent_enable_dex_abstraction` as deprecated in favor of `user_set_abstraction` and `agent_set_abstraction`.
+
 ## [0.3.10] - 2026-02-08
 
 ### Added
