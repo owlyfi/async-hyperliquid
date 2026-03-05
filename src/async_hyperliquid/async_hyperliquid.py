@@ -27,7 +27,7 @@ from async_hyperliquid.utils.types import (
     SpotMeta,
     OrderType,
     Portfolio,
-    LimitOrder,
+    LimitTif,
     UserDeposit,
     AccountState,
     GroupOptions,
@@ -43,6 +43,7 @@ from async_hyperliquid.utils.types import (
     UserNonFundingDelta,
     BatchPlaceOrderRequest,
     SpotClearinghouseState,
+    limit_order_type,
 )
 from async_hyperliquid.utils.signing import (
     encode_order,
@@ -507,26 +508,46 @@ class AsyncHyperliquid(AsyncAPI):
         px_decimals = (6 if not is_spot else 8) - sz_decimals
         return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
 
-    async def place_order(
+    async def place_market_order(
+        self,
+        coin: str,
+        is_buy: bool,
+        sz: float,
+        *,
+        ro: bool = False,
+        cloid: Cloid | None = None,
+        slippage: float = 0.05,  # Default slippage is 5%
+        builder: OrderBuilder | None = None,
+    ):
+        mid_px = await self.get_mid_price(coin)
+        slippage_factor = (1 + slippage) if is_buy else (1 - slippage)
+        px = mid_px * slippage_factor
+        # Market order is an aggressive Limit Order IoC
+        return await self.place_typed_order(
+            coin=coin,
+            is_buy=is_buy,
+            sz=sz,
+            px=px,
+            ro=ro,
+            order_type=limit_order_type(LimitTif.IOC),
+            cloid=cloid,
+            builder=builder,
+        )
+
+    async def place_typed_order(
         self,
         coin: str,
         is_buy: bool,
         sz: float,
         px: float,
-        is_market: bool = True,
         *,
         ro: bool = False,
-        order_type: OrderType = LimitOrder.IOC.value,  # type: ignore
+        order_type: OrderType | None = None,
         cloid: Cloid | None = None,
-        slippage: float = 0.05,  # Default slippage is 5%
         builder: OrderBuilder | None = None,
     ):
-        if is_market:
-            mid_px = await self.get_mid_price(coin)
-            slippage_factor = (1 + slippage) if is_buy else (1 - slippage)
-            px = mid_px * slippage_factor
-            # Market order is an aggressive Limit Order IoC
-            order_type = LimitOrder.IOC.value  # type: ignore
+        if order_type is None:
+            order_type = limit_order_type(LimitTif.IOC)
 
         asset, sz, px = await self._round_sz_px(coin, sz, px)
 
@@ -541,6 +562,42 @@ class AsyncHyperliquid(AsyncAPI):
         }
 
         return await self.place_orders([order_req], builder=builder)
+
+    async def place_order(
+        self,
+        coin: str,
+        is_buy: bool,
+        sz: float,
+        px: float,
+        is_market: bool = True,
+        *,
+        ro: bool = False,
+        order_type: OrderType | None = None,
+        cloid: Cloid | None = None,
+        slippage: float = 0.05,  # Default slippage is 5%
+        builder: OrderBuilder | None = None,
+    ):
+        if is_market:
+            return await self.place_market_order(
+                coin=coin,
+                is_buy=is_buy,
+                sz=sz,
+                ro=ro,
+                cloid=cloid,
+                slippage=slippage,
+                builder=builder,
+            )
+
+        return await self.place_typed_order(
+            coin=coin,
+            is_buy=is_buy,
+            sz=sz,
+            px=px,
+            ro=ro,
+            order_type=order_type,
+            cloid=cloid,
+            builder=builder,
+        )
 
     async def place_orders(
         self,
@@ -589,7 +646,7 @@ class AsyncHyperliquid(AsyncAPI):
         reqs = []
         dexs = list(set(get_coin_dex(o["coin"]) for o in orders))
         all_mids = await self.get_dexs_mids(dexs)
-        order_type = LimitOrder.IOC.value
+        order_type = limit_order_type(LimitTif.IOC)
         for o in orders:
             coin = o["coin"]
             market_price = all_mids[coin]

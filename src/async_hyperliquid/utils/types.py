@@ -47,10 +47,20 @@ class LimitOrderType(TypedDict):
     limit: LimitOrderOptions
 
 
+class LimitTif(str, Enum):
+    ALO = "Alo"
+    IOC = "Ioc"
+    GTC = "Gtc"
+
+
 class LimitOrder(Enum):
     ALO = {"limit": {"tif": "Alo"}}
     IOC = {"limit": {"tif": "Ioc"}}
     GTC = {"limit": {"tif": "Gtc"}}
+
+
+def limit_order_type(tif: LimitTif) -> LimitOrderType:
+    return {"limit": {"tif": tif.value}}
 
 
 class TriggerOrderOptions(TypedDict):
