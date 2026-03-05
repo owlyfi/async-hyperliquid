@@ -8,6 +8,7 @@ from eth_utils.conversions import to_hex
 from eth_account.signers.local import LocalAccount
 
 from async_hyperliquid.utils.types import (
+    LimitTif,
     OrderType,
     OrderAction,
     EncodedOrder,
@@ -15,6 +16,9 @@ from async_hyperliquid.utils.types import (
     OrderBuilder,
     SignedAction,
     PlaceOrderRequest,
+    is_limit_order_type,
+    is_trigger_order_type,
+    limit_order_type,
 )
 from async_hyperliquid.utils.constants import (
     SIGNATURE_CHAIN_ID,
@@ -27,9 +31,9 @@ from async_hyperliquid.utils.constants import (
     APPROVE_BUILDER_FEE_TYPES,
     STAKING_TRANSFER_SIGN_TYPES,
     MULTI_SIG_ENVELOPE_SIGN_TYPES,
+    USER_SET_ABSTRACTION_SIGN_TYPES,
     USD_CLASS_TRANSFER_SIGN_TYPES,
     USER_DEX_ABSTRACTION_SIGN_TYPES,
-    USER_SET_ABSTRACTION_SIGN_TYPES,
     CONVERT_TO_MULTI_SIG_USER_SIGN_TYPES,
 )
 
@@ -114,9 +118,9 @@ def round_float(x: float) -> str:
 
 
 def ensure_order_type(order_type: OrderType) -> OrderType:
-    if "limit" in order_type:
-        return {"limit": order_type["limit"]}  # type: ignore
-    elif "trigger" in order_type:
+    if is_limit_order_type(order_type):
+        return limit_order_type(LimitTif(order_type["limit"]["tif"]))
+    if is_trigger_order_type(order_type):
         return {
             "trigger": {
                 "isMarket": order_type["trigger"]["isMarket"],

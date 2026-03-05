@@ -4,6 +4,7 @@ from aiohttp import ClientSession
 
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.types import (
+    Abstraction,
     Depth,
     Candles,
     Endpoint,
@@ -183,7 +184,7 @@ class InfoAPI(AsyncAPI):
         payload = {"type": "userDexAbstraction", "user": address}
         return await self.post(payload)
 
-    async def get_user_abstraction_state(self, address: str) -> str:
+    async def get_user_abstraction(self, address: str) -> Abstraction:
         payload = {"type": "userAbstraction", "user": address}
         return await self.post(payload)
 

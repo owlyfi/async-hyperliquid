@@ -1,5 +1,7 @@
+import re
 import math
 import asyncio
+import warnings
 from typing import Literal
 
 from aiohttp import ClientSession, ClientTimeout
@@ -22,12 +24,12 @@ from async_hyperliquid.utils.miscs import (
 from async_hyperliquid.utils.types import (
     Cloid,
     Metas,
+    LimitTif,
     PerpMeta,
     Position,
     SpotMeta,
     OrderType,
     Portfolio,
-    LimitOrder,
     Abstraction,
     UserDeposit,
     AccountState,
@@ -38,12 +40,15 @@ from async_hyperliquid.utils.types import (
     SpotTokenMeta,
     UserOpenOrders,
     OrderWithStatus,
+    AgentAbstraction,
     PlaceOrderRequest,
     BatchCancelRequest,
     ClearinghouseState,
+    UserSetAbstraction,
     UserNonFundingDelta,
     BatchPlaceOrderRequest,
     SpotClearinghouseState,
+    limit_order_type,
 )
 from async_hyperliquid.utils.signing import (
     encode_order,
@@ -501,17 +506,12 @@ class AsyncHyperliquid(AsyncAPI):
             positions.extend(result)
         return positions
 
-    async def get_user_dex_abstraction(self, address: str | None) -> bool:
-        if not address:
-            address = self.address
-        return await self.info.get_user_dex_abstraction(address)
-
-    async def get_user_abstraction_state(
+    async def get_user_abstraction(
         self, address: str | None = None
-    ) -> str:
+    ) -> Abstraction:
         if not address:
             address = self.address
-        return await self.info.get_user_abstraction_state(address)
+        return await self.info.get_user_abstraction(address)
 
     # Exchange API
     async def _round_sz_px(self, coin: str, sz: float, px: float):
@@ -521,26 +521,46 @@ class AsyncHyperliquid(AsyncAPI):
         px_decimals = (6 if not is_spot else 8) - sz_decimals
         return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
 
-    async def place_order(
+    async def place_market_order(
+        self,
+        coin: str,
+        is_buy: bool,
+        sz: float,
+        *,
+        ro: bool = False,
+        cloid: Cloid | None = None,
+        slippage: float = 0.05,  # Default slippage is 5%
+        builder: OrderBuilder | None = None,
+    ):
+        mid_px = await self.get_mid_price(coin)
+        slippage_factor = (1 + slippage) if is_buy else (1 - slippage)
+        px = mid_px * slippage_factor
+        # Market order is an aggressive Limit Order IoC
+        return await self.place_typed_order(
+            coin=coin,
+            is_buy=is_buy,
+            sz=sz,
+            px=px,
+            ro=ro,
+            order_type=limit_order_type(LimitTif.IOC),
+            cloid=cloid,
+            builder=builder,
+        )
+
+    async def place_typed_order(
         self,
         coin: str,
         is_buy: bool,
         sz: float,
         px: float,
-        is_market: bool = True,
         *,
         ro: bool = False,
-        order_type: OrderType = LimitOrder.IOC.value,  # type: ignore
+        order_type: OrderType | None = None,
         cloid: Cloid | None = None,
-        slippage: float = 0.05,  # Default slippage is 5%
         builder: OrderBuilder | None = None,
     ):
-        if is_market:
-            mid_px = await self.get_mid_price(coin)
-            slippage_factor = (1 + slippage) if is_buy else (1 - slippage)
-            px = mid_px * slippage_factor
-            # Market order is an aggressive Limit Order IoC
-            order_type = LimitOrder.IOC.value  # type: ignore
+        if order_type is None:
+            order_type = limit_order_type(LimitTif.IOC)
 
         asset, sz, px = await self._round_sz_px(coin, sz, px)
 
@@ -555,6 +575,42 @@ class AsyncHyperliquid(AsyncAPI):
         }
 
         return await self.place_orders([order_req], builder=builder)
+
+    async def place_order(
+        self,
+        coin: str,
+        is_buy: bool,
+        sz: float,
+        px: float,
+        is_market: bool = True,
+        *,
+        ro: bool = False,
+        order_type: OrderType | None = None,
+        cloid: Cloid | None = None,
+        slippage: float = 0.05,  # Default slippage is 5%
+        builder: OrderBuilder | None = None,
+    ):
+        if is_market:
+            return await self.place_market_order(
+                coin=coin,
+                is_buy=is_buy,
+                sz=sz,
+                ro=ro,
+                cloid=cloid,
+                slippage=slippage,
+                builder=builder,
+            )
+
+        return await self.place_typed_order(
+            coin=coin,
+            is_buy=is_buy,
+            sz=sz,
+            px=px,
+            ro=ro,
+            order_type=order_type,
+            cloid=cloid,
+            builder=builder,
+        )
 
     async def place_orders(
         self,
@@ -603,7 +659,7 @@ class AsyncHyperliquid(AsyncAPI):
         reqs = []
         dexs = list(set(get_coin_dex(o["coin"]) for o in orders))
         all_mids = await self.get_dexs_mids(dexs)
-        order_type = LimitOrder.IOC.value
+        order_type = limit_order_type(LimitTif.IOC)
         for o in orders:
             coin = o["coin"]
             market_price = all_mids[coin]
@@ -1014,6 +1070,12 @@ class AsyncHyperliquid(AsyncAPI):
     async def user_dex_abstraction(
         self, user: str | None = None, enabled: bool = True
     ):
+        warnings.warn(
+            "user_dex_abstraction is deprecated and may be removed in a "
+            "future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         nonce = get_timestamp_ms()
         if user is None:
             user = self.address
@@ -1028,30 +1090,44 @@ class AsyncHyperliquid(AsyncAPI):
         )
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
-    async def agent_enable_dex_abstraction(self):
-        action = {"type": "agentEnableDexAbstraction"}
-        return await self.exchange.post_action(
-            action, vault=self.vault, expires=self.expires
-        )
-
     async def user_set_abstraction(
-        self, abstraction: Abstraction, address: str | None = None
+        self, abstraction: UserSetAbstraction, user: str | None = None
     ):
-        if address is None:
-            address = self.address
-
         nonce = get_timestamp_ms()
+        if user is None:
+            user = self.address
+        if re.fullmatch(r"0x[a-fA-F0-9]{40}", user) is None:
+            raise ValueError(
+                f"user must be a 42-char hex address, got: {user!r}"
+            )
         action = {
             "type": "userSetAbstraction",
-            "user": address.lower(),
+            "user": user.lower(),
             "abstraction": abstraction,
             "nonce": nonce,
         }
         sig = sign_user_set_abstraction_action(
             self.account, action, self.is_mainnet
         )
-
         return await self.exchange.post_action_with_sig(action, sig, nonce)
+
+    async def agent_enable_dex_abstraction(self):
+        warnings.warn(
+            "agent_enable_dex_abstraction is deprecated and may be removed "
+            "in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        action = {"type": "agentEnableDexAbstraction"}
+        return await self.exchange.post_action(
+            action, vault=self.vault, expires=self.expires
+        )
+
+    async def agent_set_abstraction(self, abstraction: AgentAbstraction):
+        action = {"type": "agentSetAbstraction", "abstraction": abstraction}
+        return await self.exchange.post_action(
+            action, vault=self.vault, expires=self.expires
+        )
 
 
 AsyncHyper = AsyncHyperliquid

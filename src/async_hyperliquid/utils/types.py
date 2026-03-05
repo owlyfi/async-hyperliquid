@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypeGuard, TypedDict
 
 from typing_extensions import NotRequired
 
@@ -47,10 +47,20 @@ class LimitOrderType(TypedDict):
     limit: LimitOrderOptions
 
 
+class LimitTif(str, Enum):
+    ALO = "Alo"
+    IOC = "Ioc"
+    GTC = "Gtc"
+
+
 class LimitOrder(Enum):
     ALO = {"limit": {"tif": "Alo"}}
     IOC = {"limit": {"tif": "Ioc"}}
     GTC = {"limit": {"tif": "Gtc"}}
+
+
+def limit_order_type(tif: LimitTif) -> LimitOrderType:
+    return {"limit": {"tif": tif.value}}
 
 
 class TriggerOrderOptions(TypedDict):
@@ -63,9 +73,39 @@ class TriggerOrderType(TypedDict):
     trigger: TriggerOrderOptions
 
 
+class TriggerTpsl(str, Enum):
+    TP = "tp"
+    SL = "sl"
+
+
+def trigger_order_type(
+    *, is_market: bool, trigger_px: float | str, tpsl: TriggerTpsl
+) -> TriggerOrderType:
+    return {
+        "trigger": {
+            "isMarket": is_market,
+            "triggerPx": str(trigger_px),
+            "tpsl": tpsl.value,
+        }
+    }
+
+
 OrderType = LimitOrderType | TriggerOrderType
 
 GroupOptions = Literal["na", "normalTpsl", "positionTpsl"]
+Abstraction = Literal[
+    "unifiedAccount", "portfolioMargin", "disabled", "default", "dexAbstraction"
+]
+UserSetAbstraction = Literal["disabled", "unifiedAccount", "portfolioMargin"]
+AgentAbstraction = Literal["i", "u", "p"]
+
+
+def is_limit_order_type(order_type: OrderType) -> TypeGuard[LimitOrderType]:
+    return "limit" in order_type and "trigger" not in order_type
+
+
+def is_trigger_order_type(order_type: OrderType) -> TypeGuard[TriggerOrderType]:
+    return "trigger" in order_type and "limit" not in order_type
 
 
 class BasicPlaceOrderRequest(TypedDict):
