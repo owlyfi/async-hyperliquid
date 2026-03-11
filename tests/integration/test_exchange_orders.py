@@ -235,19 +235,20 @@ async def test_place_order_with_builder(hl: AsyncHyperliquid):
     # 5.5 bps
     # fee_rate = 5.5 * 10 * 1 / 10_000
     builder = {
-        "b": "0xbcc2c3ccc4282990d4c979c3c7cb6148c4dd266a",
+        "b": "0x90c52B66DB2Da13853bBaCE7C556eFb9E5172AFd",
         "f": 55,  # 5.5 bps, 0.055%
     }
 
-    coin = "xyz:NVDA"
+    coin = "BTC"
     payload = {
         "coin": coin,
         "is_buy": True,
-        "sz": 0.1,
-        "px": 175,
+        "sz": 0.001,
+        "px": 68000,
         "is_market": False,
         "order_type": LimitOrder.ALO.value,
         "builder": builder,
     }
+
     resp = await hl.place_order(**payload)  # type: ignore
     print(resp)

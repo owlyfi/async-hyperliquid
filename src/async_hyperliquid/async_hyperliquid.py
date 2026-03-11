@@ -168,6 +168,7 @@ class AsyncHyperliquid(AsyncAPI):
             self.asset_sz_decimals[asset] = info["szDecimals"]
 
     def _init_spot_meta(self, meta: SpotMeta) -> None:
+        total_tokens = len(meta["tokens"])
         for info in meta["universe"]:
             asset = info["index"] + SPOT_OFFSET
             asset_name = info["name"]
@@ -177,6 +178,10 @@ class AsyncHyperliquid(AsyncAPI):
             self.coin_names[asset_name] = asset_name
             # For token pairs
             base, quote = info["tokens"]
+            if base >= total_tokens or quote >= total_tokens:
+                print("Unreconized token index for: ", info)
+                continue
+
             base_info = meta["tokens"][base]
             base_name = base_info["name"]
             quote_name = meta["tokens"][quote]["name"]
