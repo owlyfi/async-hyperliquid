@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Document the Builder release workflow in `AGENTS.md`, including the requirement to create an explicit `vX.Y.Z` git tag for each versioned release.
+
 ## [0.4.2] - 2026-03-13
 
 ### Added
