@@ -16,12 +16,7 @@ from async_hyperliquid.utils.constants import (
     SPOT_OFFSET,
     TESTNET_API_URL,
 )
-from async_hyperliquid.utils.types import (
-    Metas,
-    PerpMeta,
-    SpotMeta,
-    SpotTokenMeta,
-)
+from async_hyperliquid.utils.types import Metas, PerpMeta, SpotMeta, SpotTokenMeta
 
 
 class AsyncHyperliquidCore(AsyncAPI):
@@ -91,9 +86,7 @@ class AsyncHyperliquidCore(AsyncAPI):
 
         if private_key is None:
             if self.account.address != self.address:
-                raise ValueError(
-                    "EVM Exchange client can not init without private key"
-                )
+                raise ValueError("EVM Exchange client can not init without private key")
             private_key = self.account.key.hex()
 
         self.evm_exchange = EVMExchange(rpc_url, private_key)

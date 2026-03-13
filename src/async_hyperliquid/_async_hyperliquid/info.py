@@ -2,11 +2,7 @@ import asyncio
 import warnings
 from typing import Literal
 
-from async_hyperliquid.utils.constants import (
-    ONE_HOUR_MS,
-    PERP_DEX_OFFSET,
-    SPOT_OFFSET,
-)
+from async_hyperliquid.utils.constants import ONE_HOUR_MS, PERP_DEX_OFFSET, SPOT_OFFSET
 from async_hyperliquid.utils.miscs import get_coin_dex, get_timestamp_ms
 from async_hyperliquid.utils.types import (
     Abstraction,
@@ -102,9 +98,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
             address = self.address
         return await self.info.get_spot_clearinghouse_state(address)
 
-    async def get_account_state(
-        self, address: str | None = None
-    ) -> AccountState:
+    async def get_account_state(self, address: str | None = None) -> AccountState:
         if not address:
             address = self.address
 
@@ -127,9 +121,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
 
         return account_state
 
-    async def get_account_portfolio(
-        self, address: str | None = None
-    ) -> Portfolio:
+    async def get_account_portfolio(self, address: str | None = None) -> Portfolio:
         if not address:
             address = self.address
 
@@ -158,9 +150,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> list[UserDeposit]:
-        return await self.get_latest_ledgers(
-            "deposit", address, start_time, end_time
-        )  # type: ignore
+        return await self.get_latest_ledgers("deposit", address, start_time, end_time)  # type: ignore
 
     async def get_latest_withdraws(
         self,
@@ -168,9 +158,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> list[UserWithdraw]:
-        return await self.get_latest_ledgers(
-            "withdraw", address, start_time, end_time
-        )  # type: ignore
+        return await self.get_latest_ledgers("withdraw", address, start_time, end_time)  # type: ignore
 
     async def get_latest_transfers(
         self,
@@ -183,10 +171,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
         )  # type: ignore
 
     async def get_user_open_orders(
-        self,
-        address: str | None = None,
-        is_frontend: bool = False,
-        dex: str = "",
+        self, address: str | None = None, is_frontend: bool = False, dex: str = ""
     ) -> UserOpenOrders:
         if not address:
             address = self.address
@@ -226,9 +211,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
             positions.extend(result)
         return positions
 
-    async def get_user_abstraction(
-        self, address: str | None = None
-    ) -> Abstraction:
+    async def get_user_abstraction(self, address: str | None = None) -> Abstraction:
         if not address:
             address = self.address
         return await self.info.get_user_abstraction(address)

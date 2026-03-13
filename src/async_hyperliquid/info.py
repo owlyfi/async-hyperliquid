@@ -86,12 +86,7 @@ class InfoAPI(AsyncAPI):
     async def get_order_status(
         self, order_id: str | int, address: str, dex: str = ""
     ) -> OrderWithStatus:
-        payload = {
-            "type": "orderStatus",
-            "user": address,
-            "oid": order_id,
-            "dex": dex,
-        }
+        payload = {"type": "orderStatus", "user": address, "oid": order_id, "dex": dex}
         return await self.post(payload)
 
     async def get_depth(
@@ -132,9 +127,7 @@ class InfoAPI(AsyncAPI):
         payload = {"type": "subAccounts", "user": address}
         return await self.post(payload)
 
-    async def get_vault_info(
-        self, address: str, user: str | None = None
-    ) -> VaultInfo:
+    async def get_vault_info(self, address: str, user: str | None = None) -> VaultInfo:
         payload = {"type": "vaultDetails", "vaultAddress": address}
         if user:
             payload["user"] = user
@@ -219,9 +212,7 @@ class InfoAPI(AsyncAPI):
         is_funding: bool = True,
     ) -> UserFundings:
         payload = {
-            "type": "userFunding"
-            if is_funding
-            else "userNonFundingLedgerUpdates",
+            "type": "userFunding" if is_funding else "userNonFundingLedgerUpdates",
             "user": address,
             "startTime": start_time,
             "endTime": end_time,
@@ -266,9 +257,7 @@ class InfoAPI(AsyncAPI):
         payload = {"type": "spotMetaAndAssetCtxs"}
         return await self.post(payload)
 
-    async def get_user_token_balances(
-        self, address: str
-    ) -> SpotClearinghouseState:
+    async def get_user_token_balances(self, address: str) -> SpotClearinghouseState:
         return await self.get_spot_clearinghouse_state(address)
 
     async def get_spot_clearinghouse_state(

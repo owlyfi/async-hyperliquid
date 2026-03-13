@@ -31,7 +31,7 @@ exclude = [
 # ruff linter and code formatter
 fix = true
 show-fixes = true
-line-length = 80
+line-length = 88
 indent-width = 4
 target-version = "py310"
 

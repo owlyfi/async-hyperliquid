@@ -8,10 +8,7 @@ from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.miscs import get_timestamp_ms
 from async_hyperliquid.utils.types import Endpoint, SignType
 from async_hyperliquid.utils.signing import sign_action, sign_multi_sig_action
-from async_hyperliquid.utils.constants import (
-    MAINNET_API_URL,
-    SIGNATURE_CHAIN_ID,
-)
+from async_hyperliquid.utils.constants import MAINNET_API_URL, SIGNATURE_CHAIN_ID
 
 logger = logging.getLogger(__name__)
 

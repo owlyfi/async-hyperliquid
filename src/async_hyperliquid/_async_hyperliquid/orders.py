@@ -1,10 +1,6 @@
 import math
 
-from async_hyperliquid.utils.constants import (
-    PERP_DEX_OFFSET,
-    SPOT_OFFSET,
-    USD_FACTOR,
-)
+from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET, USD_FACTOR
 from async_hyperliquid.utils.miscs import get_coin_dex, round_float, round_px
 from async_hyperliquid.utils.signing import encode_order, orders_to_action
 from async_hyperliquid.utils.types import (
@@ -151,9 +147,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
             reqs = await self._get_batch_market_orders(orders, slippage)
         else:
             for o in orders:
-                asset, sz, px = await self._round_sz_px(
-                    o["coin"], o["sz"], o["px"]
-                )
+                asset, sz, px = await self._round_sz_px(o["coin"], o["sz"], o["px"])
                 req = {**o, "asset": asset, "sz": sz, "px": px}
                 reqs.append(req)
 
@@ -172,13 +166,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
             slippage_factor = (1 + slippage) if o["is_buy"] else (1 - slippage)
             px = market_price * slippage_factor
             asset, sz, px = await self._round_sz_px(coin, o["sz"], px)
-            req = {
-                **o,
-                "asset": asset,
-                "sz": sz,
-                "px": px,
-                "order_type": order_type,
-            }
+            req = {**o, "asset": asset, "sz": sz, "px": px, "order_type": order_type}
             reqs.append(req)
         return reqs
 
@@ -208,10 +196,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         action = {
             "type": "cancelByCloid",
             "cancels": [
-                {
-                    "asset": await self.get_coin_asset(coin),
-                    "cloid": cloid.to_raw(),
-                }
+                {"asset": await self.get_coin_asset(coin), "cloid": cloid.to_raw()}
                 for coin, cloid in cancels
             ],
         }
@@ -255,9 +240,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
     async def batch_modify_orders(self, modify_req: list[dict]):
         modifies = [
             {
-                "oid": m["oid"].to_raw()
-                if isinstance(m["oid"], Cloid)
-                else m["oid"],
+                "oid": m["oid"].to_raw() if isinstance(m["oid"], Cloid) else m["oid"],
                 "order": encode_order(m["order"]),
             }
             for m in modify_req
@@ -267,9 +250,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
             action, vault=self.vault, expires=self.expires
         )
 
-    async def update_leverage(
-        self, leverage: int, coin: str, is_cross: bool = True
-    ):
+    async def update_leverage(self, leverage: int, coin: str, is_cross: bool = True):
         action = {
             "type": "updateLeverage",
             "asset": await self.get_coin_asset(coin),

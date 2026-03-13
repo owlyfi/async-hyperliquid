@@ -131,9 +131,7 @@ async def test_batch_place_orders(hl: AsyncHyperliquid):
         "order_type": LimitOrder.ALO.value,
     }
     # Take profit
-    tp_order_type = {
-        "trigger": {"isMarket": False, "triggerPx": tp_px, "tpsl": "tp"}
-    }
+    tp_order_type = {"trigger": {"isMarket": False, "triggerPx": tp_px, "tpsl": "tp"}}
     o2 = {
         "coin": coin,
         "is_buy": not is_buy,
@@ -143,9 +141,7 @@ async def test_batch_place_orders(hl: AsyncHyperliquid):
         "order_type": tp_order_type,
     }
     # Stop loss
-    sl_order_type = {
-        "trigger": {"isMarket": False, "triggerPx": sl_px, "tpsl": "sl"}
-    }
+    sl_order_type = {"trigger": {"isMarket": False, "triggerPx": sl_px, "tpsl": "sl"}}
     o3 = {
         "coin": coin,
         "is_buy": not is_buy,

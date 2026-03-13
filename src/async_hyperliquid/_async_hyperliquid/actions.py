@@ -2,11 +2,7 @@ import math
 import re
 import warnings
 
-from async_hyperliquid.utils.constants import (
-    HYPE_FACTOR,
-    MAINNET_API_URL,
-    USD_FACTOR,
-)
+from async_hyperliquid.utils.constants import HYPE_FACTOR, MAINNET_API_URL, USD_FACTOR
 from async_hyperliquid.utils.decorators import private_key_required
 from async_hyperliquid.utils.miscs import get_timestamp_ms, round_token_amount
 from async_hyperliquid.utils.signing import (
@@ -138,9 +134,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         amount_in_wei = int(math.floor(amount * HYPE_FACTOR))
         nonce = get_timestamp_ms()
         action = {"type": "cWithdraw", "wei": amount_in_wei, "nonce": nonce}
-        sig = sign_staking_withdraw_action(
-            self.account, action, self.is_mainnet
-        )
+        sig = sign_staking_withdraw_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     @private_key_required
@@ -160,9 +154,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     @private_key_required
-    async def vault_transfer(
-        self, vault: str, amount: float, is_deposit: bool = True
-    ):
+    async def vault_transfer(self, vault: str, amount: float, is_deposit: bool = True):
         usd_amount = int(math.floor(amount * USD_FACTOR))
         action = {
             "type": "vaultTransfer",
@@ -194,19 +186,13 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
             "builder": builder,
             "nonce": nonce,
         }
-        sig = sign_approve_builder_fee_action(
-            self.account, action, self.is_mainnet
-        )
+        sig = sign_approve_builder_fee_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     async def convert_to_multi_sig_user(self, users: list[str], threshold: int):
         nonce = get_timestamp_ms()
         signers = {"authorizedUsers": sorted(users), "threshold": threshold}
-        action = {
-            "type": "convertToMultiSigUser",
-            "signers": signers,
-            "nonce": nonce,
-        }
+        action = {"type": "convertToMultiSigUser", "signers": signers, "nonce": nonce}
         sig = sign_convert_to_multi_sig_user_action(
             self.account, action, self.is_mainnet
         )
@@ -220,9 +206,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         action = {"type": "evmUserModify", "usingBigBlocks": enable}
         return await self.exchange.post_action(action)
 
-    async def user_dex_abstraction(
-        self, user: str | None = None, enabled: bool = True
-    ):
+    async def user_dex_abstraction(self, user: str | None = None, enabled: bool = True):
         warnings.warn(
             "user_dex_abstraction is deprecated and may be removed in a "
             "future release.",
@@ -238,9 +222,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
             "enabled": enabled,
             "nonce": nonce,
         }
-        sig = sign_user_dex_abstraction_action(
-            self.account, action, self.is_mainnet
-        )
+        sig = sign_user_dex_abstraction_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     async def user_set_abstraction(
@@ -250,18 +232,14 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         if user is None:
             user = self.address
         if re.fullmatch(r"0x[a-fA-F0-9]{40}", user) is None:
-            raise ValueError(
-                f"user must be a 42-char hex address, got: {user!r}"
-            )
+            raise ValueError(f"user must be a 42-char hex address, got: {user!r}")
         action = {
             "type": "userSetAbstraction",
             "user": user.lower(),
             "abstraction": abstraction,
             "nonce": nonce,
         }
-        sig = sign_user_set_abstraction_action(
-            self.account, action, self.is_mainnet
-        )
+        sig = sign_user_set_abstraction_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     async def agent_enable_dex_abstraction(self):

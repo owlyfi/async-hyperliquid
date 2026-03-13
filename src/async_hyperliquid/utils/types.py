@@ -690,11 +690,7 @@ class UserVaultWithdraw(TypedDict):
 
 
 UserNonFundingDelta = (
-    UserDeposit
-    | UserWithdraw
-    | UserTransfer
-    | UserVaultDeposit
-    | UserVaultWithdraw
+    UserDeposit | UserWithdraw | UserTransfer | UserVaultDeposit | UserVaultWithdraw
 )
 
 

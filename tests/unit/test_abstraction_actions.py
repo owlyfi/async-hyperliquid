@@ -95,9 +95,7 @@ async def test_agent_set_abstraction_posts_expected_action() -> None:
     assert resp == {"ok": True}
     await_args = exchange.post_action.await_args
     assert await_args is not None
-    assert await_args.args == (
-        {"type": "agentSetAbstraction", "abstraction": "u"},
-    )
+    assert await_args.args == ({"type": "agentSetAbstraction", "abstraction": "u"},)
     assert await_args.kwargs == {"vault": hl.vault, "expires": hl.expires}
 
 

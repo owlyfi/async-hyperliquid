@@ -27,10 +27,7 @@ class AsyncAPI:
         return self
 
     async def __aexit__(
-        self,
-        exc_type: Exception,
-        exc_val: TracebackException,
-        traceback: TracebackType,
+        self, exc_type: Exception, exc_val: TracebackException, traceback: TracebackType
     ) -> None:
         await self.close()
 

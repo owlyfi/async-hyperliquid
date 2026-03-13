@@ -58,9 +58,7 @@ class BenchmarkRunner:
     def __init__(self):
         self.hl = AsyncHyper(ADDRESS, API_KEY, is_mainnet=False)
         self.info = Info(constants.TESTNET_API_URL, skip_ws=True)
-        self.exchange = Exchange(
-            Account.from_key(API_KEY), constants.TESTNET_API_URL
-        )
+        self.exchange = Exchange(Account.from_key(API_KEY), constants.TESTNET_API_URL)
         self.results: List[BenchmarkResult] = []
         self.detailed_times: List[dict] = []
 
@@ -140,9 +138,7 @@ class BenchmarkRunner:
                         )
                     except Exception as e:
                         error_count += 1
-                        print(
-                            f"  Iteration {iteration + 1}/{iterations} failed: {e}"
-                        )
+                        print(f"  Iteration {iteration + 1}/{iterations} failed: {e}")
 
             total_time = time.time() - start_time
 
@@ -163,11 +159,7 @@ class BenchmarkRunner:
         return time.time() - iter_start
 
     async def run_async_benchmark(
-        self,
-        operation: str,
-        func,
-        concurrent_requests: int = 5,
-        iterations: int = 20,
+        self, operation: str, func, concurrent_requests: int = 5, iterations: int = 20
     ) -> BenchmarkResult:
         """Run concurrent async benchmark to demonstrate async advantages."""
         print(
@@ -245,9 +237,7 @@ class BenchmarkRunner:
         max_time = max(times)
         median_time = statistics.median(times)
         std_dev = statistics.stdev(times) if len(times) > 1 else 0
-        requests_per_second = (
-            success_count / total_time if total_time > 0 else 0
-        )
+        requests_per_second = success_count / total_time if total_time > 0 else 0
 
         return BenchmarkResult(
             operation=operation,
@@ -296,12 +286,8 @@ class BenchmarkRunner:
 
             # Compare async vs sync if both exist
             if len(results) >= 2:
-                async_result = next(
-                    (r for r in results if r.method == "async"), None
-                )
-                sync_result = next(
-                    (r for r in results if r.method == "sync"), None
-                )
+                async_result = next((r for r in results if r.method == "async"), None)
+                sync_result = next((r for r in results if r.method == "sync"), None)
 
                 if async_result and sync_result:
                     print("\nCOMPARISON (Async vs Sync):")
@@ -322,9 +308,7 @@ class BenchmarkRunner:
                     )
 
                     print(f"  Speed Improvement: {speedup:.2f}x faster")
-                    print(
-                        f"  Throughput Improvement: {throughput_improvement:.1f}%"
-                    )
+                    print(f"  Throughput Improvement: {throughput_improvement:.1f}%")
 
 
 async def run_benchmarks():
@@ -436,9 +420,7 @@ async def run_benchmarks():
             f"  Sync Sequential:   {sync_time:.3f}s ({total_requests / sync_time:.2f} req/s)"
         )
         print(f"  Speed Improvement: {user_state_speedup:.2f}x faster")
-        print(
-            f"  Throughput Gain:   {user_state_throughput_improvement * 100:.1f}%"
-        )
+        print(f"  Throughput Gain:   {user_state_throughput_improvement * 100:.1f}%")
 
     if sync_order_time != float("inf") and async_order_time != float("inf"):
         order_speedup = sync_order_time / async_order_time

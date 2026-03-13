@@ -67,9 +67,7 @@ async def run_benchmarks_and_visualize() -> None:
 
         sync_time = time.time() - start_time
         sync_rps = total_requests / sync_time
-        print(
-            f"✅ Sync sequential user_state: {sync_time:.3f}s ({sync_rps:.2f} req/s)"
-        )
+        print(f"✅ Sync sequential user_state: {sync_time:.3f}s ({sync_rps:.2f} req/s)")
 
     except Exception as e:
         print(f"❌ Sync test failed: {e}")
@@ -134,9 +132,7 @@ async def run_benchmarks_and_visualize() -> None:
         else 0
     )
     order_throughput_improvement = (
-        (async_order_rps / sync_order_rps - 1) * 100
-        if sync_order_rps > 0
-        else 0
+        (async_order_rps / sync_order_rps - 1) * 100 if sync_order_rps > 0 else 0
     )
 
     # Print results
@@ -212,12 +208,8 @@ def create_visualization(
     x = range(len(operations))
     width = 0.35
 
-    ax1.bar(
-        [i - width / 2 for i in x], async_times, width, label="Async", alpha=0.8
-    )
-    ax1.bar(
-        [i + width / 2 for i in x], sync_times, width, label="Sync", alpha=0.8
-    )
+    ax1.bar([i - width / 2 for i in x], async_times, width, label="Async", alpha=0.8)
+    ax1.bar([i + width / 2 for i in x], sync_times, width, label="Sync", alpha=0.8)
 
     ax1.set_xlabel("Operation")
     ax1.set_ylabel("Time (seconds)")
@@ -252,20 +244,8 @@ def create_visualization(
     async_rps_list = [async_rps, async_order_rps]
     sync_rps_list = [sync_rps, sync_order_rps]
 
-    ax2.bar(
-        [i - width / 2 for i in x],
-        async_rps_list,
-        width,
-        label="Async",
-        alpha=0.8,
-    )
-    ax2.bar(
-        [i + width / 2 for i in x],
-        sync_rps_list,
-        width,
-        label="Sync",
-        alpha=0.8,
-    )
+    ax2.bar([i - width / 2 for i in x], async_rps_list, width, label="Async", alpha=0.8)
+    ax2.bar([i + width / 2 for i in x], sync_rps_list, width, label="Sync", alpha=0.8)
 
     ax2.set_xlabel("Operation")
     ax2.set_ylabel("Requests per Second")
@@ -275,9 +255,7 @@ def create_visualization(
     ax2.legend()
 
     # Add value labels
-    for i, (async_val, sync_val) in enumerate(
-        zip(async_rps_list, sync_rps_list)
-    ):
+    for i, (async_val, sync_val) in enumerate(zip(async_rps_list, sync_rps_list)):
         if async_val > 0:
             ax2.text(
                 i - width / 2,
@@ -321,10 +299,7 @@ def create_visualization(
             )
 
     # 4. Throughput Gain Percentage
-    throughput_gains = [
-        user_state_throughput_improvement,
-        order_throughput_improvement,
-    ]
+    throughput_gains = [user_state_throughput_improvement, order_throughput_improvement]
 
     bars = ax4.bar(operations, throughput_gains, color=colors, alpha=0.8)
     ax4.set_ylabel("Throughput Gain (%)")

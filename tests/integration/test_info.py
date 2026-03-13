@@ -70,9 +70,7 @@ async def test_get_all_dex_name(hl: AsyncHyperliquid) -> None:
         ),
     ],
 )
-async def test_get_coin_name(
-    hl: AsyncHyperliquid, coin: str, name: str | None
-) -> None:
+async def test_get_coin_name(hl: AsyncHyperliquid, coin: str, name: str | None) -> None:
     coin_name = await hl.get_coin_name(coin)
     assert coin_name == name
 
@@ -89,9 +87,7 @@ async def test_get_coin_name(
         ("vntl:OPENAI", 130001),  # vntl perp
     ],
 )
-async def test_get_coin_asset(
-    hl: AsyncHyperliquid, coin: str, asset: int
-) -> None:
+async def test_get_coin_asset(hl: AsyncHyperliquid, coin: str, asset: int) -> None:
     coin_asset = await hl.get_coin_asset(coin)
     assert coin_asset == asset
 
@@ -140,9 +136,7 @@ async def test_get_coin_symbol(
         ("vntl:OPENAI", 3),  # vntl perp
     ],
 )
-async def test_get_coin_sz_decimals(
-    hl: AsyncHyperliquid, coin: str, sz_decimals: int
-):
+async def test_get_coin_sz_decimals(hl: AsyncHyperliquid, coin: str, sz_decimals: int):
     coin_sz_decimals = await hl.get_coin_sz_decimals(coin)
     assert coin_sz_decimals == sz_decimals
 

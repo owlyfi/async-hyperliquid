@@ -133,9 +133,7 @@ async def test_place_typed_order_accepts_trigger_order_type() -> None:
     trigger = trigger_order_type(
         is_market=False, trigger_px=88_000.0, tpsl=TriggerTpsl.SL
     )
-    resp = await hl.place_typed_order(
-        "BTC", False, 0.2, 99.5, order_type=trigger
-    )
+    resp = await hl.place_typed_order("BTC", False, 0.2, 99.5, order_type=trigger)
 
     assert resp == {"status": "ok"}
     await_args = place_orders.await_args

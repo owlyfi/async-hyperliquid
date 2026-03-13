@@ -64,11 +64,7 @@ def hash_action(
 def sign_inner(wallet: LocalAccount, data: dict) -> SignedAction:
     encodes = encode_typed_data(full_message=data)
     signed = wallet.sign_message(encodes)
-    return {
-        "r": to_hex(signed["r"]),
-        "s": to_hex(signed["s"]),
-        "v": signed["v"],
-    }
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
 
 
 def sign_action(
@@ -124,9 +120,7 @@ def ensure_order_type(order_type: OrderType) -> OrderType:
         return {
             "trigger": {
                 "isMarket": order_type["trigger"]["isMarket"],
-                "triggerPx": round_float(
-                    float(order_type["trigger"]["triggerPx"])
-                ),
+                "triggerPx": round_float(float(order_type["trigger"]["triggerPx"])),
                 "tpsl": order_type["trigger"]["tpsl"],
             }
         }
@@ -211,9 +205,7 @@ def sign_usd_transfer_action(wallet: LocalAccount, action, is_mainnet: bool):
     )
 
 
-def sign_spot_transfer_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_spot_transfer_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -233,9 +225,7 @@ def sign_withdraw_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     )
 
 
-def sign_usd_class_transfer_action(
-    wallet: LocalAccount, action: Any, is_mainnet: bool
-):
+def sign_usd_class_transfer_action(wallet: LocalAccount, action: Any, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -245,9 +235,7 @@ def sign_usd_class_transfer_action(
     )
 
 
-def sign_send_asset_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_send_asset_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -257,9 +245,7 @@ def sign_send_asset_action(
     )
 
 
-def sign_staking_deposit_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_staking_deposit_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -269,9 +255,7 @@ def sign_staking_deposit_action(
     )
 
 
-def sign_staking_withdraw_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_staking_withdraw_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -281,9 +265,7 @@ def sign_staking_withdraw_action(
     )
 
 
-def sign_token_delegate_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_token_delegate_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
@@ -293,9 +275,7 @@ def sign_token_delegate_action(
     )
 
 
-def sign_approve_agent_action(
-    wallet: LocalAccount, action: dict, is_mainnet: bool
-):
+def sign_approve_agent_action(wallet: LocalAccount, action: dict, is_mainnet: bool):
     return sign_user_signed_action(
         wallet,
         action,
