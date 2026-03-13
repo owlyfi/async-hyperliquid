@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-13
+
 ### Changed
 - Document the Builder release workflow in `AGENTS.md`, including the requirement to create an explicit `vX.Y.Z` git tag for each versioned release.
+- Refactor `AsyncHyperliquid` into focused internal client modules so metadata loading, read APIs, order flows, and signed account actions are easier to maintain without changing the public import path.
+
+### Fixed
+- Restore legacy helper re-exports from `async_hyperliquid.async_hyperliquid` so internal refactoring does not break downstream imports or monkeypatch-based tests.
 
 ## [0.4.2] - 2026-03-13
 

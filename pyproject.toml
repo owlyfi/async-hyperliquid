@@ -1,6 +1,6 @@
 [project]
 name = "async-hyperliquid"
-version = "0.4.2"
+version = "0.4.3"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]
 readme = "README.md"
@@ -35,7 +35,7 @@ classifiers = [
 ]
 requires-python = ">=3.10,<4"
 dependencies = [
-    "aiohttp (>=3.11.12,<4.0.0)",
+    "aiohttp>=3.11.12,<4.0.0",
     "msgpack (>=1.1.0,<2.0.0)",
     "eth-account (>=0.13.5,<0.14.0)",
     "eth-utils (>=5.2.0,<6.0.0)",
