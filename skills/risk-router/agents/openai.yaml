@@ -1,0 +1,5 @@
+interface:
+  display_name: "risk-router"
+  short_description: "Route a reviewed change to the minimal set of relevant review skills based on diff-semantic-analyzer output. Use this skill after semantic diff analysis to reduce token usage and avoid unnecessary review passes."
+policy:
+  allow_implicit_invocation: true

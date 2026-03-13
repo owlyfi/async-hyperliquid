@@ -1,0 +1,5 @@
+interface:
+  display_name: "pipeline-review"
+  short_description: "Orchestrate routed code review: analyze diff, route skills, run mandatory and selected review skills, merge findings, and optionally run consensus. Use this as the default entry point for non-trivial code review."
+policy:
+  allow_implicit_invocation: true

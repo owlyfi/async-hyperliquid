@@ -198,3 +198,29 @@
 - Should fix: none
 - Follow-up:
   - Consider a short module comment in `src/async_hyperliquid/async_hyperliquid.py` stating that it is a compatibility shim by design.
+
+---
+
+## Review Notes (repo-local review skills vendoring)
+
+# Review Report
+
+## Block merge
+
+- None.
+
+## Should fix
+
+- [api-contract-review] `skills/review-pipeline/SKILL.md` now declares the skill name as `review-pipeline`, but `skills/review-pipeline/agents/openai.yaml` still advertises `pipeline-review`. That leaves the repo-local review entry point split across two names, which is exactly the kind of configuration drift this vendoring change is supposed to eliminate.
+
+## Follow-up
+
+- Consider adding a lightweight self-check in docs or a script to keep vendored skill metadata names aligned when copying future skills into the repo.
+
+## Notes
+
+- `AGENTS.md` now points at a repo-local review pipeline, and the routed review skills referenced by that pipeline are present under `skills/`.
+
+## Suggested minimal fix set
+
+- Update `skills/review-pipeline/agents/openai.yaml` to use `review-pipeline` as the display name so it matches the vendored skill entry point.

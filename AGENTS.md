@@ -26,6 +26,11 @@ This repository is optimized for Builder/Reviewer handoff.
 
 ## Reviewer Workflow
 1. Review the latest diff and `.agent/state.md`.
-2. Run `$review-pipeline`.
+2. Run `$pipeline-review`.
 3. Write findings into `.agent/review_notes.md`.
 4. Request a minimal fix set from Builder if needed.
+
+## Review Skills
+
+- This repository vendors the review pipeline and its routed review skills under `skills/` so review behavior does not depend on user-level skill installation.
+- The repository-local entry point is `skills/review-pipeline/SKILL.md`, which matches the user-level `$pipeline-review` name used in the Reviewer workflow above.

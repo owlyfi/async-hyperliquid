@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Vendor repository-local review pipeline and routed review skills under `skills/` so the Reviewer workflow in `AGENTS.md` does not depend on user-level skill installation.
+
+### Fixed
+- Align the vendored review-pipeline skill metadata and `AGENTS.md` references with the existing user-level `pipeline-review` name to avoid mixed identifiers.
+
 ## [0.4.3] - 2026-03-13
 
 ### Changed
