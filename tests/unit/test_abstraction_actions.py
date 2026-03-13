@@ -99,3 +99,9 @@ async def test_agent_set_abstraction_posts_expected_action() -> None:
         {"type": "agentSetAbstraction", "abstraction": "u"},
     )
     assert await_args.kwargs == {"vault": hl.vault, "expires": hl.expires}
+
+
+def test_async_hyperliquid_module_re_exports_legacy_helpers() -> None:
+    assert async_hl_module.get_timestamp_ms is not None
+    assert async_hl_module.limit_order_type is not None
+    assert async_hl_module.sign_user_set_abstraction_action is not None
