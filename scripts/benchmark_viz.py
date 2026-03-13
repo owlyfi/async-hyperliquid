@@ -2,14 +2,16 @@
 Simple visualization script for Async-Hyper benchmark results.
 """
 
+from importlib import import_module
 import os
 import time
 import asyncio
-
-import seaborn as sns
-import matplotlib.pyplot as plt
+from typing import Any, cast
 
 from benchmarks import BenchmarkRunner  # type: ignore
+
+sns = cast(Any, import_module("seaborn"))
+plt = cast(Any, import_module("matplotlib.pyplot"))
 
 # Set style for clean visualization
 plt.style.use("seaborn-v0_8")

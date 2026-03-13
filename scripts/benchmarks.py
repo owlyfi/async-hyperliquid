@@ -66,7 +66,7 @@ class BenchmarkRunner:
 
     async def async_user_state(self) -> None:
         """Async user state request with rate limiting."""
-        await self.hl._info.get_perp_clearinghouse_state(hlp)
+        await self.hl.info.get_perp_clearinghouse_state(hlp)
 
     async def async_place_order(self) -> None:
         """Async place order request with rate limiting."""
@@ -87,7 +87,7 @@ class BenchmarkRunner:
 
     def sync_place_order(self) -> None:
         """Sync place order request."""
-        resp = self.exchange.order(coin, is_buy, sz, px, order_type)  # type: ignore
+        resp = self.exchange.order(coin, is_buy, sz, px, order_type)
         oid = resp["response"]["data"]["statuses"][0]["resting"]["oid"]
         self.exchange.cancel(coin, oid)
 

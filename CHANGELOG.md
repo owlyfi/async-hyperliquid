@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.4.2] - 2026-03-13
+
+### Added
+- Vendor repository-local Codex skills for `pua-debugging`, `systematic-debugging`, `verification-before-completion`, and `python-uv-workflow` under `skills/` so agent behavior does not depend on user-level skill installation.
+- Add `ty` as a `dev` dependency so the repository-local `python-uv-workflow` verification path can run inside the project.
+
+### Changed
+- Require Builder workflow changes to update `CHANGELOG.md` in the same change set for every commit-worthy repository change.
+
+### Fixed
+- Resolve `ty` verification issues in `InfoAPI`, benchmark scripts, and abstraction integration tests so the repository-local `python-uv-workflow` checks pass in-project.
+
+## [0.4.1] - 2026-03-11
+
+### Changed
+- Tighten `OrderBuilder.f` typing from `float` to `int` to match the encoded builder fee representation used by order payloads.
+
+### Fixed
+- Skip malformed spot metadata entries whose token indexes fall outside the returned token table, avoiding crashes when testnet returns unrecognized token references.
+- Update the builder-fee integration order test to use a supported builder address and a liquid `BTC` test order payload.
+
 ## [0.4.0] - 2026-03-05
 
 ### Added

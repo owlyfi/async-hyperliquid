@@ -1,6 +1,6 @@
 [project]
 name = "async-hyperliquid"
-version = "0.4.1"
+version = "0.4.2"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]
 readme = "README.md"
@@ -57,6 +57,7 @@ dev = [
     "pre-commit>=4.1.0",
     "python-dotenv>=1.0.1",
     "hyperliquid-python-sdk>=0.19.0",
+    "ty>=0.0.22",
 ]
 
 [project.urls]

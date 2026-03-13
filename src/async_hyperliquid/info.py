@@ -69,7 +69,7 @@ class InfoAPI(AsyncAPI):
         start_time: int | None = None,
         end_time: int | None = None,
     ) -> UserFills:
-        payload = {
+        payload: dict[str, Any] = {
             "type": "userFillsByTime" if start_time else "userFills",
             "user": address,
             "aggregateByTime": aggregated,

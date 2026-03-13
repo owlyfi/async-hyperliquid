@@ -150,7 +150,7 @@ async def test_user_set_abstraction(hl: AsyncHyperliquid):
         "default",
         "dexAbstraction",
     }:
-        pytest.skip(
+        raise pytest.skip.Exception(
             "Current abstraction is not directly settable by user_set_abstraction"
         )
 
@@ -164,7 +164,7 @@ async def test_agent_set_abstraction(hl: AsyncHyperliquid):
     abstraction = await hl.get_user_abstraction()
     mapping = {"disabled": "i", "unifiedAccount": "u", "portfolioMargin": "p"}
     if abstraction not in mapping:
-        pytest.skip(
+        raise pytest.skip.Exception(
             "Current abstraction is not directly settable by agent_set_abstraction"
         )
 
