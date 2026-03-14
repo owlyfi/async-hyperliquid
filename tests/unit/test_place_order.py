@@ -140,3 +140,86 @@ async def test_place_typed_order_accepts_trigger_order_type() -> None:
     assert await_args is not None
     order_req = await_args.args[0][0]
     assert order_req["order_type"] == trigger
+
+
+@pytest.mark.asyncio
+async def test_batch_place_orders_builds_limit_orders_in_input_order() -> None:
+    hl = build_stub_hl()
+
+    async def fake_round_sz_px(
+        coin: str, sz: float, px: float
+    ) -> tuple[int, float, float]:
+        mapping = {"BTC": (10, 0.1, 101.0), "ETH": (11, 0.2, 202.0)}
+        return mapping[coin]
+
+    place_orders = AsyncMock(return_value={"status": "ok"})
+    setattr(hl, "_round_sz_px", fake_round_sz_px)
+    setattr(hl, "place_orders", place_orders)
+
+    orders = [
+        {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
+        {"coin": "ETH", "is_buy": False, "sz": 0.2, "px": 200.0, "ro": True},
+    ]
+
+    resp = await hl.batch_place_orders(orders)
+
+    assert resp == {"status": "ok"}
+    await_args = place_orders.await_args
+    assert await_args is not None
+    assert await_args.args[0] == [
+        {
+            "coin": "BTC",
+            "is_buy": True,
+            "sz": 0.1,
+            "px": 101.0,
+            "ro": False,
+            "asset": 10,
+        },
+        {
+            "coin": "ETH",
+            "is_buy": False,
+            "sz": 0.2,
+            "px": 202.0,
+            "ro": True,
+            "asset": 11,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_close_positions_batches_requested_coins_only() -> None:
+    hl = build_stub_hl()
+    get_all_positions = AsyncMock(
+        return_value=[
+            {"coin": "flx:BTC", "szi": "-0.5"},
+            {"coin": "ETH", "szi": "1.25"},
+            {"coin": "SOL", "szi": "2.0"},
+        ]
+    )
+    batch_place_orders = AsyncMock(return_value={"status": "ok"})
+    setattr(hl, "get_all_positions", get_all_positions)
+    setattr(hl, "batch_place_orders", batch_place_orders)
+
+    resp = await hl.close_positions(["ETH", "flx:BTC", "MISSING"])
+
+    assert resp == {"status": "ok"}
+    get_all_positions.assert_awaited_once_with(dexs=["", "flx"])
+    batch_place_orders.assert_awaited_once_with(
+        [
+            {"coin": "ETH", "is_buy": False, "sz": 1.25, "px": 0, "ro": True},
+            {"coin": "flx:BTC", "is_buy": True, "sz": 0.5, "px": 0, "ro": True},
+        ],
+        is_market=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_close_position_reuses_close_positions_batch_path() -> None:
+    hl = build_stub_hl()
+    close_positions = AsyncMock(return_value={"status": "ok"})
+    setattr(hl, "close_positions", close_positions)
+
+    resp = await hl.close_position("BTC")
+
+    assert resp == {"status": "ok"}
+    close_positions.assert_awaited_once_with(["BTC"])

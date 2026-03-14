@@ -4,7 +4,7 @@ import warnings
 
 from async_hyperliquid.utils.constants import HYPE_FACTOR, MAINNET_API_URL, USD_FACTOR
 from async_hyperliquid.utils.decorators import private_key_required
-from async_hyperliquid.utils.miscs import get_timestamp_ms, round_token_amount
+from async_hyperliquid.utils.miscs import round_token_amount
 from async_hyperliquid.utils.signing import (
     sign_approve_agent_action,
     sign_approve_builder_fee_action,
@@ -37,7 +37,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
 
     @private_key_required
     async def usd_transfer(self, amount: float, dest: str):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "usdSend",
             "amount": round_token_amount(amount, 2),
@@ -55,7 +55,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         token_id = token_info["tokenId"]
         wei_decimals = token_info["weiDecimals"]
         token = f"{token_name}:{token_id}"
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "spotSend",
             "destination": dest,
@@ -68,7 +68,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
 
     @private_key_required
     async def initiate_withdrawal(self, amount: float):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "withdraw3",
             "amount": round_token_amount(amount, 2),
@@ -80,7 +80,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
 
     @private_key_required
     async def usd_class_transfer(self, amount: float, to_perp: bool = False):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "usdClassTransfer",
             "amount": round_token_amount(amount, 2),
@@ -107,7 +107,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         token_id = token_info["tokenId"]
         wei_decimals = token_info["weiDecimals"]
         token = f"{token_name}:{token_id}"
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "sendAsset",
             "token": token,
@@ -124,7 +124,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
     @private_key_required
     async def staking_deposit(self, amount: float):
         amount_in_wei = int(math.floor(amount * HYPE_FACTOR))
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {"type": "cDeposit", "wei": amount_in_wei, "nonce": nonce}
         sig = sign_staking_deposit_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
@@ -132,7 +132,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
     @private_key_required
     async def staking_withdraw(self, amount: float):
         amount_in_wei = int(math.floor(amount * HYPE_FACTOR))
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {"type": "cWithdraw", "wei": amount_in_wei, "nonce": nonce}
         sig = sign_staking_withdraw_action(self.account, action, self.is_mainnet)
         return await self.exchange.post_action_with_sig(action, sig, nonce)
@@ -142,7 +142,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         self, validator: str, amount: float, is_undelegate: bool = False
     ):
         amount_in_wei = int(math.floor(amount * HYPE_FACTOR))
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "tokenDelegate",
             "validator": validator,
@@ -165,7 +165,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         return await self.exchange.post_action(action)
 
     async def approve_agent(self, agent: str, name: str | None = None):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "approveAgent",
             "agentAddress": agent,
@@ -179,7 +179,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     async def approve_builder_fee(self, max_fee_rate: float, builder: str):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         action = {
             "type": "approveBuilderFee",
             "maxFeeRate": f"{max_fee_rate:.3%}",
@@ -190,7 +190,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
         return await self.exchange.post_action_with_sig(action, sig, nonce)
 
     async def convert_to_multi_sig_user(self, users: list[str], threshold: int):
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         signers = {"authorizedUsers": sorted(users), "threshold": threshold}
         action = {"type": "convertToMultiSigUser", "signers": signers, "nonce": nonce}
         sig = sign_convert_to_multi_sig_user_action(
@@ -213,7 +213,7 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
             DeprecationWarning,
             stacklevel=2,
         )
-        nonce = get_timestamp_ms()
+        nonce = self.next_nonce()
         if user is None:
             user = self.address
         action = {
@@ -228,11 +228,11 @@ class AsyncHyperliquidActionsClient(AsyncHyperliquidOrdersClient):
     async def user_set_abstraction(
         self, abstraction: UserSetAbstraction, user: str | None = None
     ):
-        nonce = get_timestamp_ms()
         if user is None:
             user = self.address
         if re.fullmatch(r"0x[a-fA-F0-9]{40}", user) is None:
             raise ValueError(f"user must be a 42-char hex address, got: {user!r}")
+        nonce = self.next_nonce()
         action = {
             "type": "userSetAbstraction",
             "user": user.lower(),

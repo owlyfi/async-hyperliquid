@@ -37,6 +37,37 @@ from async_hyperliquid.utils.constants import (
     CONVERT_TO_MULTI_SIG_USER_SIGN_TYPES,
 )
 
+_EIP712_DOMAIN_FIELDS = [
+    {"name": "name", "type": "string"},
+    {"name": "version", "type": "string"},
+    {"name": "chainId", "type": "uint256"},
+    {"name": "verifyingContract", "type": "address"},
+]
+_ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+_EXCHANGE_AGENT_DOMAIN = {
+    "chainId": 1337,
+    "name": "Exchange",
+    "verifyingContract": _ZERO_ADDRESS,
+    "version": "1",
+}
+_EXCHANGE_AGENT_MESSAGE_TYPES = {
+    "Agent": [
+        {"name": "source", "type": "string"},
+        {"name": "connectionId", "type": "bytes32"},
+    ]
+}
+_EXCHANGE_AGENT_PAYLOAD_BASE = {
+    "domain": _EXCHANGE_AGENT_DOMAIN,
+    "types": {
+        "Agent": _EXCHANGE_AGENT_MESSAGE_TYPES["Agent"],
+        "EIP712Domain": _EIP712_DOMAIN_FIELDS,
+    },
+    "primaryType": "Agent",
+}
+_USER_SIGNED_PAYLOAD_BASE_CACHE: dict[tuple[str, int, int], dict[str, Any]] = {}
+_USER_SIGNED_DOMAIN_CACHE: dict[int, dict[str, Any]] = {}
+_USER_SIGNED_MESSAGE_TYPES_CACHE: dict[tuple[str, int], dict[str, List[dict]]] = {}
+
 
 def address_to_bytes(address: str) -> bytes:
     return bytes.fromhex(address[2:] if address.startswith("0x") else address)
@@ -67,6 +98,66 @@ def sign_inner(wallet: LocalAccount, data: dict) -> SignedAction:
     return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
 
 
+def sign_typed_data(
+    wallet: LocalAccount,
+    domain_data: dict[str, Any],
+    message_types: dict[str, Any],
+    message_data: dict[str, Any],
+) -> SignedAction:
+    encodes = encode_typed_data(
+        domain_data=domain_data, message_types=message_types, message_data=message_data
+    )
+    signed = wallet.sign_message(encodes)
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
+
+
+def _user_signed_domain(chain_id: int) -> dict[str, Any]:
+    payload = _USER_SIGNED_DOMAIN_CACHE.get(chain_id)
+    if payload is None:
+        payload = {
+            "name": "HyperliquidSignTransaction",
+            "version": "1",
+            "chainId": chain_id,
+            "verifyingContract": _ZERO_ADDRESS,
+        }
+        _USER_SIGNED_DOMAIN_CACHE[chain_id] = payload
+    return payload
+
+
+def _user_signed_message_types(
+    primary_type: str, payload_types: List[dict]
+) -> dict[str, List[dict]]:
+    cache_key = (primary_type, id(payload_types))
+    payload = _USER_SIGNED_MESSAGE_TYPES_CACHE.get(cache_key)
+    if payload is None:
+        payload = {primary_type: payload_types}
+        _USER_SIGNED_MESSAGE_TYPES_CACHE[cache_key] = payload
+    return payload
+
+
+def _user_signed_payload_base(
+    primary_type: str, payload_types: List[dict], chain_id: int
+):
+    cache_key = (primary_type, id(payload_types), chain_id)
+    payload = _USER_SIGNED_PAYLOAD_BASE_CACHE.get(cache_key)
+    if payload is None:
+        payload = {
+            "domain": {
+                "name": "HyperliquidSignTransaction",
+                "version": "1",
+                "chainId": chain_id,
+                "verifyingContract": _ZERO_ADDRESS,
+            },
+            "types": {
+                primary_type: payload_types,
+                "EIP712Domain": _EIP712_DOMAIN_FIELDS,
+            },
+            "primaryType": primary_type,
+        }
+        _USER_SIGNED_PAYLOAD_BASE_CACHE[cache_key] = payload
+    return payload
+
+
 def sign_action(
     wallet: LocalAccount,
     action: dict,
@@ -77,29 +168,9 @@ def sign_action(
 ) -> SignedAction:
     h = hash_action(action, active_pool, nonce, expires)
     msg = {"source": "a" if is_mainnet else "b", "connectionId": h}
-    data = {
-        "domain": {
-            "chainId": 1337,
-            "name": "Exchange",
-            "verifyingContract": "0x0000000000000000000000000000000000000000",
-            "version": "1",
-        },
-        "types": {
-            "Agent": [
-                {"name": "source", "type": "string"},
-                {"name": "connectionId", "type": "bytes32"},
-            ],
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-        },
-        "primaryType": "Agent",
-        "message": msg,
-    }
-    return sign_inner(wallet, data)
+    return sign_typed_data(
+        wallet, _EXCHANGE_AGENT_DOMAIN, _EXCHANGE_AGENT_MESSAGE_TYPES, msg
+    )
 
 
 def round_float(x: float) -> str:
@@ -162,22 +233,7 @@ def orders_to_action(
 def user_signed_payload(primary_type, payload_types, action):
     chain_id = int(action["signatureChainId"], 16)
     return {
-        "domain": {
-            "name": "HyperliquidSignTransaction",
-            "version": "1",
-            "chainId": chain_id,
-            "verifyingContract": "0x0000000000000000000000000000000000000000",
-        },
-        "types": {
-            primary_type: payload_types,
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-        },
-        "primaryType": primary_type,
+        **_user_signed_payload_base(primary_type, payload_types, chain_id),
         "message": action,
     }
 
@@ -191,8 +247,13 @@ def sign_user_signed_action(
 ):
     action["signatureChainId"] = SIGNATURE_CHAIN_ID
     action["hyperliquidChain"] = "Mainnet" if is_mainnet else "Testnet"
-    data = user_signed_payload(primary_type, payload_types, action)
-    return sign_inner(wallet, data)
+    chain_id = int(action["signatureChainId"], 16)
+    return sign_typed_data(
+        wallet,
+        _user_signed_domain(chain_id),
+        _user_signed_message_types(primary_type, payload_types),
+        action,
+    )
 
 
 def sign_usd_transfer_action(wallet: LocalAccount, action, is_mainnet: bool):

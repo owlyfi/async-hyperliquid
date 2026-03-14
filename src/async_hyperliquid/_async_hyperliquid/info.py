@@ -46,10 +46,15 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
         await self.init_metas()
         spot_data = None
         perp_data = None
-        if is_spot or is_all:
-            spot_data = await self.info.get_spot_meta_ctx()
-        if is_perp or is_all:
-            perp_data = await self.info.get_perp_meta_ctx()
+        if is_all:
+            spot_data, perp_data = await asyncio.gather(
+                self.info.get_spot_meta_ctx(), self.info.get_perp_meta_ctx()
+            )
+        else:
+            if is_spot:
+                spot_data = await self.info.get_spot_meta_ctx()
+            if is_perp:
+                perp_data = await self.info.get_perp_meta_ctx()
 
         is_perp = is_perp or is_all
         is_spot = is_spot or is_all

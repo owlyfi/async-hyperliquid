@@ -23,6 +23,7 @@ async def test_user_set_abstraction_builds_signed_action(
     hl.is_mainnet = True
     hl.vault = None
     hl.expires = None
+    hl.next_nonce = lambda: nonce
     exchange = SimpleNamespace(
         post_action_with_sig=AsyncMock(return_value={"status": "ok"})
     )
@@ -40,7 +41,6 @@ async def test_user_set_abstraction_builds_signed_action(
         sign_call["is_mainnet"] = is_mainnet
         return sig
 
-    monkeypatch.setattr(async_hl_module, "get_timestamp_ms", lambda: nonce)
     monkeypatch.setattr(
         async_hl_module,
         "sign_user_set_abstraction_action",

@@ -9,6 +9,29 @@ from async_hyperliquid.utils.types import Endpoint
 from async_hyperliquid.utils.constants import MAINNET_API_URL
 
 logger = logging.getLogger(__name__)
+_REDACTED = "<redacted>"
+_SENSITIVE_PAYLOAD_KEYS = frozenset({"signature", "signatures"})
+
+
+def _redact_payload(payload: Any) -> Any:
+    if isinstance(payload, dict):
+        redacted: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key in _SENSITIVE_PAYLOAD_KEYS:
+                redacted[key] = _REDACTED
+            elif key == "action" and isinstance(value, dict):
+                redacted[key] = {
+                    "type": value.get("type"),
+                    "keys": sorted(value.keys()),
+                }
+            else:
+                redacted[key] = _redact_payload(value)
+        return redacted
+
+    if isinstance(payload, list):
+        return [_redact_payload(item) for item in payload]
+
+    return payload
 
 
 class AsyncAPI:
@@ -17,10 +40,14 @@ class AsyncAPI:
         endpoint: Endpoint,
         base_url: str | None = None,
         session: ClientSession = None,  # type: ignore
+        *,
+        owns_session: bool = True,
     ):
         self.endpoint = endpoint
-        self.base_url = base_url or MAINNET_API_URL
+        self.base_url = (base_url or MAINNET_API_URL).rstrip("/")
         self.session = session
+        self._owns_session = owns_session
+        self._request_url = f"{self.base_url}/{self.endpoint.value}"
 
     # for async with AsyncAPI() as api usage
     async def __aenter__(self) -> "AsyncAPI":
@@ -32,17 +59,27 @@ class AsyncAPI:
         await self.close()
 
     async def close(self) -> None:
-        if self.session and not self.session.closed:
+        if (
+            getattr(self, "_owns_session", True)
+            and self.session
+            and not self.session.closed
+        ):
             await self.session.close()
 
     async def post(self, payload: dict | None = None) -> Any:
+        if self.session is None:
+            raise RuntimeError("ClientSession is not initialized")
+
         payload = payload or {}
-        req_path = f"{self.base_url}/{self.endpoint.value}"
-        logger.debug(f"POST {req_path} {payload}")
-        async with self.session.post(req_path, json=payload) as resp:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("POST %s %s", self._request_url, _redact_payload(payload))
+
+        async with self.session.post(self._request_url, json=payload) as resp:
             resp.raise_for_status()
             try:
                 return await resp.json()
             except Exception as e:
-                logger.error(f"Error parsing JSON response: {e}")
+                logger.error(
+                    "Error parsing JSON response from %s: %s", self._request_url, e
+                )
                 return await resp.text()

@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from aiohttp import ClientSession
@@ -20,11 +21,13 @@ class ExchangeAPI(AsyncAPI):
         session: ClientSession,
         base_url: str | None = None,
         address: str | None = None,
+        nonce_factory: Callable[[], int] | None = None,
     ):
         self.account = account
         self.address = address or account.address
         self.is_mainnet = base_url == MAINNET_API_URL
-        super().__init__(Endpoint.EXCHANGE, base_url, session)
+        self._next_nonce = nonce_factory or get_timestamp_ms
+        super().__init__(Endpoint.EXCHANGE, base_url, session, owns_session=False)
 
     async def multi_sig(
         self,
@@ -62,7 +65,7 @@ class ExchangeAPI(AsyncAPI):
         assert self.endpoint == Endpoint.EXCHANGE, (
             "only exchange endpoint supports action"
         )
-        nonce = get_timestamp_ms()
+        nonce = self._next_nonce()
         # TODO: support multi sig
         signature = sign_action(
             self.account, action, vault, nonce, self.is_mainnet, expires
@@ -85,5 +88,12 @@ class ExchangeAPI(AsyncAPI):
             payload["vaultAddress"] = vault
         if expires:
             payload["expiresAfter"] = expires
-        logger.debug(f"Post action payload: {payload}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Post action type=%s nonce=%s vault=%s expires=%s",
+                action.get("type"),
+                nonce,
+                bool(vault),
+                expires,
+            )
         return await self.post(payload)

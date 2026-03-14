@@ -1,6 +1,7 @@
 import asyncio
+from threading import Lock
 
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import BaseConnector, ClientSession, ClientTimeout, TCPConnector
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from hl_web3.exchange import Exchange as EVMExchange
@@ -10,6 +11,7 @@ from hl_web3.utils.constants import HL_RPC_URL, HL_TESTNET_RPC_URL
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.exchange import ExchangeAPI
 from async_hyperliquid.info import InfoAPI
+from async_hyperliquid.utils.miscs import get_timestamp_ms
 from async_hyperliquid.utils.constants import (
     MAINNET_API_URL,
     PERP_DEX_OFFSET,
@@ -49,15 +51,27 @@ class AsyncHyperliquidCore(AsyncAPI):
         private_key: str | None = None,
         vault: str | None = None,
         perp_dexs: list[str] = [""],
+        session: ClientSession | None = None,
+        timeout: ClientTimeout | None = None,
+        connector: BaseConnector | None = None,
     ):
         self.address = address
         self.is_mainnet = is_mainnet
         self.account = Account.from_key(api_key)
-        self.session = ClientSession(timeout=ClientTimeout(connect=3))
+        self._nonce_lock = Lock()
+        self._last_nonce = 0
+        self._owns_session = session is None
+        self.session = session or self._build_session(
+            timeout=timeout, connector=connector
+        )
         self.base_url = MAINNET_API_URL if is_mainnet else TESTNET_API_URL
         self.info = InfoAPI(self.base_url, self.session)
         self.exchange = ExchangeAPI(
-            self.account, self.session, self.base_url, address=self.address
+            self.account,
+            self.session,
+            self.base_url,
+            address=self.address,
+            nonce_factory=self.next_nonce,
         )
 
         self.coin_assets = {}
@@ -75,6 +89,25 @@ class AsyncHyperliquidCore(AsyncAPI):
 
     def set_expires(self, expires: int | None) -> None:
         self.expires = expires
+
+    def _build_session(
+        self, *, timeout: ClientTimeout | None, connector: BaseConnector | None
+    ) -> ClientSession:
+        resolved_timeout = timeout or ClientTimeout(
+            connect=3, sock_connect=3, sock_read=10
+        )
+        resolved_connector = connector or TCPConnector(
+            ttl_dns_cache=300, enable_cleanup_closed=True
+        )
+        return ClientSession(timeout=resolved_timeout, connector=resolved_connector)
+
+    def next_nonce(self) -> int:
+        with self._nonce_lock:
+            nonce = get_timestamp_ms()
+            if nonce <= self._last_nonce:
+                nonce = self._last_nonce + 1
+            self._last_nonce = nonce
+            return nonce
 
     def _init_evm_client(
         self, private_key: str | None, rpc_url: str | None = None
@@ -164,24 +197,31 @@ class AsyncHyperliquidCore(AsyncAPI):
 
     async def get_metas(self, perp_only: bool = False) -> Metas:
         metas: Metas = {"perp": {}, "spot": [], "dexs": {}}  # type: ignore
-        perp_meta = await self.info.get_perp_meta()
         if perp_only:
-            metas["perp"] = perp_meta
+            metas["perp"] = await self.info.get_perp_meta()
             return metas
 
-        metas["spot"] = await self.info.get_spot_meta()
+        perp_meta, spot_meta = await asyncio.gather(
+            self.info.get_perp_meta(), self.info.get_spot_meta()
+        )
+        metas["perp"] = perp_meta
+        metas["spot"] = spot_meta
         return metas
 
     async def get_all_metas(self) -> Metas:
-        dexs = await self.get_all_dex_name()
-        dex_metas = {}
-
-        for dex in dexs[1:]:
-            meta = await self.info.get_perp_meta(dex)
-            dex_metas[dex] = meta
-
-        spot_meta = await self.info.get_spot_meta()
-        perp_meta = await self.info.get_perp_meta()
+        dexs, perp_meta, spot_meta = await asyncio.gather(
+            self.get_all_dex_name(),
+            self.info.get_perp_meta(),
+            self.info.get_spot_meta(),
+        )
+        dex_metas: dict[str, PerpMeta] = {}
+        if len(dexs) > 1:
+            dex_meta_results = await asyncio.gather(
+                *(self.info.get_perp_meta(dex) for dex in dexs[1:])
+            )
+            dex_metas = {
+                dex: meta for dex, meta in zip(dexs[1:], dex_meta_results, strict=True)
+            }
         return {"perp": perp_meta, "spot": spot_meta, "dexs": dex_metas}
 
     async def get_all_dex_name(self) -> list[str]:
@@ -205,7 +245,6 @@ class AsyncHyperliquidCore(AsyncAPI):
 
     async def get_coin_asset(self, coin: str) -> int:
         coin_name = await self.get_coin_name(coin)
-
         if coin_name not in self.coin_assets:
             raise ValueError(f"Coin {coin}({coin_name}) not found")
 
@@ -217,7 +256,10 @@ class AsyncHyperliquidCore(AsyncAPI):
 
     async def get_coin_sz_decimals(self, coin: str) -> int:
         coin_name = await self.get_coin_name(coin)
-        asset = await self.get_coin_asset(coin_name)
+        if coin_name not in self.coin_assets:
+            raise ValueError(f"Coin {coin}({coin_name}) not found")
+
+        asset = self.coin_assets[coin_name]
         return self.asset_sz_decimals[asset]
 
     async def get_token_info(self, coin: str) -> SpotTokenMeta:

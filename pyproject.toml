@@ -40,6 +40,7 @@ dependencies = [
     "eth-account (>=0.13.5,<0.14.0)",
     "eth-utils (>=5.2.0,<6.0.0)",
     "hl-web3>=0.1.0",
+    "coincurve>=21.0.0",
 ]
 
 [dependency-groups]

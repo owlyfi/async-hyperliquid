@@ -1,3 +1,4 @@
+import asyncio
 import math
 
 from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET, USD_FACTOR
@@ -20,9 +21,13 @@ from .info import AsyncHyperliquidInfoClient
 
 class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
     async def _round_sz_px(self, coin: str, sz: float, px: float):
-        asset = await self.get_coin_asset(coin)
+        coin_name = await self.get_coin_name(coin)
+        if coin_name not in self.coin_assets:
+            raise ValueError(f"Coin {coin}({coin_name}) not found")
+
+        asset = self.coin_assets[coin_name]
+        sz_decimals = self.asset_sz_decimals[asset]
         is_spot = asset >= SPOT_OFFSET and asset < PERP_DEX_OFFSET
-        sz_decimals = await self.get_coin_sz_decimals(coin)
         px_decimals = (6 if not is_spot else 8) - sz_decimals
         return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
 
@@ -142,33 +147,44 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         slippage: float = 0.05,
         builder: OrderBuilder | None = None,
     ):
-        reqs = []
         if is_market:
             reqs = await self._get_batch_market_orders(orders, slippage)
         else:
-            for o in orders:
-                asset, sz, px = await self._round_sz_px(o["coin"], o["sz"], o["px"])
-                req = {**o, "asset": asset, "sz": sz, "px": px}
-                reqs.append(req)
+            reqs = await self._get_batch_limit_orders(orders)
 
         return await self.place_orders(reqs, grouping=grouping, builder=builder)
+
+    async def _get_batch_limit_orders(self, orders: BatchPlaceOrderRequest):
+        rounded_orders = await asyncio.gather(
+            *(self._round_sz_px(o["coin"], o["sz"], o["px"]) for o in orders)
+        )
+        return [
+            {**order, "asset": asset, "sz": sz, "px": px}
+            for order, (asset, sz, px) in zip(orders, rounded_orders)
+        ]
 
     async def _get_batch_market_orders(
         self, orders: BatchPlaceOrderRequest, slippage: float = 0.05
     ):
-        reqs = []
         dexs = list(set(get_coin_dex(o["coin"]) for o in orders))
         all_mids = await self.get_dexs_mids(dexs)
         order_type = limit_order_type(LimitTif.IOC)
-        for o in orders:
-            coin = o["coin"]
-            market_price = all_mids[coin]
-            slippage_factor = (1 + slippage) if o["is_buy"] else (1 - slippage)
-            px = market_price * slippage_factor
-            asset, sz, px = await self._round_sz_px(coin, o["sz"], px)
-            req = {**o, "asset": asset, "sz": sz, "px": px, "order_type": order_type}
-            reqs.append(req)
-        return reqs
+        quoted_prices = []
+        for order in orders:
+            market_price = all_mids[order["coin"]]
+            slippage_factor = (1 + slippage) if order["is_buy"] else (1 - slippage)
+            quoted_prices.append(market_price * slippage_factor)
+
+        rounded_orders = await asyncio.gather(
+            *(
+                self._round_sz_px(order["coin"], order["sz"], quoted_price)
+                for order, quoted_price in zip(orders, quoted_prices)
+            )
+        )
+        return [
+            {**order, "asset": asset, "sz": sz, "px": px, "order_type": order_type}
+            for order, (asset, sz, px) in zip(orders, rounded_orders)
+        ]
 
     async def cancel_order(self, coin: str, oid: int):
         return await self.cancel_orders([(coin, int(oid))])
@@ -177,11 +193,14 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         return await self.cancel_orders(cancels)
 
     async def cancel_orders(self, cancels: BatchCancelRequest):
+        assets = await asyncio.gather(
+            *(self.get_coin_asset(coin) for coin, _ in cancels)
+        )
         action = {
             "type": "cancel",
             "cancels": [
-                {"a": await self.get_coin_asset(coin), "o": oid}
-                for coin, oid in cancels
+                {"a": asset, "o": oid}
+                for asset, (_, oid) in zip(assets, cancels, strict=True)
             ],
         }
 
@@ -193,11 +212,14 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         return await self.batch_cancel_by_cloid([(coin, cloid)])
 
     async def batch_cancel_by_cloid(self, cancels: list[tuple[str, Cloid]]):
+        assets = await asyncio.gather(
+            *(self.get_coin_asset(coin) for coin, _ in cancels)
+        )
         action = {
             "type": "cancelByCloid",
             "cancels": [
-                {"asset": await self.get_coin_asset(coin), "cloid": cloid.to_raw()}
-                for coin, cloid in cancels
+                {"asset": asset, "cloid": cloid.to_raw()}
+                for asset, (_, cloid) in zip(assets, cancels, strict=True)
             ],
         }
 
@@ -336,29 +358,33 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
     async def close_dex_positions(self, dex: str):
         return await self.close_all_positions(dexs=[dex])
 
-    async def close_position(self, coin: str):
-        dex = get_coin_dex(coin)
-        positions = await self.get_dex_positions(dex=dex)
-        target = {}
-        for position in positions:
-            if coin == position["coin"]:
-                target = position
-
-        if not target:
+    async def close_positions(self, coins: list[str]):
+        if not coins:
             return None
 
-        size = float(target["szi"])
-        price = await self.get_mid_price(coin)
-        if not price:
-            raise ValueError(f"Failed to retrieve market price for {coin}")
+        positions = await self.get_all_positions(
+            dexs=sorted({get_coin_dex(coin) for coin in coins})
+        )
+        targets = {coin: None for coin in coins}
+        for position in positions:
+            coin = position["coin"]
+            if coin in targets:
+                targets[coin] = position
 
-        close_order = {
-            "coin": coin,
-            "is_buy": size < 0,
-            "sz": abs(size),
-            "px": price,
-            "is_market": True,
-            "ro": True,
-        }
+        orders = []
+        for coin in coins:
+            target = targets[coin]
+            if target is None:
+                continue
+            size = float(target["szi"])
+            orders.append(
+                {"coin": coin, "is_buy": size < 0, "sz": abs(size), "px": 0, "ro": True}
+            )
 
-        return await self.place_order(**close_order)  # type: ignore
+        if not orders:
+            return None
+
+        return await self.batch_place_orders(orders, is_market=True)
+
+    async def close_position(self, coin: str):
+        return await self.close_positions([coin])

@@ -45,7 +45,7 @@ from async_hyperliquid.utils.types import (
 
 class InfoAPI(AsyncAPI):
     def __init__(self, base_url: str, session: ClientSession):
-        super().__init__(Endpoint.INFO, base_url, session)
+        super().__init__(Endpoint.INFO, base_url, session, owns_session=False)
 
     async def get_all_mids(self, dex: str = "") -> dict[str, int]:
         payload = {"type": "allMids", "dex": dex}
