@@ -1,24 +1,24 @@
 import asyncio
 from threading import Lock
 
-from aiohttp import BaseConnector, ClientSession, ClientTimeout, TCPConnector
+from aiohttp import TCPConnector, BaseConnector, ClientSession, ClientTimeout
 from eth_account import Account
-from eth_account.signers.local import LocalAccount
-from hl_web3.exchange import Exchange as EVMExchange
 from hl_web3.info import Info as EVMInfo
+from hl_web3.exchange import Exchange as EVMExchange
 from hl_web3.utils.constants import HL_RPC_URL, HL_TESTNET_RPC_URL
+from eth_account.signers.local import LocalAccount
 
-from async_hyperliquid.async_api import AsyncAPI
-from async_hyperliquid.exchange import ExchangeAPI
 from async_hyperliquid.info import InfoAPI
+from async_hyperliquid.exchange import ExchangeAPI
+from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.miscs import get_timestamp_ms
+from async_hyperliquid.utils.types import Metas, PerpMeta, SpotMeta, SpotTokenMeta
 from async_hyperliquid.utils.constants import (
+    SPOT_OFFSET,
     MAINNET_API_URL,
     PERP_DEX_OFFSET,
-    SPOT_OFFSET,
     TESTNET_API_URL,
 )
-from async_hyperliquid.utils.types import Metas, PerpMeta, SpotMeta, SpotTokenMeta
 
 
 class AsyncHyperliquidCore(AsyncAPI):
@@ -133,7 +133,8 @@ class AsyncHyperliquidCore(AsyncAPI):
             self.asset_sz_decimals[asset] = info["szDecimals"]
 
     def _init_spot_meta(self, meta: SpotMeta) -> None:
-        total_tokens = len(meta["tokens"])
+        tokens = meta["tokens"]
+        total_tokens = len(tokens)
         for info in meta["universe"]:
             asset = info["index"] + SPOT_OFFSET
             asset_name = info["name"]
@@ -142,19 +143,20 @@ class AsyncHyperliquidCore(AsyncAPI):
             self.coin_names[asset_name] = asset_name
 
             base, quote = info["tokens"]
-            if base >= total_tokens or quote >= total_tokens:
-                print("Unreconized token index for: ", info)
+            if not 0 <= base < total_tokens or not 0 <= quote < total_tokens:
                 continue
 
-            base_info = meta["tokens"][base]
+            base_info = tokens[base]
             base_name = base_info["name"]
-            quote_name = meta["tokens"][quote]["name"]
+            quote_info = tokens[quote]
+            quote_name = quote_info["name"]
             name = f"{base_name}/{quote_name}"
-            if name not in self.coin_names:
-                self.coin_names[name] = asset_name
+            self.coin_names.setdefault(name, asset_name)
+            self.coin_names.setdefault(quote_name, quote_name)
 
             self.asset_sz_decimals[asset] = base_info["szDecimals"]
-            self.spot_tokens[asset_name] = meta["tokens"][base]
+            self.spot_tokens[asset_name] = base_info
+            self.spot_tokens.setdefault(quote_name, quote_info)
 
     def _update_coin_symbols(self) -> None:
         self.coin_symbols = {

@@ -26,6 +26,16 @@ class StartBarrier:
         await asyncio.wait_for(self._ready.wait(), timeout=0.1)
 
 
+def init_spot_meta_stub() -> Any:
+    hl = build_stub_hl()
+    setattr(hl, "coin_assets", {})
+    setattr(hl, "coin_names", {})
+    setattr(hl, "coin_symbols", {})
+    setattr(hl, "asset_sz_decimals", {})
+    setattr(hl, "spot_tokens", {})
+    return hl
+
+
 @pytest.mark.asyncio
 async def test_get_metas_fetches_spot_and_perp_concurrently() -> None:
     hl = build_stub_hl()
@@ -105,6 +115,70 @@ async def test_get_all_market_prices_fetches_both_contexts_concurrently() -> Non
 
     init_metas.assert_awaited_once()
     assert prices == {"BTC": 105000.0, "PURR/USDC": 1.25}
+
+
+def test_init_spot_meta_registers_quote_token_aliases() -> None:
+    hl = init_spot_meta_stub()
+
+    meta = {
+        "tokens": [
+            {
+                "name": "PURR",
+                "index": 0,
+                "isCanonical": True,
+                "szDecimals": 5,
+                "weiDecimals": 8,
+                "tokenId": "purr",
+                "evmContract": None,
+                "fullName": "Purr",
+            },
+            {
+                "name": "USDC",
+                "index": 1,
+                "isCanonical": True,
+                "szDecimals": 6,
+                "weiDecimals": 8,
+                "tokenId": "usdc",
+                "evmContract": None,
+                "fullName": "USD Coin",
+            },
+        ],
+        "universe": [{"name": "@1", "index": 1, "isCanonical": True, "tokens": (0, 1)}],
+    }
+
+    hl._init_spot_meta(meta)
+
+    assert hl.coin_names["PURR/USDC"] == "@1"
+    assert hl.coin_names["USDC"] == "USDC"
+    assert hl.spot_tokens["USDC"]["tokenId"] == "usdc"
+
+
+def test_init_spot_meta_skips_malformed_token_indexes() -> None:
+    hl = init_spot_meta_stub()
+
+    meta = {
+        "tokens": [
+            {
+                "name": "PURR",
+                "index": 0,
+                "isCanonical": True,
+                "szDecimals": 5,
+                "weiDecimals": 8,
+                "tokenId": "purr",
+                "evmContract": None,
+                "fullName": "Purr",
+            }
+        ],
+        "universe": [
+            {"name": "@1", "index": 1, "isCanonical": True, "tokens": (0, 99)}
+        ],
+    }
+
+    hl._init_spot_meta(meta)
+
+    assert hl.coin_assets["@1"] == SPOT_OFFSET + 1
+    assert "@1" not in hl.spot_tokens
+    assert len(hl.asset_sz_decimals) == 0
 
 
 @pytest.mark.asyncio

@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-25
+
 ### Added
 - Vendor repository-local review pipeline and routed review skills under `skills/` so the Reviewer workflow in `AGENTS.md` does not depend on user-level skill installation.
 - Add `scripts/signing_benchmark.py` to compare cached EIP-712 template reuse, backend selection, and order batching against the legacy rebuild-on-every-call signing path with repeatable local benchmarks.
 - Add `scripts/client_hotpath_benchmark.py` to measure metadata fan-out concurrency, warm-cache order rounding, and batch cancel asset-resolution throughput against legacy serial code paths.
 - Add `coincurve` as a runtime dependency so `eth-account`/`eth-keys` can use the faster CoinCurve secp256k1 backend by default.
+- Add `close_positions(coins)` so callers can close a selected set of positions through one batched market-order action instead of looping over `close_position`.
 
 ### Changed
 - Allow `AsyncHyperliquid` to reuse a caller-provided `aiohttp` session and use a pooled connector with DNS caching for internally managed HTTP clients.
@@ -24,9 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ensure signed actions use a per-client monotonic nonce generator so concurrent requests do not collide when multiple actions are submitted in the same millisecond.
 - Redact signature material from debug request logs while keeping action type and request metadata visible for troubleshooting.
 - Remove duplicate coin-name resolution from `get_coin_sz_decimals` so hot order-preparation paths only resolve cached metadata once per request.
-
-### Added
-- Add `close_positions(coins)` so callers can close a selected set of positions through one batched market-order action instead of looping over `close_position`.
+- Keep `_init_spot_meta` resilient to malformed token indexes while caching quote-token aliases via `setdefault` for direct quote-token lookups.
 
 ## [0.4.3] - 2026-03-13
 
