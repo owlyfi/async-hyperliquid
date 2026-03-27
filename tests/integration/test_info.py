@@ -1,10 +1,29 @@
+import os
+from typing import AsyncGenerator
+
 import pytest
+import pytest_asyncio
 
 from tests.conftest import get_is_mainnet
 from async_hyperliquid import AsyncHyperliquid
 
 is_mainnet = get_is_mainnet()
 is_testnet = not is_mainnet
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def hl_live_mark_price() -> AsyncGenerator[AsyncHyperliquid, None]:
+    hl = AsyncHyperliquid(
+        os.getenv("HL_ADDR", ""),
+        os.getenv("HL_AK", ""),
+        is_mainnet,
+        perp_dexs=["", "xyz"],
+    )
+    try:
+        await hl.init_metas()
+        yield hl
+    finally:
+        await hl.close()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -166,6 +185,87 @@ async def test_get_token_info(hl: AsyncHyperliquid):
 async def test_get_token_id(hl: AsyncHyperliquid):
     token_id = await hl.get_token_id("UBTC/USDC")
     assert token_id == "0x8f254b963e8468305d409b33aa137c67"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "coin, price",
+    [
+        ("BTC", 10_000),  # perp
+        ("UBTC/USDC", 10_000),  # spot
+        ("xyz:NVDA", 100),  # xyz perp
+        ("flx:TSLA", 100),  # flx perp
+        ("vntl:OPENAI", 100),  # vntl perp
+    ],
+)
+async def test_get_mark_price(hl: AsyncHyperliquid, coin: str, price: float):
+    mark_px = await hl.get_mark_price(coin)
+    assert mark_px > price
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.skipif(is_testnet, reason="Only test on mainnet")
+@pytest.mark.parametrize(
+    "coin,min_price,max_price",
+    [
+        ("BTC", 60_000, None),
+        ("xyz:NVDA", 1, None),
+        ("xyz:SILVER", 1, None),
+        ("PURR/USDC", 0.0001, None),
+        ("HYPE/USDC", 0.0001, None),
+        ("USDT0/USDC", 0.9, 1.1),
+        ("USDE/USDC", 0.9, 1.1),
+        ("USDH/USDC", 0.9, 1.1),
+        ("@107", 0.0001, None),
+    ],
+)
+async def test_get_mark_price_live_mainnet_formats(
+    hl_live_mark_price: AsyncHyperliquid,
+    coin: str,
+    min_price: float,
+    max_price: float | None,
+) -> None:
+    mark_px = await hl_live_mark_price.get_mark_price(coin)
+    assert mark_px > min_price
+    if max_price is not None:
+        assert mark_px < max_price
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.skipif(is_testnet, reason="Only test on mainnet")
+@pytest.mark.parametrize("coin", ["xyz:SLIVER", "USDT/USDC"])
+async def test_get_mark_price_live_mainnet_unsupported_aliases(
+    hl_live_mark_price: AsyncHyperliquid, coin: str
+) -> None:
+    with pytest.raises(ValueError):
+        await hl_live_mark_price.get_mark_price(coin)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.skipif(is_testnet, reason="Only test on mainnet")
+async def test_get_mark_price_live_mainnet_spot_alias_matches(
+    hl_live_mark_price: AsyncHyperliquid,
+) -> None:
+    hype_mark_px = await hl_live_mark_price.get_mark_price("HYPE/USDC")
+    alias_mark_px = await hl_live_mark_price.get_mark_price("@107")
+    assert hype_mark_px == pytest.approx(alias_mark_px, abs=0.01)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.skipif(is_testnet, reason="Only test on mainnet")
+async def test_get_mark_price_live_mainnet_hype_quotes_align(
+    hl_live_mark_price: AsyncHyperliquid,
+) -> None:
+    prices = {
+        coin: await hl_live_mark_price.get_mark_price(coin)
+        for coin in ["HYPE", "HYPE/USDC", "HYPE/USDH", "HYPE/USDT0", "@107"]
+    }
+    anchor = prices["HYPE"]
+
+    for coin, price in prices.items():
+        assert price == pytest.approx(anchor, rel=0.01, abs=0.05), (
+            f"{coin}={price} drifted too far from HYPE perp={anchor}"
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")

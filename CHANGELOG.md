@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Add `get_mark_price(coin)` to fetch live `markPx` values for spot pairs, the primary perp dex, and builder-deployed perp dexs from the corresponding asset-context endpoints.
+- Add live mainnet integration coverage for `get_mark_price`, including spot aliases, builder-deployed perp symbols, unsupported legacy symbol forms, and HYPE cross-quote parity checks against perp pricing.
+
+### Changed
+- Allow `InfoAPI.get_perp_meta_ctx` to target a specific perp dex via the optional `dex` request field.
+- Document a code-level TODO in `init_metas` for future HIP-4 outcome asset/meta initialization, since outcome asset IDs use a separate encoding path from current perp and spot markets.
+
+### Fixed
+- Resolve spot `get_mark_price` lookups by the spot pair `index` returned in `spotMetaAndAssetCtxs`, so aliases and quoted spot pairs like `USDT0/USDC`, `USDE/USDC`, `USDH/USDC`, and `@107` read the correct live `markPx`.
+
 ## [0.4.4] - 2026-03-25
 
 ### Added

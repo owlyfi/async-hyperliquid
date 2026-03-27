@@ -190,8 +190,8 @@ class InfoAPI(AsyncAPI):
         payload = {"type": "meta", "dex": dex}
         return await self.post(payload)
 
-    async def get_perp_meta_ctx(self) -> PerpMetaCtx:
-        payload = {"type": "metaAndAssetCtxs"}
+    async def get_perp_meta_ctx(self, dex: str = "") -> PerpMetaCtx:
+        payload = {"type": "metaAndAssetCtxs", "dex": dex}
         return await self.post(payload)
 
     async def get_perp_dexs(self) -> PerpDexs:

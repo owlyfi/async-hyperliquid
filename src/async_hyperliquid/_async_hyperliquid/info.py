@@ -1,6 +1,6 @@
 import asyncio
 import warnings
-from typing import Literal
+from typing import Literal, cast
 
 from async_hyperliquid.utils.constants import ONE_HOUR_MS, PERP_DEX_OFFSET, SPOT_OFFSET
 from async_hyperliquid.utils.miscs import get_coin_dex, get_timestamp_ms
@@ -9,9 +9,13 @@ from async_hyperliquid.utils.types import (
     AccountState,
     ClearinghouseState,
     OrderWithStatus,
+    PerpMeta,
+    PerpMetaCtxItem,
     Portfolio,
     Position,
+    SpotMeta,
     SpotClearinghouseState,
+    SpotMetaCtxItem,
     UserDeposit,
     UserNonFundingDelta,
     UserOpenOrders,
@@ -23,13 +27,49 @@ from .core import AsyncHyperliquidCore
 
 
 class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
+    async def _get_perp_mark_price(self, coin_name: str, dex: str = "") -> float:
+        meta_ctx = await self.info.get_perp_meta_ctx(dex)
+        meta = cast(PerpMeta, meta_ctx[0])
+        asset_ctxs = cast(list[PerpMetaCtxItem], meta_ctx[1])
+
+        for idx, info in enumerate(meta["universe"]):
+            if info["name"] == coin_name:
+                return float(asset_ctxs[idx]["markPx"])
+
+        raise ValueError(f"Coin {coin_name} not found in perp dex '{dex}'")
+
+    async def _get_spot_mark_price(self, coin_name: str) -> float:
+        meta_ctx = await self.info.get_spot_meta_ctx()
+        meta = cast(SpotMeta, meta_ctx[0])
+        asset_ctxs = cast(list[SpotMetaCtxItem], meta_ctx[1])
+
+        for info in meta["universe"]:
+            if info["name"] == coin_name:
+                asset_index = info["index"]
+                return float(asset_ctxs[asset_index]["markPx"])
+
+        raise ValueError(f"Coin {coin_name} not found in spot metadata")
+
+    async def get_mark_price(self, coin: str) -> float:
+        if ":" in coin:
+            return await self._get_perp_mark_price(coin, get_coin_dex(coin))
+
+        coin_name = await self.get_coin_name(coin)
+        if coin_name not in self.coin_assets:
+            raise ValueError(f"Coin {coin}({coin_name}) not found")
+
+        asset = self.coin_assets[coin_name]
+        is_spot_asset = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
+        if is_spot_asset:
+            return await self._get_spot_mark_price(coin_name)
+
+        return await self._get_perp_mark_price(coin_name, get_coin_dex(coin_name))
+
     async def get_market_price(self, coin: str) -> float:
         warnings.warn(
             "get_market_price is deprecated and will remove in the future, use get_mid_price instead"
         )
-        coin_name = await self.get_coin_name(coin)
-        market_prices = await self.get_all_market_prices()
-        return market_prices[coin_name]
+        return await self.get_mark_price(coin)
 
     async def get_all_market_prices(
         self, market: Literal["spot", "perp", "all"] = "all"

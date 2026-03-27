@@ -164,6 +164,13 @@ class AsyncHyperliquidCore(AsyncAPI):
         }
 
     async def init_metas(self) -> None:
+        # TODO: Add HIP-4 outcome meta initialization from the spot info
+        # `outcomeMeta` endpoint once outcomes move beyond testnet-only rollout.
+        # Outcome asset IDs do not follow the current perp/spot offset scheme:
+        # `encoding = 10 * outcome + side`, coin names use `#{encoding}`, token
+        # names use `+{encoding}`, and `asset_id = 100_000_000 + encoding`, so
+        # this path will need dedicated outcome mappings instead of reusing the
+        # existing perp/spot logic.
         meta_task = self.info.get_perp_meta()
         spot_meta_task = self.info.get_spot_meta()
         all_dex_names_task = self.get_all_dex_name()
