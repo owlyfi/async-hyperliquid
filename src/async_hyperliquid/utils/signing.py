@@ -1,5 +1,5 @@
+import math
 from typing import Any, List
-from decimal import Decimal
 
 import msgpack
 from eth_utils.crypto import keccak
@@ -174,14 +174,17 @@ def sign_action(
 
 
 def round_float(x: float) -> str:
+    if not math.isfinite(x):
+        raise ValueError("round_float requires finite number", x)
+
     rounded = f"{x:.8f}"
     if abs(float(rounded) - x) >= 1e-12:
         raise ValueError("round_float causes rounding", x)
 
-    if rounded == "-0":
-        rounded = "0"
-    normalized = Decimal(rounded).normalize()
-    return f"{normalized:f}"
+    trimmed = rounded.rstrip("0").rstrip(".")
+    if trimmed in {"", "-0"}:
+        return "0"
+    return trimmed
 
 
 def ensure_order_type(order_type: OrderType) -> OrderType:

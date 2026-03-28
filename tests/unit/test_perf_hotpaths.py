@@ -67,7 +67,7 @@ async def test_get_all_metas_fetches_base_and_dex_metas_concurrently() -> None:
         await phase_one.wait()
         return ["", "dex-a", "dex-b"]
 
-    async def get_perp_meta(dex: str = "") -> dict[str, list[dict[str, str]]]:
+    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
         if dex:
             await phase_two.wait()
             return {"universe": [{"name": dex.upper()}]}
@@ -89,6 +89,140 @@ async def test_get_all_metas_fetches_base_and_dex_metas_concurrently() -> None:
         "dex-a": {"universe": [{"name": "DEX-A"}]},
         "dex-b": {"universe": [{"name": "DEX-B"}]},
     }
+
+
+@pytest.mark.asyncio
+async def test_get_coin_name_coalesces_concurrent_cold_meta_init() -> None:
+    hl = build_stub_hl()
+    barrier = StartBarrier(required=3)
+    calls = {"perp": 0, "spot": 0, "dex": 0}
+    setattr(hl, "coin_assets", {})
+    setattr(hl, "coin_names", {})
+    setattr(hl, "coin_symbols", {})
+    setattr(hl, "asset_sz_decimals", {})
+    setattr(hl, "spot_tokens", {})
+    setattr(hl, "perp_dexs", [""])
+
+    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
+        calls["perp"] += 1
+        await barrier.wait()
+        return {"universe": [{"name": "BTC", "szDecimals": 5}]}
+
+    async def get_spot_meta() -> dict[str, list[Any]]:
+        calls["spot"] += 1
+        await barrier.wait()
+        return {"universe": [], "tokens": []}
+
+    async def get_perp_dexs() -> list[None]:
+        calls["dex"] += 1
+        await barrier.wait()
+        return [None]
+
+    hl.info = SimpleNamespace(
+        get_perp_meta=get_perp_meta,
+        get_spot_meta=get_spot_meta,
+        get_perp_dexs=get_perp_dexs,
+    )
+
+    coin_names = await asyncio.gather(*(hl.get_coin_name("BTC") for _ in range(3)))
+
+    assert coin_names == ["BTC", "BTC", "BTC"]
+    assert calls == {"perp": 1, "spot": 1, "dex": 1}
+
+
+@pytest.mark.asyncio
+async def test_init_metas_refreshes_after_first_load() -> None:
+    hl = build_stub_hl()
+    phase = {"value": 1}
+    calls = {"perp": 0, "spot": 0, "dex": 0}
+    setattr(hl, "coin_assets", {})
+    setattr(hl, "coin_names", {})
+    setattr(hl, "coin_symbols", {})
+    setattr(hl, "asset_sz_decimals", {})
+    setattr(hl, "spot_tokens", {})
+    setattr(hl, "perp_dexs", [""])
+
+    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
+        calls["perp"] += 1
+        if phase["value"] == 1:
+            return {"universe": [{"name": "BTC", "szDecimals": 5}]}
+        return {
+            "universe": [
+                {"name": "BTC", "szDecimals": 5},
+                {"name": "ETH", "szDecimals": 4},
+            ]
+        }
+
+    async def get_spot_meta() -> dict[str, list[Any]]:
+        calls["spot"] += 1
+        return {"universe": [], "tokens": []}
+
+    async def get_perp_dexs() -> list[None]:
+        calls["dex"] += 1
+        return [None]
+
+    hl.info = SimpleNamespace(
+        get_perp_meta=get_perp_meta,
+        get_spot_meta=get_spot_meta,
+        get_perp_dexs=get_perp_dexs,
+    )
+
+    await hl.init_metas()
+
+    assert hl.coin_assets == {"BTC": 0}
+
+    phase["value"] = 2
+    await hl.init_metas()
+
+    assert hl.coin_assets == {"BTC": 0, "ETH": 1}
+    assert calls == {"perp": 2, "spot": 2, "dex": 2}
+
+
+@pytest.mark.asyncio
+async def test_get_coin_name_refreshes_warm_meta_cache_on_miss() -> None:
+    hl = build_stub_hl()
+    phase = {"value": 1}
+    calls = {"perp": 0, "spot": 0, "dex": 0}
+    setattr(hl, "coin_assets", {})
+    setattr(hl, "coin_names", {})
+    setattr(hl, "coin_symbols", {})
+    setattr(hl, "asset_sz_decimals", {})
+    setattr(hl, "spot_tokens", {})
+    setattr(hl, "perp_dexs", [""])
+
+    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
+        calls["perp"] += 1
+        if phase["value"] == 1:
+            return {"universe": [{"name": "BTC", "szDecimals": 5}]}
+        return {
+            "universe": [
+                {"name": "BTC", "szDecimals": 5},
+                {"name": "ETH", "szDecimals": 4},
+            ]
+        }
+
+    async def get_spot_meta() -> dict[str, list[Any]]:
+        calls["spot"] += 1
+        return {"universe": [], "tokens": []}
+
+    async def get_perp_dexs() -> list[None]:
+        calls["dex"] += 1
+        return [None]
+
+    hl.info = SimpleNamespace(
+        get_perp_meta=get_perp_meta,
+        get_spot_meta=get_spot_meta,
+        get_perp_dexs=get_perp_dexs,
+    )
+
+    await hl.init_metas()
+    phase["value"] = 2
+
+    coin_name = await hl.get_coin_name("ETH")
+
+    assert coin_name == "ETH"
+    assert hl.coin_assets == {"BTC": 0, "ETH": 1}
+    assert calls == {"perp": 2, "spot": 2, "dex": 2}
 
 
 @pytest.mark.asyncio
@@ -182,17 +316,18 @@ def test_init_spot_meta_skips_malformed_token_indexes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_coin_sz_decimals_resolves_coin_name_once() -> None:
+async def test_get_coin_sz_decimals_uses_cached_asset_fast_path() -> None:
     hl = build_stub_hl()
     get_coin_name = AsyncMock(return_value="BTC")
     setattr(hl, "get_coin_name", get_coin_name)
+    setattr(hl, "coin_names", {"BTC": "BTC"})
     setattr(hl, "coin_assets", {"BTC": 7})
     setattr(hl, "asset_sz_decimals", {7: 4})
 
     sz_decimals = await hl.get_coin_sz_decimals("BTC")
 
     assert sz_decimals == 4
-    get_coin_name.assert_awaited_once_with("BTC")
+    get_coin_name.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -213,6 +348,34 @@ async def test_cancel_orders_resolves_assets_concurrently() -> None:
     resp = await hl.cancel_orders([("BTC", 1), ("ETH", 2), ("SOL", 3)])
 
     assert resp == {"status": "ok"}
+    exchange.post_action.assert_awaited_once_with(
+        {
+            "type": "cancel",
+            "cancels": [{"a": 1, "o": 1}, {"a": 2, "o": 2}, {"a": 3, "o": 3}],
+        },
+        vault=None,
+        expires=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_orders_uses_cached_asset_fast_path() -> None:
+    hl = build_stub_hl()
+    exchange = SimpleNamespace(post_action=AsyncMock(return_value={"status": "ok"}))
+    get_coin_asset = AsyncMock(
+        side_effect=AssertionError("cache miss path should not run")
+    )
+    setattr(hl, "coin_assets", {"BTC": 1, "ETH": 2, "SOL": 3})
+    setattr(hl, "coin_names", {"BTC": "BTC", "ETH": "ETH", "SOL": "SOL"})
+    setattr(hl, "exchange", exchange)
+    setattr(hl, "get_coin_asset", get_coin_asset)
+    setattr(hl, "vault", None)
+    setattr(hl, "expires", None)
+
+    resp = await hl.cancel_orders([("BTC", 1), ("ETH", 2), ("SOL", 3)])
+
+    assert resp == {"status": "ok"}
+    get_coin_asset.assert_not_called()
     exchange.post_action.assert_awaited_once_with(
         {
             "type": "cancel",

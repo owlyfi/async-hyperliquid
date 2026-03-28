@@ -27,10 +27,38 @@ from .core import AsyncHyperliquidCore
 
 
 class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
-    async def _get_perp_mark_price(self, coin_name: str, dex: str = "") -> float:
+    def _get_cached_perp_ctx_index(self, coin_name: str) -> tuple[str, int] | None:
+        asset = self._lookup_cached_asset_id(coin_name)
+        if asset is None:
+            return None
+
+        if asset < SPOT_OFFSET:
+            return get_coin_dex(coin_name), asset
+
+        if asset >= PERP_DEX_OFFSET:
+            return get_coin_dex(coin_name), (asset - PERP_DEX_OFFSET) % 10000
+
+        return None
+
+    def _get_cached_spot_ctx_index(self, coin_name: str) -> int | None:
+        asset = self._lookup_cached_asset_id(coin_name)
+        if asset is None:
+            return None
+
+        if SPOT_OFFSET <= asset < PERP_DEX_OFFSET:
+            return asset - SPOT_OFFSET
+
+        return None
+
+    async def _get_perp_mark_price(
+        self, coin_name: str, dex: str = "", asset_index: int | None = None
+    ) -> float:
         meta_ctx = await self.info.get_perp_meta_ctx(dex)
         meta = cast(PerpMeta, meta_ctx[0])
         asset_ctxs = cast(list[PerpMetaCtxItem], meta_ctx[1])
+
+        if asset_index is not None and 0 <= asset_index < len(asset_ctxs):
+            return float(asset_ctxs[asset_index]["markPx"])
 
         for idx, info in enumerate(meta["universe"]):
             if info["name"] == coin_name:
@@ -38,10 +66,15 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
 
         raise ValueError(f"Coin {coin_name} not found in perp dex '{dex}'")
 
-    async def _get_spot_mark_price(self, coin_name: str) -> float:
+    async def _get_spot_mark_price(
+        self, coin_name: str, asset_index: int | None = None
+    ) -> float:
         meta_ctx = await self.info.get_spot_meta_ctx()
         meta = cast(SpotMeta, meta_ctx[0])
         asset_ctxs = cast(list[SpotMetaCtxItem], meta_ctx[1])
+
+        if asset_index is not None and 0 <= asset_index < len(asset_ctxs):
+            return float(asset_ctxs[asset_index]["markPx"])
 
         for info in meta["universe"]:
             if info["name"] == coin_name:
@@ -52,18 +85,32 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
 
     async def get_mark_price(self, coin: str) -> float:
         if ":" in coin:
+            cached = self._get_cached_perp_ctx_index(coin)
+            if cached is not None:
+                dex, asset_index = cached
+                return await self._get_perp_mark_price(
+                    coin, dex, asset_index=asset_index
+                )
             return await self._get_perp_mark_price(coin, get_coin_dex(coin))
 
         coin_name = await self.get_coin_name(coin)
-        if coin_name not in self.coin_assets:
+        asset = self._lookup_cached_asset_id(coin_name)
+        if asset is None:
             raise ValueError(f"Coin {coin}({coin_name}) not found")
 
-        asset = self.coin_assets[coin_name]
         is_spot_asset = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
         if is_spot_asset:
-            return await self._get_spot_mark_price(coin_name)
+            return await self._get_spot_mark_price(
+                coin_name, asset_index=asset - SPOT_OFFSET
+            )
 
-        return await self._get_perp_mark_price(coin_name, get_coin_dex(coin_name))
+        return await self._get_perp_mark_price(
+            coin_name,
+            get_coin_dex(coin_name),
+            asset_index=(
+                asset if asset < SPOT_OFFSET else (asset - PERP_DEX_OFFSET) % 10000
+            ),
+        )
 
     async def get_market_price(self, coin: str) -> float:
         warnings.warn(

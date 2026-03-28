@@ -7,6 +7,7 @@ from async_hyperliquid.utils.constants import SIGNATURE_CHAIN_ID, USD_SEND_SIGN_
 from async_hyperliquid.utils.signing import (
     ensure_order_type,
     hash_action,
+    round_float,
     sign_action,
     sign_user_signed_action,
     user_signed_payload,
@@ -37,6 +38,27 @@ def test_user_signed_payload_reuses_static_templates() -> None:
     assert payload_one["types"] is payload_two["types"]
     assert payload_one["message"] is action_one
     assert payload_two["message"] is action_two
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(110000.0, "110000"), (0.1, "0.1"), (-0.0, "0"), (1.00000001, "1.00000001")],
+)
+def test_round_float_preserves_trimmed_decimal_format(
+    value: float, expected: str
+) -> None:
+    assert round_float(value) == expected
+
+
+def test_round_float_rejects_precision_loss() -> None:
+    with pytest.raises(ValueError, match="round_float causes rounding"):
+        round_float(0.123456789)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_round_float_rejects_non_finite_values(value: float) -> None:
+    with pytest.raises(ValueError, match="requires finite number"):
+        round_float(value)
 
 
 def test_sign_action_matches_legacy_full_message_path() -> None:

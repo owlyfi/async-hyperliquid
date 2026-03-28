@@ -34,6 +34,9 @@ class AsyncHyperliquidCore(AsyncAPI):
     coin_symbols: dict[str, str]
     asset_sz_decimals: dict[int, int]
     spot_tokens: dict[str, SpotTokenMeta]
+    _meta_init_lock: asyncio.Lock
+    _meta_init_task: asyncio.Task[None] | None
+    _metas_initialized: bool
 
     perp_dexs: list[str]
 
@@ -79,6 +82,9 @@ class AsyncHyperliquidCore(AsyncAPI):
         self.coin_symbols = {}
         self.asset_sz_decimals = {}
         self.spot_tokens = {}
+        self._meta_init_lock = asyncio.Lock()
+        self._meta_init_task = None
+        self._metas_initialized = False
 
         self.vault = vault
         self.expires: int | None = None
@@ -124,23 +130,50 @@ class AsyncHyperliquidCore(AsyncAPI):
 
         self.evm_exchange = EVMExchange(rpc_url, private_key)
 
-    def _init_perp_meta(self, meta: PerpMeta, offset: int) -> None:
+    def _init_perp_meta(
+        self,
+        meta: PerpMeta,
+        offset: int,
+        *,
+        coin_assets: dict[str, int] | None = None,
+        coin_names: dict[str, str] | None = None,
+        asset_sz_decimals: dict[int, int] | None = None,
+    ) -> None:
+        coin_assets = self.coin_assets if coin_assets is None else coin_assets
+        coin_names = self.coin_names if coin_names is None else coin_names
+        asset_sz_decimals = (
+            self.asset_sz_decimals if asset_sz_decimals is None else asset_sz_decimals
+        )
         for asset, info in enumerate(meta["universe"]):
             asset += offset
             asset_name = info["name"]
-            self.coin_assets[asset_name] = asset
-            self.coin_names[asset_name] = asset_name
-            self.asset_sz_decimals[asset] = info["szDecimals"]
+            coin_assets[asset_name] = asset
+            coin_names[asset_name] = asset_name
+            asset_sz_decimals[asset] = info["szDecimals"]
 
-    def _init_spot_meta(self, meta: SpotMeta) -> None:
+    def _init_spot_meta(
+        self,
+        meta: SpotMeta,
+        *,
+        coin_assets: dict[str, int] | None = None,
+        coin_names: dict[str, str] | None = None,
+        asset_sz_decimals: dict[int, int] | None = None,
+        spot_tokens: dict[str, SpotTokenMeta] | None = None,
+    ) -> None:
+        coin_assets = self.coin_assets if coin_assets is None else coin_assets
+        coin_names = self.coin_names if coin_names is None else coin_names
+        asset_sz_decimals = (
+            self.asset_sz_decimals if asset_sz_decimals is None else asset_sz_decimals
+        )
+        spot_tokens = self.spot_tokens if spot_tokens is None else spot_tokens
         tokens = meta["tokens"]
         total_tokens = len(tokens)
         for info in meta["universe"]:
             asset = info["index"] + SPOT_OFFSET
             asset_name = info["name"]
 
-            self.coin_assets[asset_name] = asset
-            self.coin_names[asset_name] = asset_name
+            coin_assets[asset_name] = asset
+            coin_names[asset_name] = asset_name
 
             base, quote = info["tokens"]
             if not 0 <= base < total_tokens or not 0 <= quote < total_tokens:
@@ -151,19 +184,58 @@ class AsyncHyperliquidCore(AsyncAPI):
             quote_info = tokens[quote]
             quote_name = quote_info["name"]
             name = f"{base_name}/{quote_name}"
-            self.coin_names.setdefault(name, asset_name)
-            self.coin_names.setdefault(quote_name, quote_name)
+            coin_names.setdefault(name, asset_name)
+            coin_names.setdefault(quote_name, quote_name)
 
-            self.asset_sz_decimals[asset] = base_info["szDecimals"]
-            self.spot_tokens[asset_name] = base_info
-            self.spot_tokens.setdefault(quote_name, quote_info)
+            asset_sz_decimals[asset] = base_info["szDecimals"]
+            spot_tokens[asset_name] = base_info
+            spot_tokens.setdefault(quote_name, quote_info)
 
-    def _update_coin_symbols(self) -> None:
-        self.coin_symbols = {
-            v: k for k, v in self.coin_names.items() if not k.startswith("@")
-        }
+    def _build_coin_symbols(self, coin_names: dict[str, str]) -> dict[str, str]:
+        return {v: k for k, v in coin_names.items() if not k.startswith("@")}
 
-    async def init_metas(self) -> None:
+    def _get_meta_init_lock(self) -> asyncio.Lock:
+        lock = getattr(self, "_meta_init_lock", None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._meta_init_lock = lock
+        return lock
+
+    def _lookup_cached_coin_name(self, coin: str) -> str | None:
+        coin_names = getattr(self, "coin_names", {})
+        if coin in coin_names:
+            return coin_names[coin]
+
+        coin_assets = getattr(self, "coin_assets", {})
+        if coin in coin_assets:
+            return coin
+
+        return None
+
+    def _lookup_cached_asset_id(self, coin: str) -> int | None:
+        coin_assets = getattr(self, "coin_assets", {})
+        asset = coin_assets.get(coin)
+        if asset is not None:
+            return asset
+
+        coin_name = getattr(self, "coin_names", {}).get(coin)
+        if coin_name is None:
+            return None
+
+        return coin_assets.get(coin_name)
+
+    def _lookup_cached_asset(self, coin: str) -> tuple[str, int] | None:
+        asset = self._lookup_cached_asset_id(coin)
+        if asset is None:
+            return None
+
+        coin_name = self._lookup_cached_coin_name(coin)
+        if coin_name is None:
+            return None
+
+        return coin_name, asset
+
+    async def _refresh_metas(self) -> None:
         # TODO: Add HIP-4 outcome meta initialization from the spot info
         # `outcomeMeta` endpoint once outcomes move beyond testnet-only rollout.
         # Outcome asset IDs do not follow the current perp/spot offset scheme:
@@ -179,17 +251,36 @@ class AsyncHyperliquidCore(AsyncAPI):
             meta_task, spot_meta_task, all_dex_names_task
         )
 
-        self._init_perp_meta(meta, 0)
-        self._init_spot_meta(spot_meta)
+        coin_assets: dict[str, int] = {}
+        coin_names: dict[str, str] = {}
+        asset_sz_decimals: dict[int, int] = {}
+        spot_tokens: dict[str, SpotTokenMeta] = {}
 
+        self._init_perp_meta(
+            meta,
+            0,
+            coin_assets=coin_assets,
+            coin_names=coin_names,
+            asset_sz_decimals=asset_sz_decimals,
+        )
+        self._init_spot_meta(
+            spot_meta,
+            coin_assets=coin_assets,
+            coin_names=coin_names,
+            asset_sz_decimals=asset_sz_decimals,
+            spot_tokens=spot_tokens,
+        )
+
+        dex_index_by_name = {
+            name: idx for idx, name in enumerate(all_dex_names) if name is not None
+        }
         dex_meta_tasks = []
         dex_indices = []
         for dex in self.perp_dexs:
             if dex == "":
                 continue
-            try:
-                idx = all_dex_names.index(dex)
-            except ValueError:
+            idx = dex_index_by_name.get(dex)
+            if idx is None:
                 continue
 
             if idx > 0:
@@ -200,9 +291,49 @@ class AsyncHyperliquidCore(AsyncAPI):
             dex_metas = await asyncio.gather(*dex_meta_tasks)
             for idx, dex_meta in zip(dex_indices, dex_metas):
                 dex_asset_offset = PERP_DEX_OFFSET + (idx - 1) * 10000
-                self._init_perp_meta(dex_meta, dex_asset_offset)
+                self._init_perp_meta(
+                    dex_meta,
+                    dex_asset_offset,
+                    coin_assets=coin_assets,
+                    coin_names=coin_names,
+                    asset_sz_decimals=asset_sz_decimals,
+                )
 
-        self._update_coin_symbols()
+        self.coin_assets = coin_assets
+        self.coin_names = coin_names
+        self.asset_sz_decimals = asset_sz_decimals
+        self.spot_tokens = spot_tokens
+        self.coin_symbols = self._build_coin_symbols(coin_names)
+        self._metas_initialized = True
+
+    async def _run_meta_refresh(self, *, only_if_missing: bool) -> None:
+        if only_if_missing and getattr(self, "_metas_initialized", False):
+            return
+
+        task = getattr(self, "_meta_init_task", None)
+        if task is not None and not task.done():
+            await task
+            return
+
+        async with self._get_meta_init_lock():
+            task = getattr(self, "_meta_init_task", None)
+            if task is None or task.done():
+                if only_if_missing and getattr(self, "_metas_initialized", False):
+                    return
+                task = asyncio.create_task(self._refresh_metas())
+                self._meta_init_task = task
+
+        try:
+            await task
+        finally:
+            if getattr(self, "_meta_init_task", None) is task and task.done():
+                self._meta_init_task = None
+
+    async def _ensure_metas_initialized(self) -> None:
+        await self._run_meta_refresh(only_if_missing=True)
+
+    async def init_metas(self) -> None:
+        await self._run_meta_refresh(only_if_missing=False)
 
     async def get_metas(self, perp_only: bool = False) -> Metas:
         metas: Metas = {"perp": {}, "spot": [], "dexs": {}}  # type: ignore
@@ -244,31 +375,45 @@ class AsyncHyperliquidCore(AsyncAPI):
         return names
 
     async def get_coin_name(self, coin: str) -> str:
-        if not hasattr(self, "coin_names") or coin not in self.coin_names:
-            await self.init_metas()
+        coin_name = self._lookup_cached_coin_name(coin)
+        if coin_name is not None:
+            return coin_name
 
-        if coin not in self.coin_names:
+        if getattr(self, "_metas_initialized", False):
+            await self.init_metas()
+        else:
+            await self._ensure_metas_initialized()
+        coin_name = self._lookup_cached_coin_name(coin)
+        if coin_name is None:
             raise ValueError(f"Coin {coin} not found")
 
-        return self.coin_names[coin]
+        return coin_name
 
     async def get_coin_asset(self, coin: str) -> int:
+        cached = self._lookup_cached_asset(coin)
+        if cached is not None:
+            return cached[1]
+
         coin_name = await self.get_coin_name(coin)
-        if coin_name not in self.coin_assets:
+        asset = self.coin_assets.get(coin_name)
+        if asset is None:
             raise ValueError(f"Coin {coin}({coin_name}) not found")
 
-        return self.coin_assets[coin_name]
+        return asset
 
     async def get_coin_symbol(self, coin: str) -> str:
         coin_name = await self.get_coin_name(coin)
         return self.coin_symbols[coin_name]
 
     async def get_coin_sz_decimals(self, coin: str) -> int:
-        coin_name = await self.get_coin_name(coin)
-        if coin_name not in self.coin_assets:
-            raise ValueError(f"Coin {coin}({coin_name}) not found")
-
-        asset = self.coin_assets[coin_name]
+        cached = self._lookup_cached_asset(coin)
+        if cached is not None:
+            _, asset = cached
+        else:
+            coin_name = await self.get_coin_name(coin)
+            asset = self.coin_assets.get(coin_name)
+            if asset is None:
+                raise ValueError(f"Coin {coin}({coin_name}) not found")
         return self.asset_sz_decimals[asset]
 
     async def get_token_info(self, coin: str) -> SpotTokenMeta:

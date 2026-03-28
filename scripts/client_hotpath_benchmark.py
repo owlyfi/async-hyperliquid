@@ -13,12 +13,19 @@ from typing import Any, Awaitable, Callable, cast
 from async_hyperliquid._async_hyperliquid.orders import AsyncHyperliquidOrdersClient
 from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET
 from async_hyperliquid.utils.miscs import round_float, round_px
+from async_hyperliquid.utils.types import (
+    BatchPlaceOrderRequest,
+    LimitTif,
+    limit_order_type,
+)
 
 REPEATS = int(os.getenv("BENCH_REPEATS", "7"))
 IO_ITERATIONS = int(os.getenv("BENCH_IO_ITERATIONS", "50"))
 LOOKUP_ITERATIONS = int(os.getenv("BENCH_LOOKUP_ITERATIONS", "50000"))
 IO_LATENCY_MS = float(os.getenv("BENCH_IO_LATENCY_MS", "5.0"))
 CANCEL_BATCH_SIZE = int(os.getenv("BENCH_CANCEL_BATCH_SIZE", "20"))
+WARM_BATCH_SIZE = int(os.getenv("BENCH_WARM_BATCH_SIZE", "200"))
+WARM_BATCH_ITERATIONS = int(os.getenv("BENCH_WARM_BATCH_ITERATIONS", "5000"))
 
 warnings.filterwarnings(
     "ignore",
@@ -110,6 +117,32 @@ class CancelBenchmarkClient(AsyncHyperliquidOrdersClient):
         return self.assets[coin]
 
 
+class WarmCacheBenchmarkClient(AsyncHyperliquidOrdersClient):
+    def __init__(self, batch_size: int) -> None:
+        self.exchange = SimpleNamespace(post_action=self._post_action)
+        self.vault = None
+        self.expires = None
+        self.coin_assets: dict[str, int] = {}
+        self.coin_names: dict[str, str] = {}
+        self.asset_sz_decimals: dict[int, int] = {}
+        self.spot_tokens: dict[str, Any] = {}
+        for index in range(batch_size):
+            coin = f"COIN-{index}"
+            asset = SPOT_OFFSET + index
+            self.coin_assets[coin] = asset
+            self.coin_names[coin] = coin
+            self.asset_sz_decimals[asset] = 2
+
+    async def _post_action(self, action: dict[str, Any], **_: Any) -> dict[str, Any]:
+        return action
+
+    async def get_coin_name(self, coin: str) -> str:
+        return self.coin_names[coin]
+
+    async def get_coin_asset(self, coin: str) -> int:
+        return self.coin_assets[coin]
+
+
 async def legacy_get_metas(
     client: MetaBenchmarkClient, perp_only: bool = False
 ) -> dict[str, Any]:
@@ -184,6 +217,37 @@ async def legacy_cancel_orders(
     )
 
 
+async def legacy_get_batch_limit_orders(
+    client: WarmCacheBenchmarkClient, orders: BatchPlaceOrderRequest
+) -> list[dict[str, Any]]:
+    rounded_orders = await asyncio.gather(
+        *(
+            client._round_sz_px(order["coin"], order["sz"], order["px"])
+            for order in orders
+        )
+    )
+    return [
+        {**order, "asset": asset, "sz": sz, "px": px}
+        for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
+    ]
+
+
+async def legacy_cancel_orders_warm_cache(
+    client: WarmCacheBenchmarkClient, cancels: list[tuple[str, int]]
+) -> dict[str, Any]:
+    assets = await asyncio.gather(*(client.get_coin_asset(coin) for coin, _ in cancels))
+    action = {
+        "type": "cancel",
+        "cancels": [
+            {"a": asset, "o": oid}
+            for asset, (_, oid) in zip(assets, cancels, strict=True)
+        ],
+    }
+    return await client.exchange.post_action(
+        action, vault=client.vault, expires=client.expires
+    )
+
+
 async def run_async_benchmark(
     name: str, iterations: int, setup: Callable[[], Callable[[], Awaitable[object]]]
 ) -> BenchmarkResult:
@@ -230,6 +294,20 @@ async def main() -> None:
     meta_client = MetaBenchmarkClient(io_latency_s)
     cancel_client = CancelBenchmarkClient(io_latency_s)
     cancels = [(coin, index) for index, coin in enumerate(cancel_client.assets)]
+    warm_client = WarmCacheBenchmarkClient(WARM_BATCH_SIZE)
+    warm_orders: BatchPlaceOrderRequest = [
+        {
+            "coin": f"COIN-{index}",
+            "is_buy": index % 2 == 0,
+            "sz": 1.2345,
+            "px": 2.3456,
+            "ro": False,
+            "order_type": limit_order_type(LimitTif.GTC),
+            "cloid": None,
+        }
+        for index in range(WARM_BATCH_SIZE)
+    ]
+    warm_cancels = [(f"COIN-{index}", index) for index in range(WARM_BATCH_SIZE)]
 
     current_get_metas = await run_async_benchmark(
         "get_metas (spot + perp)",
@@ -306,11 +384,50 @@ async def main() -> None:
         lambda: (lambda client=cancel_client: legacy_cancel_orders(client, cancels)),
     )
 
+    current_warm_batch_limit_orders = await run_async_benchmark(
+        f"_get_batch_limit_orders warm-cache (batch={WARM_BATCH_SIZE})",
+        WARM_BATCH_ITERATIONS,
+        lambda: (
+            lambda client=warm_client, orders=warm_orders: cast(
+                Awaitable[object], client._get_batch_limit_orders(orders)
+            )
+        ),
+    )
+    legacy_warm_batch_limit_orders = await run_async_benchmark(
+        f"_get_batch_limit_orders warm-cache (batch={WARM_BATCH_SIZE})",
+        WARM_BATCH_ITERATIONS,
+        lambda: (
+            lambda client=warm_client, orders=warm_orders: cast(
+                Awaitable[object], legacy_get_batch_limit_orders(client, orders)
+            )
+        ),
+    )
+
+    current_warm_cancel_orders = await run_async_benchmark(
+        f"cancel_orders warm-cache (batch={WARM_BATCH_SIZE})",
+        WARM_BATCH_ITERATIONS,
+        lambda: (
+            lambda client=warm_client, cancels=warm_cancels: cast(
+                Awaitable[object], client.cancel_orders(cancels)
+            )
+        ),
+    )
+    legacy_warm_cancel_orders = await run_async_benchmark(
+        f"cancel_orders warm-cache (batch={WARM_BATCH_SIZE})",
+        WARM_BATCH_ITERATIONS,
+        lambda: (
+            lambda client=warm_client, cancels=warm_cancels: cast(
+                Awaitable[object], legacy_cancel_orders_warm_cache(client, cancels)
+            )
+        ),
+    )
+
     print("Client hot-path benchmark")
     print(
         f"repeats={REPEATS}, io_iterations={IO_ITERATIONS}, "
         f"lookup_iterations={LOOKUP_ITERATIONS}, io_latency_ms={IO_LATENCY_MS}, "
-        f"cancel_batch_size={CANCEL_BATCH_SIZE}"
+        f"cancel_batch_size={CANCEL_BATCH_SIZE}, warm_batch_size={WARM_BATCH_SIZE}, "
+        f"warm_batch_iterations={WARM_BATCH_ITERATIONS}"
     )
     print()
     print_pair(current_get_metas, legacy_get_metas_result)
@@ -318,6 +435,8 @@ async def main() -> None:
     print_pair(current_market_prices, legacy_market_prices)
     print_pair(current_round_sz_px, legacy_round_sz_px_result)
     print_pair(current_cancel_orders, legacy_cancel_orders_result)
+    print_pair(current_warm_batch_limit_orders, legacy_warm_batch_limit_orders)
+    print_pair(current_warm_cancel_orders, legacy_warm_cancel_orders)
 
 
 if __name__ == "__main__":

@@ -20,14 +20,33 @@ from .info import AsyncHyperliquidInfoClient
 
 
 class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
+    def _round_sz_px_cached(
+        self, coin: str, sz: float, px: float
+    ) -> tuple[int, float, float | int] | None:
+        asset = self._lookup_cached_asset_id(coin)
+        if asset is None:
+            return None
+
+        sz_decimals = self.asset_sz_decimals.get(asset)
+        if sz_decimals is None:
+            return None
+
+        is_spot = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
+        px_decimals = (6 if not is_spot else 8) - sz_decimals
+        return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
+
     async def _round_sz_px(self, coin: str, sz: float, px: float):
+        cached = self._round_sz_px_cached(coin, sz, px)
+        if cached is not None:
+            return cached
+
         coin_name = await self.get_coin_name(coin)
-        if coin_name not in self.coin_assets:
+        asset = self.coin_assets.get(coin_name)
+        if asset is None:
             raise ValueError(f"Coin {coin}({coin_name}) not found")
 
-        asset = self.coin_assets[coin_name]
         sz_decimals = self.asset_sz_decimals[asset]
-        is_spot = asset >= SPOT_OFFSET and asset < PERP_DEX_OFFSET
+        is_spot = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
         px_decimals = (6 if not is_spot else 8) - sz_decimals
         return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
 
@@ -155,12 +174,21 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         return await self.place_orders(reqs, grouping=grouping, builder=builder)
 
     async def _get_batch_limit_orders(self, orders: BatchPlaceOrderRequest):
+        rounded_orders = [
+            self._round_sz_px_cached(o["coin"], o["sz"], o["px"]) for o in orders
+        ]
+        if all(rounded_order is not None for rounded_order in rounded_orders):
+            return [
+                {**order, "asset": asset, "sz": sz, "px": px}
+                for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
+            ]
+
         rounded_orders = await asyncio.gather(
             *(self._round_sz_px(o["coin"], o["sz"], o["px"]) for o in orders)
         )
         return [
             {**order, "asset": asset, "sz": sz, "px": px}
-            for order, (asset, sz, px) in zip(orders, rounded_orders)
+            for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
         ]
 
     async def _get_batch_market_orders(
@@ -175,15 +203,25 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
             slippage_factor = (1 + slippage) if order["is_buy"] else (1 - slippage)
             quoted_prices.append(market_price * slippage_factor)
 
+        rounded_orders = [
+            self._round_sz_px_cached(order["coin"], order["sz"], quoted_price)
+            for order, quoted_price in zip(orders, quoted_prices, strict=True)
+        ]
+        if all(rounded_order is not None for rounded_order in rounded_orders):
+            return [
+                {**order, "asset": asset, "sz": sz, "px": px, "order_type": order_type}
+                for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
+            ]
+
         rounded_orders = await asyncio.gather(
             *(
                 self._round_sz_px(order["coin"], order["sz"], quoted_price)
-                for order, quoted_price in zip(orders, quoted_prices)
+                for order, quoted_price in zip(orders, quoted_prices, strict=True)
             )
         )
         return [
             {**order, "asset": asset, "sz": sz, "px": px, "order_type": order_type}
-            for order, (asset, sz, px) in zip(orders, rounded_orders)
+            for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
         ]
 
     async def cancel_order(self, coin: str, oid: int):
@@ -193,9 +231,15 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         return await self.cancel_orders(cancels)
 
     async def cancel_orders(self, cancels: BatchCancelRequest):
-        assets = await asyncio.gather(
-            *(self.get_coin_asset(coin) for coin, _ in cancels)
-        )
+        assets = [
+            asset
+            for coin, _ in cancels
+            if (asset := self._lookup_cached_asset_id(coin)) is not None
+        ]
+        if len(assets) != len(cancels):
+            assets = await asyncio.gather(
+                *(self.get_coin_asset(coin) for coin, _ in cancels)
+            )
         action = {
             "type": "cancel",
             "cancels": [
@@ -212,9 +256,15 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         return await self.batch_cancel_by_cloid([(coin, cloid)])
 
     async def batch_cancel_by_cloid(self, cancels: list[tuple[str, Cloid]]):
-        assets = await asyncio.gather(
-            *(self.get_coin_asset(coin) for coin, _ in cancels)
-        )
+        assets = [
+            asset
+            for coin, _ in cancels
+            if (asset := self._lookup_cached_asset_id(coin)) is not None
+        ]
+        if len(assets) != len(cancels):
+            assets = await asyncio.gather(
+                *(self.get_coin_asset(coin) for coin, _ in cancels)
+            )
         action = {
             "type": "cancelByCloid",
             "cancels": [

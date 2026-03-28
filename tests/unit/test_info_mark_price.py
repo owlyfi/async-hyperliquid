@@ -38,6 +38,27 @@ async def test_get_mark_price_reads_base_perp_ctx() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_mark_price_uses_cached_base_perp_asset_index() -> None:
+    hl = build_stub_hl()
+    setattr(hl, "coin_assets", {"BTC": 0})
+    setattr(hl, "get_coin_name", AsyncMock(return_value="BTC"))
+
+    get_perp_meta_ctx = AsyncMock(
+        return_value=[{"universe": []}, [{"markPx": "105000"}]]
+    )
+    get_spot_meta_ctx = AsyncMock()
+    hl.info = SimpleNamespace(
+        get_perp_meta_ctx=get_perp_meta_ctx, get_spot_meta_ctx=get_spot_meta_ctx
+    )
+
+    mark_px = await hl.get_mark_price("BTC")
+
+    assert mark_px == 105000.0
+    get_perp_meta_ctx.assert_awaited_once_with("")
+    get_spot_meta_ctx.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_mark_price_reads_spot_ctx() -> None:
     hl = build_stub_hl()
     setattr(hl, "coin_assets", {"@142": SPOT_OFFSET + 142})
@@ -73,6 +94,30 @@ async def test_get_mark_price_reads_spot_ctx() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_mark_price_uses_cached_spot_asset_index() -> None:
+    hl = build_stub_hl()
+    setattr(hl, "coin_assets", {"@142": SPOT_OFFSET + 2})
+    setattr(hl, "get_coin_name", AsyncMock(return_value="@142"))
+
+    get_perp_meta_ctx = AsyncMock()
+    get_spot_meta_ctx = AsyncMock(
+        return_value=[
+            {"tokens": [], "universe": []},
+            [{"markPx": "1.11"}, {"markPx": "2.22"}, {"markPx": "101000"}],
+        ]
+    )
+    hl.info = SimpleNamespace(
+        get_perp_meta_ctx=get_perp_meta_ctx, get_spot_meta_ctx=get_spot_meta_ctx
+    )
+
+    mark_px = await hl.get_mark_price("UBTC/USDC")
+
+    assert mark_px == 101000.0
+    get_spot_meta_ctx.assert_awaited_once_with()
+    get_perp_meta_ctx.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_mark_price_reads_external_dex_ctx_without_meta_cache() -> None:
     hl = build_stub_hl()
 
@@ -102,3 +147,52 @@ async def test_get_market_price_delegates_to_get_mark_price() -> None:
 
     assert mark_px == 123.45
     get_mark_price.assert_awaited_once_with("BTC")
+
+
+@pytest.mark.asyncio
+async def test_get_all_market_prices_refreshes_metadata_before_enumerating_assets() -> (
+    None
+):
+    hl = build_stub_hl()
+    phase = {"value": 1}
+    setattr(hl, "coin_assets", {})
+    setattr(hl, "coin_names", {})
+    setattr(hl, "coin_symbols", {})
+    setattr(hl, "asset_sz_decimals", {})
+    setattr(hl, "spot_tokens", {})
+    setattr(hl, "perp_dexs", [""])
+
+    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
+        if phase["value"] == 1:
+            return {"universe": [{"name": "BTC", "szDecimals": 5}]}
+        return {
+            "universe": [
+                {"name": "BTC", "szDecimals": 5},
+                {"name": "ETH", "szDecimals": 4},
+            ]
+        }
+
+    async def get_spot_meta() -> dict[str, list[Any]]:
+        return {"universe": [], "tokens": []}
+
+    async def get_perp_dexs() -> list[None]:
+        return [None]
+
+    get_perp_meta_ctx = AsyncMock(
+        return_value=({"universe": []}, [{"markPx": "105000"}, {"markPx": "2000"}])
+    )
+    hl.info = SimpleNamespace(
+        get_perp_meta=get_perp_meta,
+        get_spot_meta=get_spot_meta,
+        get_perp_dexs=get_perp_dexs,
+        get_perp_meta_ctx=get_perp_meta_ctx,
+        get_spot_meta_ctx=AsyncMock(return_value=({"tokens": [], "universe": []}, [])),
+    )
+
+    first_prices = await hl.get_all_market_prices("perp")
+    phase["value"] = 2
+    second_prices = await hl.get_all_market_prices("perp")
+
+    assert first_prices == {"BTC": 105000.0}
+    assert second_prices == {"BTC": 105000.0, "ETH": 2000.0}
+    assert get_perp_meta_ctx.await_count == 2

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Extend `scripts/client_hotpath_benchmark.py` with warm-cache batch-order and batch-cancel benchmarks so scheduler overhead is measured separately from network-latency wins.
+
+### Changed
+- Split metadata lifecycle responsibilities so shared `AsyncHyperliquid` instances still coalesce concurrent cold-start initialization, while the public `init_metas()` API remains an explicit refresh hook for long-lived clients.
+- Use cached asset ids with a flatter direct-lookup fast path for warm-cache `get_mark_price`, batch order preparation, and batch cancel preparation so hot paths stop linearly rescanning metadata or paying extra helper-call overhead for local dictionary work.
+- Simplify signing float formatting to trim fixed-point strings directly instead of normalizing through `Decimal`, while now rejecting non-finite values explicitly so invalid payloads fail deterministically before signing.
+
 ## [0.4.5] - 2026-03-27
 
 ### Added

@@ -187,6 +187,38 @@ async def test_batch_place_orders_builds_limit_orders_in_input_order() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_batch_limit_orders_uses_cached_fast_path() -> None:
+    hl = build_stub_hl()
+    get_coin_name = AsyncMock(
+        side_effect=AssertionError("cache miss path should not run")
+    )
+    setattr(hl, "coin_names", {"BTC": "BTC", "ETH": "ETH"})
+    setattr(hl, "coin_assets", {"BTC": 10, "ETH": 11})
+    setattr(hl, "asset_sz_decimals", {10: 1, 11: 2})
+    setattr(hl, "get_coin_name", get_coin_name)
+
+    orders = [
+        {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
+        {"coin": "ETH", "is_buy": False, "sz": 0.25, "px": 200.0, "ro": True},
+    ]
+
+    reqs = await hl._get_batch_limit_orders(orders)
+
+    assert reqs == [
+        {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100, "ro": False, "asset": 10},
+        {
+            "coin": "ETH",
+            "is_buy": False,
+            "sz": 0.25,
+            "px": 200,
+            "ro": True,
+            "asset": 11,
+        },
+    ]
+    get_coin_name.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_close_positions_batches_requested_coins_only() -> None:
     hl = build_stub_hl()
     get_all_positions = AsyncMock(
