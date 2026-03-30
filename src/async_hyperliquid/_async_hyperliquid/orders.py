@@ -1,20 +1,20 @@
-import asyncio
 import math
+import asyncio
 
-from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET, USD_FACTOR
-from async_hyperliquid.utils.miscs import get_coin_dex, round_float, round_px
-from async_hyperliquid.utils.signing import encode_order, orders_to_action
+from async_hyperliquid.utils.miscs import round_px, round_float, get_coin_dex
 from async_hyperliquid.utils.types import (
+    Cloid,
+    LimitTif,
+    OrderType,
+    GroupOptions,
+    OrderBuilder,
+    PlaceOrderRequest,
     BatchCancelRequest,
     BatchPlaceOrderRequest,
-    Cloid,
-    GroupOptions,
-    LimitTif,
-    OrderBuilder,
-    OrderType,
-    PlaceOrderRequest,
     limit_order_type,
 )
+from async_hyperliquid.utils.signing import encode_order, orders_to_action
+from async_hyperliquid.utils.constants import USD_FACTOR, SPOT_OFFSET, PERP_DEX_OFFSET
 
 from .info import AsyncHyperliquidInfoClient
 
@@ -386,7 +386,9 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         }
         return await self.exchange.post_action(action)
 
-    async def close_all_positions(self, dexs: list[str] | None = None):
+    async def close_all_positions(
+        self, dexs: list[str] | None = None, *, builder: OrderBuilder | None = None
+    ):
         positions = await self.get_all_positions(dexs=dexs)
         if not positions:
             return None
@@ -403,12 +405,16 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
             }
             orders.append(order)
 
-        return await self.batch_place_orders(orders, is_market=True)
+        return await self.batch_place_orders(orders, is_market=True, builder=builder)
 
-    async def close_dex_positions(self, dex: str):
-        return await self.close_all_positions(dexs=[dex])
+    async def close_dex_positions(
+        self, dex: str, *, builder: OrderBuilder | None = None
+    ):
+        return await self.close_all_positions(dexs=[dex], builder=builder)
 
-    async def close_positions(self, coins: list[str]):
+    async def close_positions(
+        self, coins: list[str], *, builder: OrderBuilder | None = None
+    ):
         if not coins:
             return None
 
@@ -434,7 +440,7 @@ class AsyncHyperliquidOrdersClient(AsyncHyperliquidInfoClient):
         if not orders:
             return None
 
-        return await self.batch_place_orders(orders, is_market=True)
+        return await self.batch_place_orders(orders, is_market=True, builder=builder)
 
-    async def close_position(self, coin: str):
-        return await self.close_positions([coin])
+    async def close_position(self, coin: str, *, builder: OrderBuilder | None = None):
+        return await self.close_positions([coin], builder=builder)

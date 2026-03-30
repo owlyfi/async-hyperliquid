@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-03-30
+
+### Fixed
+- Allow `close_position`, `close_positions`, `close_all_positions`, and `close_dex_positions` to forward optional `builder` fees through the existing batch market-order path.
+
 ## [0.4.6] - 2026-03-29
 
 ### Added

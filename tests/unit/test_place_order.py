@@ -219,6 +219,46 @@ async def test_get_batch_limit_orders_uses_cached_fast_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_close_all_positions_forwards_builder_to_batch_market_close() -> None:
+    hl = build_stub_hl()
+    get_all_positions = AsyncMock(
+        return_value=[{"coin": "BTC", "szi": "-0.5"}, {"coin": "ETH", "szi": "1.25"}]
+    )
+    batch_place_orders = AsyncMock(return_value={"status": "ok"})
+    setattr(hl, "get_all_positions", get_all_positions)
+    setattr(hl, "batch_place_orders", batch_place_orders)
+    builder = {"b": "0xabc", "f": 10}
+
+    resp = await hl.close_all_positions(dexs=["flx"], builder=builder)
+
+    assert resp == {"status": "ok"}
+    get_all_positions.assert_awaited_once_with(dexs=["flx"])
+    batch_place_orders.assert_awaited_once_with(
+        [
+            {"coin": "BTC", "is_buy": True, "sz": 0.5, "px": 0, "ro": True},
+            {"coin": "ETH", "is_buy": False, "sz": 1.25, "px": 0, "ro": True},
+        ],
+        is_market=True,
+        builder=builder,
+    )
+
+
+@pytest.mark.asyncio
+async def test_close_dex_positions_reuses_close_all_positions_path_with_builder() -> (
+    None
+):
+    hl = build_stub_hl()
+    close_all_positions = AsyncMock(return_value={"status": "ok"})
+    setattr(hl, "close_all_positions", close_all_positions)
+    builder = {"b": "0xabc", "f": 10}
+
+    resp = await hl.close_dex_positions("flx", builder=builder)
+
+    assert resp == {"status": "ok"}
+    close_all_positions.assert_awaited_once_with(dexs=["flx"], builder=builder)
+
+
+@pytest.mark.asyncio
 async def test_close_positions_batches_requested_coins_only() -> None:
     hl = build_stub_hl()
     get_all_positions = AsyncMock(
@@ -231,8 +271,9 @@ async def test_close_positions_batches_requested_coins_only() -> None:
     batch_place_orders = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "get_all_positions", get_all_positions)
     setattr(hl, "batch_place_orders", batch_place_orders)
+    builder = {"b": "0xabc", "f": 10}
 
-    resp = await hl.close_positions(["ETH", "flx:BTC", "MISSING"])
+    resp = await hl.close_positions(["ETH", "flx:BTC", "MISSING"], builder=builder)
 
     assert resp == {"status": "ok"}
     get_all_positions.assert_awaited_once_with(dexs=["", "flx"])
@@ -242,6 +283,7 @@ async def test_close_positions_batches_requested_coins_only() -> None:
             {"coin": "flx:BTC", "is_buy": True, "sz": 0.5, "px": 0, "ro": True},
         ],
         is_market=True,
+        builder=builder,
     )
 
 
@@ -250,8 +292,9 @@ async def test_close_position_reuses_close_positions_batch_path() -> None:
     hl = build_stub_hl()
     close_positions = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "close_positions", close_positions)
+    builder = {"b": "0xabc", "f": 10}
 
-    resp = await hl.close_position("BTC")
+    resp = await hl.close_position("BTC", builder=builder)
 
     assert resp == {"status": "ok"}
-    close_positions.assert_awaited_once_with(["BTC"])
+    close_positions.assert_awaited_once_with(["BTC"], builder=builder)
