@@ -1,5 +1,0 @@
-interface:
-  display_name: "python-uv-workflow"
-  short_description: "For uv-based Python projects, or explicit uv migrations, require ruff/ty checks after Python code changes."
-policy:
-  allow_implicit_invocation: true
