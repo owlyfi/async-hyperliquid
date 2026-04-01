@@ -13,5 +13,10 @@ __pycache__/
 dist/
 build/
 
+# local-only Codex workflow files
+AGENTS.md
+.agent/
+skills/
+
 # local test file
 tests/test_local.py

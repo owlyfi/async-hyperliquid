@@ -1,5 +1,0 @@
-interface:
-  display_name: "diff-semantic-analyzer"
-  short_description: "Analyze a code diff once and convert it into a structured semantic summary with change types, risk flags, affected boundaries, and review hints. Trigger this skill before non-trivial code review to avoid repeating full-diff analysis in every review skill."
-policy:
-  allow_implicit_invocation: true
