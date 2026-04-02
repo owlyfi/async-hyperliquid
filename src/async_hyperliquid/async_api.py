@@ -1,7 +1,6 @@
 import logging
 from types import TracebackType
-from typing import Any
-from traceback import TracebackException
+from typing import Any, TypeVar
 
 from aiohttp import ClientSession
 
@@ -11,6 +10,7 @@ from async_hyperliquid.utils.constants import MAINNET_API_URL
 logger = logging.getLogger(__name__)
 _REDACTED = "<redacted>"
 _SENSITIVE_PAYLOAD_KEYS = frozenset({"signature", "signatures"})
+_AsyncAPISelf = TypeVar("_AsyncAPISelf", bound="AsyncAPI")
 
 
 def _redact_payload(payload: Any) -> Any:
@@ -35,11 +35,13 @@ def _redact_payload(payload: Any) -> Any:
 
 
 class AsyncAPI:
+    session: ClientSession | None
+
     def __init__(
         self,
         endpoint: Endpoint,
         base_url: str | None = None,
-        session: ClientSession = None,  # type: ignore
+        session: ClientSession | None = None,
         *,
         owns_session: bool = True,
     ):
@@ -50,11 +52,14 @@ class AsyncAPI:
         self._request_url = f"{self.base_url}/{self.endpoint.value}"
 
     # for async with AsyncAPI() as api usage
-    async def __aenter__(self) -> "AsyncAPI":
+    async def __aenter__(self: _AsyncAPISelf) -> _AsyncAPISelf:
         return self
 
     async def __aexit__(
-        self, exc_type: Exception, exc_val: TracebackException, traceback: TracebackType
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         await self.close()
 

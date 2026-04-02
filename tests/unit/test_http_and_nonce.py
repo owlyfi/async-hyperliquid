@@ -48,6 +48,24 @@ async def test_async_hyperliquid_does_not_close_external_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_hyperliquid_context_manager_returns_self_and_closes_owned_session() -> (
+    None
+):
+    hl = AsyncHyperliquid(
+        "0x1111111111111111111111111111111111111111", "0x" + ("11" * 32)
+    )
+
+    session = hl.session
+    assert session is not None
+    assert not session.closed
+
+    async with hl as scoped_hl:
+        assert scoped_hl is hl
+
+    assert session.closed
+
+
+@pytest.mark.asyncio
 async def test_exchange_post_action_uses_injected_nonce_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
