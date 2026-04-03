@@ -9,11 +9,17 @@ from eth_account import Account
 import async_hyperliquid._async_hyperliquid.core as core_module
 import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.exchange import ExchangeAPI
 
 
 def build_stub_hl() -> Any:
-    return cast(Any, object.__new__(AsyncHyperliquid))
+    session = cast(Any, SimpleNamespace(closed=False, close=AsyncMock()))
+    return AsyncHyperliquid(
+        "0x1111111111111111111111111111111111111111",
+        "0x" + ("11" * 32),
+        session=session,
+    )
 
 
 def test_next_nonce_increments_when_clock_repeats(
@@ -28,6 +34,11 @@ def test_next_nonce_increments_when_clock_repeats(
     assert hl.next_nonce() == 1_700_000_000_000
     assert hl.next_nonce() == 1_700_000_000_001
     assert hl.next_nonce() == 1_700_000_000_002
+
+
+def test_async_hyperliquid_is_asyncapi_subtype() -> None:
+    hl = build_stub_hl()
+    assert isinstance(hl, AsyncAPI)
 
 
 @pytest.mark.asyncio
@@ -63,6 +74,35 @@ async def test_async_hyperliquid_context_manager_returns_self_and_closes_owned_s
         assert scoped_hl is hl
 
     assert session.closed
+
+
+@pytest.mark.asyncio
+async def test_core_helper_dispatch_respects_facade_subclass_override() -> None:
+    calls = {"count": 0}
+
+    class CustomAsyncHyperliquid(AsyncHyperliquid):
+        async def init_metas(self) -> None:
+            calls["count"] += 1
+            self.coin_names["BTC"] = "BTC"
+
+    session = cast(Any, SimpleNamespace(closed=False, close=AsyncMock()))
+    hl = CustomAsyncHyperliquid(
+        "0x1111111111111111111111111111111111111111",
+        "0x" + ("11" * 32),
+        session=session,
+    )
+    hl.coin_assets = {}
+    hl.coin_names = {}
+    hl.coin_symbols = {}
+    hl.asset_sz_decimals = {}
+    hl.spot_tokens = {}
+    hl.perp_dexs = [""]
+    hl._metas_initialized = True
+
+    coin_name = await hl.get_coin_name("BTC")
+
+    assert coin_name == "BTC"
+    assert calls["count"] == 1
 
 
 @pytest.mark.asyncio

@@ -2,9 +2,10 @@ import asyncio
 import math
 import re
 import warnings
-from typing import Literal
+from types import TracebackType
+from typing import Any, Literal
 
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import BaseConnector, ClientSession, ClientTimeout
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from hl_web3.exchange import Exchange as EVMExchange
@@ -12,6 +13,7 @@ from hl_web3.info import Info as EVMInfo
 from hl_web3.utils.constants import HL_RPC_URL, HL_TESTNET_RPC_URL
 
 from async_hyperliquid._async_hyperliquid import AsyncHyperliquidActionsClient
+from async_hyperliquid._async_hyperliquid.core import AsyncHyperliquidCore
 from async_hyperliquid._async_hyperliquid import actions as _actions_module
 from async_hyperliquid._async_hyperliquid import info as _info_module
 from async_hyperliquid._async_hyperliquid import orders as _orders_module
@@ -90,8 +92,91 @@ def _bind_compat_function(module: object, name: str) -> None:
     setattr(module, name, _compat)
 
 
-class AsyncHyperliquid(AsyncHyperliquidActionsClient):
+class AsyncHyperliquid(AsyncHyperliquidActionsClient, AsyncAPI):
     """Public client facade with the historical import path intact."""
+
+    _core: AsyncHyperliquidCore
+
+    def __init__(
+        self,
+        address: str,
+        api_key: str,
+        is_mainnet: bool = True,
+        enable_evm: bool = False,
+        evm_rpc_url: str | None = None,
+        private_key: str | None = None,
+        vault: str | None = None,
+        perp_dexs: list[str] = [""],
+        session: ClientSession | None = None,
+        timeout: ClientTimeout | None = None,
+        connector: BaseConnector | None = None,
+    ):
+        object.__setattr__(
+            self,
+            "_core",
+            AsyncHyperliquidCore(
+                address=address,
+                api_key=api_key,
+                is_mainnet=is_mainnet,
+                enable_evm=enable_evm,
+                evm_rpc_url=evm_rpc_url,
+                private_key=private_key,
+                vault=vault,
+                perp_dexs=perp_dexs,
+                session=session,
+                timeout=timeout,
+                connector=connector,
+            ),
+        )
+
+    async def __aenter__(self) -> "AsyncHyperliquid":
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        await self._core.close()
+
+    def __getattr__(self, name: str) -> Any:
+        core = self.__dict__.get("_core")
+        if core is None:
+            raise AttributeError(name)
+
+        core_dict = getattr(core, "__dict__", {})
+        if name in core_dict:
+            return core_dict[name]
+
+        attr = getattr(core, name)
+        core_attr = getattr(type(core), name, None)
+        if callable(attr) and callable(core_attr):
+            return core_attr.__get__(self, type(self))
+        return attr
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "_core":
+            object.__setattr__(self, name, value)
+            return
+
+        core = self.__dict__.get("_core")
+        if core is None:
+            object.__setattr__(self, name, value)
+            return
+
+        if (
+            name in self.__dict__
+            or hasattr(type(self), name)
+            or not hasattr(core, name)
+        ):
+            object.__setattr__(self, name, value)
+            return
+
+        setattr(core, name, value)
 
 
 AsyncHyper = AsyncHyperliquid

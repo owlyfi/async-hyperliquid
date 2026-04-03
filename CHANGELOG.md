@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Stop tracking repository-local Codex workflow files (`AGENTS.md`, `.agent/`, and `skills/`) so they stay local-only and no longer ship in the GitHub repository.
+- Refactor `AsyncHyperliquid` to compose an internal `AsyncHyperliquidCore` state owner while keeping the public unified client API, so `_async_hyperliquid` no longer relies on a stateful capability inheritance chain.
 
 ### Fixed
 - Correct `AsyncHyperliquid` async context-manager typing so `async with AsyncHyperliquid(...) as hl` preserves the concrete client type and satisfies static type checkers.
+- Restore `AsyncHyperliquid` compatibility with `AsyncAPI` subtype checks and ensure composed core helpers still honor facade-level overrides after the composition refactor.
 
 ## [0.4.7] - 2026-03-30
 

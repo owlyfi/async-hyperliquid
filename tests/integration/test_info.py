@@ -47,7 +47,7 @@ async def test_get_all_metas(hl: AsyncHyperliquid) -> None:
     assert "universe" in metas["perp"]
 
     assert "spots" in metas
-    spot_metas = metas["spots"]  # type: ignore
+    spot_metas = metas["spots"]
     assert "tokens" in spot_metas
     assert "universe" in spot_metas
 

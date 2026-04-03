@@ -1,5 +1,6 @@
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
-from typing import Any, cast
 
 import pytest
 
@@ -14,8 +15,12 @@ from async_hyperliquid.utils.types import (
 
 
 def build_stub_hl() -> Any:
-    # Bypass __init__ for focused unit tests and allow dynamic mock patching.
-    return cast(Any, object.__new__(AsyncHyperliquid))
+    session = SimpleNamespace(closed=False, close=AsyncMock())
+    return AsyncHyperliquid(
+        "0x1111111111111111111111111111111111111111",
+        "0x" + ("11" * 32),
+        session=session,  # type: ignore[arg-type]
+    )
 
 
 @pytest.mark.asyncio

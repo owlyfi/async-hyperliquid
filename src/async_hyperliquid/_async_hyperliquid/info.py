@@ -1,6 +1,6 @@
 import asyncio
 import warnings
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from async_hyperliquid.utils.constants import ONE_HOUR_MS, PERP_DEX_OFFSET, SPOT_OFFSET
 from async_hyperliquid.utils.miscs import get_coin_dex, get_timestamp_ms
@@ -23,10 +23,15 @@ from async_hyperliquid.utils.types import (
     UserWithdraw,
 )
 
-from .core import AsyncHyperliquidCore
+
+class AsyncHyperliquidCapabilityMixin:
+    # These mixins are bound onto the public AsyncHyperliquid facade, which
+    # forwards unknown attributes and helpers to a composed core object.
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(name)
 
 
-class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
+class AsyncHyperliquidInfoClient(AsyncHyperliquidCapabilityMixin):
     def _get_cached_perp_ctx_index(self, coin_name: str) -> tuple[str, int] | None:
         asset = self._lookup_cached_asset_id(coin_name)
         if asset is None:
@@ -234,7 +239,7 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCore):
         data = await self.info.get_user_funding(
             address, start_time, end_time=end_time, is_funding=False
         )
-        return [d for d in data if d["delta"]["type"] == ledger_type]  # type: ignore
+        return [d for d in data if d["delta"]["type"] == ledger_type]
 
     async def get_latest_deposits(
         self,
