@@ -549,6 +549,7 @@ class PerpMetaItem(TypedDict):
 
 class PerpMeta(TypedDict):
     universe: list[PerpMetaItem]
+    collateralToken: NotRequired[int]
 
 
 class PerpMetaCtxItem(TypedDict):

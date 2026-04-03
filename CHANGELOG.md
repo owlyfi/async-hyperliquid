@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Stop tracking repository-local Codex workflow files (`AGENTS.md`, `.agent/`, and `skills/`) so they stay local-only and no longer ship in the GitHub repository.
 - Refactor `AsyncHyperliquid` to compose an internal `AsyncHyperliquidCore` state owner while keeping the public unified client API, so `_async_hyperliquid` no longer relies on a stateful capability inheritance chain.
+- Add metadata helpers for supported spot quote assets and HIP-3 dex collateral mappings, and expose the raw `allPerpMetas` info endpoint for callers that need the full on-chain perp-meta list.
 
 ### Fixed
 - Correct `AsyncHyperliquid` async context-manager typing so `async with AsyncHyperliquid(...) as hl` preserves the concrete client type and satisfies static type checkers.

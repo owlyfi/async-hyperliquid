@@ -180,6 +180,38 @@ class AsyncHyperliquidInfoClient(AsyncHyperliquidCapabilityMixin):
     async def get_all_mids(self) -> dict[str, float]:
         return await self.get_dexs_mids(self.perp_dexs)
 
+    async def get_supported_quote_assets(self) -> set[str]:
+        spot_meta = await self.info.get_spot_meta()
+        tokens = spot_meta["tokens"]
+
+        quote_assets: set[str] = set()
+        for pair in spot_meta["universe"]:
+            quote_index = pair["tokens"][1]
+            if 0 <= quote_index < len(tokens):
+                quote_assets.add(tokens[quote_index]["name"])
+
+        return quote_assets
+
+    async def get_hip3_dex_quote_assets(self) -> dict[str, str]:
+        spot_meta, all_perp_metas = await asyncio.gather(
+            self.info.get_spot_meta(), self.info.get_all_perp_metas()
+        )
+        tokens = spot_meta["tokens"]
+
+        dex_quote_assets: dict[str, str] = {}
+        for meta in all_perp_metas[1:]:
+            if "collateralToken" not in meta or not meta["universe"]:
+                continue
+
+            collateral_token = meta["collateralToken"]
+            if not 0 <= collateral_token < len(tokens):
+                continue
+
+            dex_name = meta["universe"][0]["name"].partition(":")[0]
+            dex_quote_assets[dex_name] = tokens[collateral_token]["name"]
+
+        return dex_quote_assets
+
     async def get_perp_account_state(
         self, address: str | None = None, dex: str = ""
     ) -> ClearinghouseState:
