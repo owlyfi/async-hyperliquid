@@ -101,3 +101,116 @@ async def test_get_hip3_dex_quote_assets_skips_malformed_metadata() -> None:
     dex_quote_assets = await hl.get_hip3_dex_quote_assets()
 
     assert dex_quote_assets == {"vntl": "USDC"}
+
+
+@pytest.mark.asyncio
+async def test_experimental_get_all_perp_metas_by_dex_maps_aggregate_order() -> None:
+    hl = build_stub_hl()
+    hl.info = SimpleNamespace(
+        get_all_perp_metas=AsyncMock(
+            return_value=[
+                {"universe": [{"name": "BTC"}]},
+                {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+                {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+            ]
+        )
+    )
+
+    metas_by_dex = await hl.experimental_get_all_perp_metas_by_dex()
+
+    assert metas_by_dex == {
+        "": {"universe": [{"name": "BTC"}]},
+        "xyz": {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+        "flx": {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+    }
+    hl.info.get_all_perp_metas.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_experimental_get_configured_perp_metas_filters_to_client_dexs() -> None:
+    hl = build_stub_hl()
+    hl.perp_dexs = ["", "flx"]
+    hl.info = SimpleNamespace(
+        get_all_perp_metas=AsyncMock(
+            return_value=[
+                {"universe": [{"name": "BTC"}]},
+                {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+                {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+            ]
+        )
+    )
+
+    metas_by_dex = await hl.experimental_get_configured_perp_metas()
+
+    assert metas_by_dex == {
+        "": {"universe": [{"name": "BTC"}]},
+        "flx": {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+    }
+
+
+@pytest.mark.asyncio
+async def test_experimental_get_all_perp_metas_by_dex_handles_partial_payloads() -> (
+    None
+):
+    hl = build_stub_hl()
+    hl.info = SimpleNamespace(
+        get_all_perp_metas=AsyncMock(
+            return_value=[
+                {"universe": [{"name": "BTC"}]},
+                {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+            ]
+        )
+    )
+
+    metas_by_dex = await hl.experimental_get_all_perp_metas_by_dex()
+
+    assert metas_by_dex == {
+        "": {"universe": [{"name": "BTC"}]},
+        "xyz": {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+    }
+
+
+@pytest.mark.asyncio
+async def test_experimental_get_all_perp_metas_by_dex_maps_all_payload_identities() -> (
+    None
+):
+    hl = build_stub_hl()
+    hl.info = SimpleNamespace(
+        get_all_perp_metas=AsyncMock(
+            return_value=[
+                {"universe": [{"name": "BTC"}]},
+                {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+                {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+            ]
+        )
+    )
+
+    metas_by_dex = await hl.experimental_get_all_perp_metas_by_dex()
+
+    assert metas_by_dex == {
+        "": {"universe": [{"name": "BTC"}]},
+        "xyz": {"universe": [{"name": "xyz:NVDA"}], "collateralToken": 0},
+        "flx": {"universe": [{"name": "flx:TSLA"}], "collateralToken": 1},
+    }
+
+
+@pytest.mark.asyncio
+async def test_experimental_get_all_perp_metas_by_dex_uses_payload_identity_for_sparse_dexs() -> (
+    None
+):
+    hl = build_stub_hl()
+    hl.info = SimpleNamespace(
+        get_all_perp_metas=AsyncMock(
+            return_value=[
+                {"universe": [{"name": "BTC"}]},
+                {"universe": [{"name": "dex-b:TSLA"}], "collateralToken": 1},
+            ]
+        )
+    )
+
+    metas_by_dex = await hl.experimental_get_all_perp_metas_by_dex()
+
+    assert metas_by_dex == {
+        "": {"universe": [{"name": "BTC"}]},
+        "dex-b": {"universe": [{"name": "dex-b:TSLA"}], "collateralToken": 1},
+    }

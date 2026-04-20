@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-20
+
+### Added
+- Add metadata helpers for supported spot quote assets and HIP-3 dex collateral mappings, and expose the raw `allPerpMetas` info endpoint for callers that need the full on-chain perp-meta list.
+- Add `docs/coin-name-mapping.md` to document how `coin` inputs resolve into internal coin names, asset ids, and display symbols across base perp, spot, and HIP-3 perp markets.
+
 ### Changed
 - Stop tracking repository-local Codex workflow files (`AGENTS.md`, `.agent/`, and `skills/`) so they stay local-only and no longer ship in the GitHub repository.
 - Refactor `AsyncHyperliquid` to compose an internal `AsyncHyperliquidCore` state owner while keeping the public unified client API, so `_async_hyperliquid` no longer relies on a stateful capability inheritance chain.
-- Add metadata helpers for supported spot quote assets and HIP-3 dex collateral mappings, and expose the raw `allPerpMetas` info endpoint for callers that need the full on-chain perp-meta list.
+- Add experimental aggregated-perp helper methods, keep `get_all_metas()` on the original per-DEX path for compatibility, and move `init_metas()` onto the explicit `allPerpMetas` metadata-refresh path to reduce request fan-out and rate-limit pressure.
+- Derive aggregate DEX identities from each `allPerpMetas` payload row instead of positional prefix alignment, keep `self.perp_dexs` unchanged, refetch configured DEX metadata directly when only the aggregate payload is stale, and fail metadata refresh outright when `perpDexs` temporarily omits configured DEXs or returns an invalid base/duplicate DEX ordering so stale and shifted offset spaces never get mixed.
 
 ### Fixed
 - Correct `AsyncHyperliquid` async context-manager typing so `async with AsyncHyperliquid(...) as hl` preserves the concrete client type and satisfies static type checkers.

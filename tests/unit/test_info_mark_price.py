@@ -167,15 +167,17 @@ async def test_get_all_market_prices_refreshes_metadata_before_enumerating_asset
     setattr(hl, "spot_tokens", {})
     setattr(hl, "perp_dexs", [""])
 
-    async def get_perp_meta(dex: str = "") -> dict[str, Any]:
+    async def get_all_perp_metas() -> list[dict[str, Any]]:
         if phase["value"] == 1:
-            return {"universe": [{"name": "BTC", "szDecimals": 5}]}
-        return {
-            "universe": [
-                {"name": "BTC", "szDecimals": 5},
-                {"name": "ETH", "szDecimals": 4},
-            ]
-        }
+            return [{"universe": [{"name": "BTC", "szDecimals": 5}]}]
+        return [
+            {
+                "universe": [
+                    {"name": "BTC", "szDecimals": 5},
+                    {"name": "ETH", "szDecimals": 4},
+                ]
+            }
+        ]
 
     async def get_spot_meta() -> dict[str, list[Any]]:
         return {"universe": [], "tokens": []}
@@ -187,7 +189,7 @@ async def test_get_all_market_prices_refreshes_metadata_before_enumerating_asset
         return_value=({"universe": []}, [{"markPx": "105000"}, {"markPx": "2000"}])
     )
     hl.info = SimpleNamespace(
-        get_perp_meta=get_perp_meta,
+        get_all_perp_metas=get_all_perp_metas,
         get_spot_meta=get_spot_meta,
         get_perp_dexs=get_perp_dexs,
         get_perp_meta_ctx=get_perp_meta_ctx,

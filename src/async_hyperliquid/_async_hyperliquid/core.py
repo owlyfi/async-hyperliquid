@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 from threading import Lock
 
 from aiohttp import TCPConnector, BaseConnector, ClientSession, ClientTimeout
@@ -194,6 +195,62 @@ class AsyncHyperliquidCore(AsyncAPI):
     def _build_coin_symbols(self, coin_names: dict[str, str]) -> dict[str, str]:
         return {v: k for k, v in coin_names.items() if not k.startswith("@")}
 
+    def _infer_perp_meta_dex(self, meta: PerpMeta) -> str | None:
+        universe = meta["universe"]
+        if not universe:
+            return None
+
+        first_name = universe[0]["name"]
+        if ":" not in first_name:
+            return ""
+
+        return first_name.partition(":")[0]
+
+    def _map_all_perp_metas_by_dex(
+        self, all_perp_metas: list[PerpMeta]
+    ) -> dict[str, PerpMeta]:
+        metas_by_dex: dict[str, PerpMeta] = {}
+        for meta in all_perp_metas:
+            dex = self._infer_perp_meta_dex(meta)
+            if dex is None:
+                continue
+
+            if dex in metas_by_dex:
+                raise ValueError(
+                    f"allPerpMetas returned duplicate metadata for dex '{dex}'"
+                )
+
+            metas_by_dex[dex] = meta
+
+        return metas_by_dex
+
+    def _format_perp_dex_name(self, dex: str) -> str:
+        return "<base>" if dex == "" else dex
+
+    def _get_perp_meta_offsets_by_dex(self, all_dex_names: list[str]) -> dict[str, int]:
+        if not all_dex_names or all_dex_names[0] != "":
+            raise ValueError(
+                "perpDexs must start with the base perp dex; refusing metadata refresh because DEX offsets are no longer trustworthy"
+            )
+
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for name in all_dex_names:
+            if name in seen:
+                duplicates.append(name)
+            seen.add(name)
+
+        if duplicates:
+            raise ValueError(
+                "perpDexs returned duplicate perp dex names; refusing metadata refresh because DEX offsets are no longer trustworthy: "
+                + ", ".join(self._format_perp_dex_name(name) for name in duplicates)
+            )
+
+        return {
+            name: 0 if idx == 0 else PERP_DEX_OFFSET + (idx - 1) * 10000
+            for idx, name in enumerate(all_dex_names)
+        }
+
     def _get_meta_init_lock(self) -> asyncio.Lock:
         lock = getattr(self, "_meta_init_lock", None)
         if lock is None:
@@ -235,6 +292,33 @@ class AsyncHyperliquidCore(AsyncAPI):
 
         return coin_name, asset
 
+    async def experimental_get_all_perp_metas_by_dex(self) -> dict[str, PerpMeta]:
+        all_perp_metas = await self.info.get_all_perp_metas()
+        return self._map_all_perp_metas_by_dex(all_perp_metas)
+
+    async def experimental_get_configured_perp_metas(self) -> dict[str, PerpMeta]:
+        all_perp_metas_by_dex = await self.experimental_get_all_perp_metas_by_dex()
+        return {
+            dex: meta
+            for dex in self.perp_dexs
+            if (meta := all_perp_metas_by_dex.get(dex)) is not None
+        }
+
+    async def experimental_get_all_metas(self) -> Metas:
+        all_perp_metas, spot_meta = await asyncio.gather(
+            self.info.get_all_perp_metas(), self.info.get_spot_meta()
+        )
+
+        all_perp_metas_by_dex = self._map_all_perp_metas_by_dex(all_perp_metas)
+        perp_meta = all_perp_metas_by_dex.get("")
+        if perp_meta is None:
+            raise ValueError("allPerpMetas missing base perp meta")
+
+        dex_metas = {
+            dex: meta for dex, meta in all_perp_metas_by_dex.items() if dex != ""
+        }
+        return {"perp": perp_meta, "spot": spot_meta, "dexs": dex_metas}
+
     async def _refresh_metas(self) -> None:
         # TODO: Add HIP-4 outcome meta initialization from the spot info
         # `outcomeMeta` endpoint once outcomes move beyond testnet-only rollout.
@@ -243,26 +327,32 @@ class AsyncHyperliquidCore(AsyncAPI):
         # names use `+{encoding}`, and `asset_id = 100_000_000 + encoding`, so
         # this path will need dedicated outcome mappings instead of reusing the
         # existing perp/spot logic.
-        meta_task = self.info.get_perp_meta()
-        spot_meta_task = self.info.get_spot_meta()
-        all_dex_names_task = self.get_all_dex_name()
-
-        meta, spot_meta, all_dex_names = await asyncio.gather(
-            meta_task, spot_meta_task, all_dex_names_task
+        all_dex_names, all_perp_metas, spot_meta = await asyncio.gather(
+            self.get_all_dex_name(),
+            self.info.get_all_perp_metas(),
+            self.info.get_spot_meta(),
         )
+        all_perp_metas_by_dex = self._map_all_perp_metas_by_dex(all_perp_metas)
+        dex_offsets_by_name = self._get_perp_meta_offsets_by_dex(all_dex_names)
 
         coin_assets: dict[str, int] = {}
         coin_names: dict[str, str] = {}
         asset_sz_decimals: dict[int, int] = {}
         spot_tokens: dict[str, SpotTokenMeta] = {}
 
-        self._init_perp_meta(
-            meta,
-            0,
-            coin_assets=coin_assets,
-            coin_names=coin_names,
-            asset_sz_decimals=asset_sz_decimals,
-        )
+        missing_aggregate_dexs: list[tuple[str, int]] = []
+        missing_dex_list_dexs: list[str] = []
+        meta = all_perp_metas_by_dex.get("")
+        if meta is None:
+            missing_aggregate_dexs.append(("", 0))
+        else:
+            self._init_perp_meta(
+                meta,
+                0,
+                coin_assets=coin_assets,
+                coin_names=coin_names,
+                asset_sz_decimals=asset_sz_decimals,
+            )
         self._init_spot_meta(
             spot_meta,
             coin_assets=coin_assets,
@@ -271,28 +361,49 @@ class AsyncHyperliquidCore(AsyncAPI):
             spot_tokens=spot_tokens,
         )
 
-        dex_index_by_name = {
-            name: idx for idx, name in enumerate(all_dex_names) if name is not None
-        }
-        dex_meta_tasks = []
-        dex_indices = []
         for dex in self.perp_dexs:
             if dex == "":
                 continue
-            idx = dex_index_by_name.get(dex)
-            if idx is None:
+
+            dex_asset_offset = dex_offsets_by_name.get(dex)
+            if dex_asset_offset is None:
+                missing_dex_list_dexs.append(dex)
                 continue
 
-            if idx > 0:
-                dex_meta_tasks.append(self.info.get_perp_meta(dex))
-                dex_indices.append(idx)
-
-        if dex_meta_tasks:
-            dex_metas = await asyncio.gather(*dex_meta_tasks)
-            for idx, dex_meta in zip(dex_indices, dex_metas):
-                dex_asset_offset = PERP_DEX_OFFSET + (idx - 1) * 10000
+            dex_meta = all_perp_metas_by_dex.get(dex)
+            if dex_meta is None:
+                missing_aggregate_dexs.append((dex, dex_asset_offset))
+            else:
                 self._init_perp_meta(
                     dex_meta,
+                    dex_asset_offset,
+                    coin_assets=coin_assets,
+                    coin_names=coin_names,
+                    asset_sz_decimals=asset_sz_decimals,
+                )
+
+        if missing_dex_list_dexs:
+            raise ValueError(
+                "Configured perp dexes missing from perpDexs; refusing metadata refresh because DEX offsets are no longer trustworthy: "
+                + ", ".join(missing_dex_list_dexs)
+            )
+
+        if missing_aggregate_dexs:
+            warnings.warn(
+                "allPerpMetas missing configured perp metadata for: "
+                + ", ".join(dex for dex, _ in missing_aggregate_dexs)
+                + "; refetching directly by dex",
+                UserWarning,
+                stacklevel=2,
+            )
+            fallback_metas = await asyncio.gather(
+                *(self.info.get_perp_meta(dex) for dex, _ in missing_aggregate_dexs)
+            )
+            for (dex, dex_asset_offset), fallback_meta in zip(
+                missing_aggregate_dexs, fallback_metas, strict=True
+            ):
+                self._init_perp_meta(
+                    fallback_meta,
                     dex_asset_offset,
                     coin_assets=coin_assets,
                     coin_names=coin_names,
