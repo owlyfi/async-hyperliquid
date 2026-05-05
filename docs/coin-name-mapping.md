@@ -115,6 +115,197 @@ coin_symbols = {coin_name: coin for coin, coin_name in coin_names.items() if not
 
 `get_coin_asset(coin)` 会先用同一套缓存规则把 `coin` 解析成 `coin name`，再从 `coin_assets[coin_name]` 读取 asset id。
 
+## 内部解析逻辑标注
+
+### 1. 构建缓存
+
+入口是 `AsyncHyperliquidCore._refresh_metas()`：
+
+```text
+_refresh_metas()
+  -> get_all_dex_name()
+  -> info.get_all_perp_metas()
+  -> info.get_spot_meta()
+  -> _map_all_perp_metas_by_dex()
+  -> _get_perp_meta_offsets_by_dex()
+  -> _init_perp_meta(base perp, offset=0)
+  -> _init_spot_meta(spot, offset=SPOT_OFFSET)
+  -> _init_perp_meta(configured HIP-3 perp dexs, offset=PERP_DEX_OFFSET + ...)
+  -> _build_coin_symbols()
+```
+
+对应缓存写入如下：
+
+| 函数 | 输入元数据 | 写入内容 |
+| --- | --- | --- |
+| `_init_perp_meta()` | `perp_meta["universe"]` | `coin_assets[name] = offset + index`，`coin_names[name] = name` |
+| `_init_spot_meta()` | `spot_meta["universe"]` | `coin_assets[asset_name] = 10_000 + spot_index`，`coin_names[asset_name] = asset_name` |
+| `_init_spot_meta()` | `spot_meta["tokens"]` + pair tokens | `coin_names["BASE/QUOTE"] = asset_name`，例如 `coin_names["HYPE/USDC"] = "@107"` |
+| `_build_coin_symbols()` | `coin_names` | 反向生成 `coin_symbols[coin_name] = display_symbol`，并跳过 `@...` key |
+
+### 2. 解析 Coin Name
+
+`get_coin_name(coin)` 实际调用 `_lookup_cached_coin_name(coin)`：
+
+```text
+_lookup_cached_coin_name(coin)
+  -> if coin in coin_names:
+       return coin_names[coin]
+  -> elif coin in coin_assets:
+       return coin
+  -> else:
+       return None
+```
+
+如果第一次查不到，`get_coin_name()` 会触发 metadata refresh：
+
+```text
+get_coin_name(coin)
+  -> _lookup_cached_coin_name(coin)
+  -> if miss and metas already initialized:
+       init_metas()
+  -> if miss and metas not initialized:
+       _ensure_metas_initialized()
+  -> _lookup_cached_coin_name(coin)
+  -> if still miss:
+       raise ValueError
+```
+
+### 3. 解析 Asset Id
+
+`get_coin_asset(coin)` 使用 `_lookup_cached_asset(coin)` 走 fast path：
+
+```text
+_lookup_cached_asset_id(coin)
+  -> if coin in coin_assets:
+       return coin_assets[coin]
+  -> coin_name = coin_names.get(coin)
+  -> if coin_name is not None:
+       return coin_assets.get(coin_name)
+```
+
+然后 `_lookup_cached_asset(coin)` 会把 `coin_name` 和 `asset id` 组合返回：
+
+```text
+_lookup_cached_asset(coin)
+  -> asset = _lookup_cached_asset_id(coin)
+  -> coin_name = _lookup_cached_coin_name(coin)
+  -> return (coin_name, asset)
+```
+
+如果 fast path miss，`get_coin_asset()` 会先 `await get_coin_name(coin)`，再读取 `coin_assets[coin_name]`。
+
+### 4. 下单和撤单如何使用解析结果
+
+下单入口最终会走 `_round_sz_px()` / `_round_sz_px_cached()`：
+
+```text
+place_order()
+  -> place_market_order() or place_typed_order()
+  -> _round_sz_px(coin, sz, px)
+  -> asset = resolved asset id
+  -> encode_order({"asset": asset, ...})
+  -> exchange.post_action(...)
+```
+
+批量下单会先对每个 `coin` 尝试 `_round_sz_px_cached()`，如果缓存命中，就不再调用 async refresh 路径。
+
+撤单入口 `cancel_orders()` / `batch_cancel_by_cloid()` 也会先尝试 `_lookup_cached_asset_id(coin)`，只有部分 coin miss 时才并发调用 `get_coin_asset(coin)`。
+
+### 5. 查价如何使用解析结果
+
+`get_mark_price(coin)` 有一个特殊分支：
+
+```text
+if ":" in coin:
+  treat as HIP-3 perp name
+  -> _get_cached_perp_ctx_index(coin)
+  -> info.get_perp_meta_ctx(dex)
+else:
+  coin_name = await get_coin_name(coin)
+  asset = _lookup_cached_asset_id(coin_name)
+  -> if 10_000 <= asset < 110_000:
+       info.get_spot_meta_ctx()
+     else:
+       info.get_perp_meta_ctx(dex)
+```
+
+也就是说：
+
+- `xyz:NVDA` 这类带 `:` 的输入会直接按 perp DEX 路径处理。
+- `HYPE/USDC` 会先解析为 `@107`，再根据 `asset id = 10_107` 判断为 spot。
+- `BTC` 会解析为 `BTC`，再根据 `asset id < 10_000` 判断为 base perp。
+
+## 逐步 Trace
+
+### `BTC` -> `BTC`
+
+```text
+_init_perp_meta(base)
+  -> universe[0]["name"] = "BTC"
+  -> coin_assets["BTC"] = 0
+  -> coin_names["BTC"] = "BTC"
+
+get_coin_name("BTC")
+  -> coin_names["BTC"]
+  -> "BTC"
+
+get_coin_asset("BTC")
+  -> coin_assets["BTC"]
+  -> 0
+```
+
+### `HYPE/USDC` -> `@107`
+
+```text
+_init_spot_meta(spot)
+  -> pair.name = "@107"
+  -> pair.index = 107
+  -> pair.tokens = (HYPE token index, USDC token index)
+  -> coin_assets["@107"] = 10_000 + 107
+  -> coin_names["@107"] = "@107"
+  -> coin_names["HYPE/USDC"] = "@107"
+
+get_coin_name("HYPE/USDC")
+  -> coin_names["HYPE/USDC"]
+  -> "@107"
+
+get_coin_asset("HYPE/USDC")
+  -> coin_names["HYPE/USDC"] = "@107"
+  -> coin_assets["@107"]
+  -> 10_107
+```
+
+### `@107` -> `@107`
+
+```text
+get_coin_name("@107")
+  -> coin_names["@107"]
+  -> "@107"
+
+get_coin_symbol("@107")
+  -> coin_name = "@107"
+  -> coin_symbols["@107"]
+  -> "HYPE/USDC"
+```
+
+### `xyz:NVDA` -> `xyz:NVDA`
+
+```text
+_init_perp_meta(xyz, offset=110_000)
+  -> universe[2]["name"] = "xyz:NVDA"
+  -> coin_assets["xyz:NVDA"] = 110_000 + 2
+  -> coin_names["xyz:NVDA"] = "xyz:NVDA"
+
+get_coin_name("xyz:NVDA")
+  -> coin_names["xyz:NVDA"]
+  -> "xyz:NVDA"
+
+get_coin_asset("xyz:NVDA")
+  -> coin_assets["xyz:NVDA"]
+  -> 110_002
+```
+
 ## 使用建议
 
 - Perp 下单或查价传 `BTC`、`HYPE`、`xyz:NVDA` 这类 perp name 即可。
@@ -141,4 +332,3 @@ await hl.get_coin_asset("HYPE/USDC")
 await hl.get_coin_symbol("@107")
 # "HYPE/USDC"
 ```
-
