@@ -9,7 +9,7 @@ from hl_web3.exchange import Exchange as EVMExchange
 from hl_web3.utils.constants import HL_RPC_URL, HL_TESTNET_RPC_URL
 from eth_account.signers.local import LocalAccount
 
-from async_hyperliquid.info import InfoAPI
+from async_hyperliquid._legacy_info import InfoAPI
 from async_hyperliquid.exchange import ExchangeAPI
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.utils.miscs import get_timestamp_ms

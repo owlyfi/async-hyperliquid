@@ -12,7 +12,7 @@ import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.exchange import ExchangeAPI
-from async_hyperliquid.info import InfoAPI
+from async_hyperliquid._legacy_info import InfoAPI
 
 
 def build_stub_hl() -> AsyncHyperliquid:

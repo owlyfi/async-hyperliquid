@@ -7,6 +7,7 @@ class OpenOrder(TypedDict):
     coin: str
     limitPx: str
     oid: int
+    origSz: str
     side: Literal["A", "B"]
     sz: str
     timestamp: int
@@ -18,7 +19,6 @@ class FrontendOrder(OpenOrder):
     isPositionTpsl: bool
     isTrigger: bool
     orderType: str
-    origSz: str
     reduceOnly: bool
     tif: Literal["Alo", "Gtc", "Ioc", "FrontendMarket"] | None
     triggerCondition: str
@@ -547,6 +547,12 @@ class ClearinghouseState(TypedDict):
     withdrawable: str
 
 
+class AccountState(TypedDict):
+    perp: ClearinghouseState
+    spot: "SpotClearinghouseState"
+    dexs: dict[str, ClearinghouseState]
+
+
 class FundingDelta(TypedDict):
     coin: str
     fundingRate: str
@@ -704,7 +710,7 @@ class GasAuction(TypedDict):
     durationSeconds: int
     startGas: str
     currentGas: str | None
-    endGas: str
+    endGas: str | None
 
 
 class TokenDeploySpec(TypedDict):

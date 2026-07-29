@@ -9,7 +9,9 @@ from async_hyperliquid.types.info import (
     ActiveAssetLeverage,
     AgentUserRole,
     AllPerpMetas,
+    GasAuction,
     L2Book,
+    OpenOrder,
     PlainUserRole,
     PerpMeta,
     PerpMetaAndContexts,
@@ -33,6 +35,10 @@ def test_rate_limit_includes_surplus_counter() -> None:
         "nRequestsCap": int,
         "nRequestsSurplus": int,
     }
+
+
+def test_open_order_includes_original_size() -> None:
+    assert get_type_hints(OpenOrder)["origSz"] is str
 
 
 def test_l2_book_matches_coin_time_and_two_sided_levels_shape() -> None:
@@ -66,6 +72,13 @@ def test_referral_includes_token_reward_state() -> None:
 
 def test_active_asset_leverage_supports_hip3_raw_usd() -> None:
     assert get_type_hints(ActiveAssetLeverage)["rawUsd"] is str
+
+
+def test_spot_gas_auction_phase_prices_can_be_missing() -> None:
+    hints = get_type_hints(GasAuction)
+
+    assert type(None) in get_args(hints["currentGas"])
+    assert type(None) in get_args(hints["endGas"])
 
 
 def test_user_role_is_a_discriminated_union_without_a_mapping_escape_hatch() -> None:

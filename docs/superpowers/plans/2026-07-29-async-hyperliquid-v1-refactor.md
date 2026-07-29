@@ -972,25 +972,25 @@ unbounded total.
 - [ ] **Step 1:** Write tests for standalone ownership and bound transport
   borrowing; assert exactly one closer per object graph. Assert construction
   and every public read path work without importing or creating a signer.
-- [ ] **Step 2:** Test official mainnet/testnet defaults plus an HTTP
+- [x] **Step 2:** Test official mainnet/testnet defaults plus an HTTP
   self-hosted `/info` endpoint. Assert the self-host receives Info payloads and
   never receives a signed action or signature; assert `info_url` is readable
   but cannot be reassigned.
-- [ ] **Step 3:** Implement info endpoints directly on `InfoClient`, with one
+- [x] **Step 3:** Implement info endpoints directly on `InfoClient`, with one
   transport call and endpoint-boundary top-level shape checks.
-- [ ] **Step 4:** Move account state, positions, open-order/status and metadata
+- [x] **Step 4:** Move account state, positions, open-order/status and metadata
   lookup helpers to `InfoClient`. Require explicit account addresses and add no
   root forwarding aliases.
-- [ ] **Step 5:** Fetch metadata branches with `TaskGroup`, build private
+- [x] **Step 5:** Fetch metadata branches with `TaskGroup`, build private
   dictionaries locally, then replace one snapshot reference.
-- [ ] **Step 6:** Use one lock with double-check. Test normal 20-reader cold
+- [x] **Step 6:** Use one lock with double-check. Test normal 20-reader cold
   start as one fetch set, waiting-reader cancellation, active-loader
   cancellation/retry and failed-refresh recovery.
 - [ ] **Step 7:** Add API/type tests proving `InfoClient` has no signing
   parameters or `.exchange`, while `AsyncHyperliquid` rejects missing or empty
   credentials before opening a session.
-- [ ] **Step 8:** Run info, contract, concurrency and type tests.
-- [ ] **Step 9:** Commit:
+- [x] **Step 8:** Run info, contract, concurrency and type tests.
+- [x] **Step 9:** Commit:
   `refactor(info): add typed info client and atomic metadata`.
 
 ### Task 6: Flatten signing and ExchangeClient
