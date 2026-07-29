@@ -176,8 +176,210 @@ class ModifyAction(TypedDict):
     modifies: list[EncodedModify]
 
 
+class ScheduleCancelAction(TypedDict):
+    type: Literal["scheduleCancel"]
+    time: NotRequired[int]
+
+
+class UpdateLeverageAction(TypedDict):
+    type: Literal["updateLeverage"]
+    asset: int
+    isCross: bool
+    leverage: int
+
+
+class UpdateIsolatedMarginAction(TypedDict):
+    type: Literal["updateIsolatedMargin"]
+    asset: int
+    isBuy: bool
+    ntli: int
+
+
+class EncodedTwapOrder(TypedDict):
+    a: int
+    b: bool
+    s: str
+    r: bool
+    m: int
+    t: bool
+
+
+class TwapOrderAction(TypedDict):
+    type: Literal["twapOrder"]
+    twap: EncodedTwapOrder
+
+
+class TwapCancelAction(TypedDict):
+    type: Literal["twapCancel"]
+    a: int
+    t: int
+
+
+class SetReferrerAction(TypedDict):
+    type: Literal["setReferrer"]
+    code: str
+
+
+class CreateSubAccountAction(TypedDict):
+    type: Literal["createSubAccount"]
+    name: str
+
+
+class VaultTransferAction(TypedDict):
+    type: Literal["vaultTransfer"]
+    vaultAddress: str
+    isDeposit: bool
+    usd: int
+
+
+class ReserveRequestWeightAction(TypedDict):
+    type: Literal["reserveRequestWeight"]
+    weight: int
+
+
+class EvmUserModifyAction(TypedDict):
+    type: Literal["evmUserModify"]
+    usingBigBlocks: bool
+
+
+class AgentEnableDexAbstractionAction(TypedDict):
+    type: Literal["agentEnableDexAbstraction"]
+
+
+class AgentSetAbstractionAction(TypedDict):
+    type: Literal["agentSetAbstraction"]
+    abstraction: Literal["i", "u", "p"]
+
+
+class UserSignedFields(TypedDict):
+    signatureChainId: Literal["0x66eee"]
+    hyperliquidChain: Literal["Mainnet", "Testnet"]
+
+
+class UsdSendAction(UserSignedFields):
+    type: Literal["usdSend"]
+    amount: str
+    destination: str
+    time: int
+
+
+class SpotSendAction(UserSignedFields):
+    type: Literal["spotSend"]
+    destination: str
+    token: str
+    amount: str
+    time: int
+
+
+class WithdrawAction(UserSignedFields):
+    type: Literal["withdraw3"]
+    amount: str
+    time: int
+    destination: str
+
+
+class UsdClassTransferAction(UserSignedFields):
+    type: Literal["usdClassTransfer"]
+    amount: str
+    toPerp: bool
+    nonce: int
+
+
+class SendAssetAction(UserSignedFields):
+    type: Literal["sendAsset"]
+    token: str
+    amount: str
+    destination: str
+    sourceDex: str
+    destinationDex: str
+    fromSubAccount: str
+    nonce: int
+
+
+class StakingDepositAction(UserSignedFields):
+    type: Literal["cDeposit"]
+    wei: int
+    nonce: int
+
+
+class StakingWithdrawAction(UserSignedFields):
+    type: Literal["cWithdraw"]
+    wei: int
+    nonce: int
+
+
+class TokenDelegateAction(UserSignedFields):
+    type: Literal["tokenDelegate"]
+    validator: str
+    wei: int
+    isUndelegate: bool
+    nonce: int
+
+
+class ApproveAgentAction(UserSignedFields):
+    type: Literal["approveAgent"]
+    agentAddress: str
+    agentName: NotRequired[str]
+    nonce: int
+
+
+class ApproveBuilderFeeAction(UserSignedFields):
+    type: Literal["approveBuilderFee"]
+    maxFeeRate: str
+    builder: str
+    nonce: int
+
+
+class ConvertToMultiSigUserAction(UserSignedFields):
+    type: Literal["convertToMultiSigUser"]
+    signers: str
+    nonce: int
+
+
+class UserDexAbstractionAction(UserSignedFields):
+    type: Literal["userDexAbstraction"]
+    user: str
+    enabled: bool
+    nonce: int
+
+
+class UserSetAbstractionAction(UserSignedFields):
+    type: Literal["userSetAbstraction"]
+    user: str
+    abstraction: Literal["disabled", "unifiedAccount", "portfolioMargin"]
+    nonce: int
+
+
 ExchangeAction: TypeAlias = (
-    OrderAction | CancelAction | CancelByCloidAction | ModifyAction
+    OrderAction
+    | CancelAction
+    | CancelByCloidAction
+    | ModifyAction
+    | ScheduleCancelAction
+    | UpdateLeverageAction
+    | UpdateIsolatedMarginAction
+    | TwapOrderAction
+    | TwapCancelAction
+    | SetReferrerAction
+    | CreateSubAccountAction
+    | VaultTransferAction
+    | ReserveRequestWeightAction
+    | EvmUserModifyAction
+    | AgentEnableDexAbstractionAction
+    | AgentSetAbstractionAction
+    | UsdSendAction
+    | SpotSendAction
+    | WithdrawAction
+    | UsdClassTransferAction
+    | SendAssetAction
+    | StakingDepositAction
+    | StakingWithdrawAction
+    | TokenDelegateAction
+    | ApproveAgentAction
+    | ApproveBuilderFeeAction
+    | ConvertToMultiSigUserAction
+    | UserDexAbstractionAction
+    | UserSetAbstractionAction
 )
 
 

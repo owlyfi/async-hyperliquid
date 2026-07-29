@@ -8,10 +8,10 @@ from aiohttp import ClientSession
 from eth_account import Account
 
 import async_hyperliquid._async_hyperliquid.core as core_module
-import async_hyperliquid.exchange as exchange_module
+import async_hyperliquid._legacy_exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.async_api import AsyncAPI
-from async_hyperliquid.exchange import ExchangeAPI
+from async_hyperliquid._legacy_exchange import ExchangeAPI
 from async_hyperliquid._legacy_info import InfoAPI
 
 

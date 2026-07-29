@@ -17,3 +17,14 @@ class HttpError(HyperliquidError):
 
 class ProtocolError(HyperliquidError):
     """A response that does not match the Hyperliquid JSON protocol."""
+
+
+class IndeterminateActionError(HyperliquidError):
+    """A signed action may have reached the exchange without a trusted reply."""
+
+    def __init__(self, action_type: str, nonce: int) -> None:
+        self.action_type = action_type
+        self.nonce = nonce
+        super().__init__(
+            f"signed action outcome is indeterminate: type={action_type} nonce={nonce}"
+        )

@@ -1,6 +1,7 @@
 import asyncio
 from builtins import ExceptionGroup
 from types import TracebackType
+from collections.abc import Sequence
 from typing import Literal, Self, cast, overload
 
 from aiohttp import ClientSession, ClientTimeout
@@ -105,6 +106,17 @@ def _expect_pair(
     if len(pair) != 2:
         raise ProtocolError(f"{request_type} response must contain two items")
     return (_expect_object(pair[0], request_type), _expect_list(pair[1], request_type))
+
+
+def _market_info_from_snapshot(
+    snapshot: _MetadataSnapshot, coin: str
+) -> tuple[int, int]:
+    name = snapshot.coin_by_alias.get(coin)
+    asset = None if name is None else snapshot.asset_by_coin.get(name)
+    decimals = None if asset is None else snapshot.size_decimals_by_asset.get(asset)
+    if asset is None or decimals is None:
+        raise ValueError(f"unknown market: {coin}")
+    return asset, decimals
 
 
 class InfoClient:
@@ -569,6 +581,14 @@ class InfoClient:
         if decimals is None:
             raise ValueError(f"unknown market: {coin}")
         return decimals
+
+    async def _market_info(self, coin: str) -> tuple[int, int]:
+        snapshot = await self._ensure_metadata()
+        return _market_info_from_snapshot(snapshot, coin)
+
+    async def _market_infos(self, coins: Sequence[str]) -> tuple[tuple[int, int], ...]:
+        snapshot = await self._ensure_metadata()
+        return tuple(_market_info_from_snapshot(snapshot, coin) for coin in coins)
 
     async def spot_token_metadata(self, coin: str) -> SpotToken:
         snapshot = await self._ensure_metadata()

@@ -46,7 +46,7 @@ class BenchmarkReport(TypedDict):
     results: dict[str, Comparison]
 
 
-WHEEL_PROBE = r"""
+BASELINE_WHEEL_PROBE = r"""
 import gc
 import json
 import os
@@ -54,7 +54,12 @@ from time import perf_counter_ns
 
 from eth_account import Account
 
-from async_hyperliquid.utils.signing import encode_order, orders_to_action, sign_action
+from async_hyperliquid.utils.miscs import round_float, round_px
+from async_hyperliquid.utils.signing import (
+    encode_order as encode_wire_order,
+    orders_to_action,
+    sign_action,
+)
 from async_hyperliquid.utils.types import LimitTif, limit_order_type
 
 iterations = int(os.environ["BENCH_ITERATIONS"])
@@ -69,9 +74,20 @@ order = {
     "cloid": None,
 }
 orders = [dict(order, asset=index) for index in range(10)]
-encoded_order = encode_order(order)
+
+
+def prepare_order(order):
+    rounded = {
+        **order,
+        "px": round_px(order["px"], 1),
+        "sz": round_float(order["sz"], 5),
+    }
+    return encode_wire_order(rounded)
+
+
+encoded_order = prepare_order(order)
 single_action = orders_to_action([encoded_order])
-batch_action = orders_to_action([encode_order(item) for item in orders])
+batch_action = orders_to_action([prepare_order(item) for item in orders])
 
 
 def measure(fn, count):
@@ -90,9 +106,9 @@ def measure(fn, count):
 
 
 results = {
-    "encode_order": measure(lambda: encode_order(order), iterations),
-    "encode_batch_10": measure(
-        lambda: orders_to_action([encode_order(item) for item in orders]),
+    "prepare_order": measure(lambda: prepare_order(order), iterations),
+    "prepare_batch_10": measure(
+        lambda: orders_to_action([prepare_order(item) for item in orders]),
         max(100, iterations // 10),
     ),
     "sign_order": measure(
@@ -101,6 +117,95 @@ results = {
     ),
     "sign_batch_10": measure(
         lambda: sign_action(account, batch_action, None, 1_750_000_000_000, True),
+        max(100, iterations // 20),
+    ),
+}
+print(json.dumps(results, sort_keys=True))
+"""
+
+CANDIDATE_WHEEL_PROBE = r"""
+import gc
+import json
+import os
+from time import perf_counter_ns
+
+from eth_account import Account
+
+from async_hyperliquid._signing import encode_order, sign_exchange_action
+from async_hyperliquid.types import LimitOrder, Network, Side
+
+iterations = int(os.environ["BENCH_ITERATIONS"])
+account = Account.from_key("0x" + "11" * 32)
+order = LimitOrder("BTC", Side.BUY, 0.001, 100_000.0)
+orders = tuple(
+    LimitOrder(f"ASSET-{index}", Side.BUY, 0.001, 100_000.0)
+    for index in range(10)
+)
+encoded_order = encode_order(order, asset=0, size_decimals=5)
+single_action = {
+    "type": "order",
+    "orders": [encoded_order],
+    "grouping": "na",
+}
+batch_action = {
+    "type": "order",
+    "orders": [
+        encode_order(item, asset=index, size_decimals=5)
+        for index, item in enumerate(orders)
+    ],
+    "grouping": "na",
+}
+
+
+def measure(fn, count):
+    for _ in range(max(10, count // 100)):
+        fn()
+    gc.collect()
+    gc.disable()
+    started = perf_counter_ns()
+    try:
+        for _ in range(count):
+            fn()
+    finally:
+        elapsed = perf_counter_ns() - started
+        gc.enable()
+    return elapsed / count
+
+
+results = {
+    "prepare_order": measure(
+        lambda: encode_order(order, asset=0, size_decimals=5),
+        iterations,
+    ),
+    "prepare_batch_10": measure(
+        lambda: {
+            "type": "order",
+            "orders": [
+                encode_order(item, asset=index, size_decimals=5)
+                for index, item in enumerate(orders)
+            ],
+            "grouping": "na",
+        },
+        max(100, iterations // 10),
+    ),
+    "sign_order": measure(
+        lambda: sign_exchange_action(
+            account,
+            single_action,
+            None,
+            1_750_000_000_000,
+            Network.MAINNET.signature_source,
+        ),
+        max(100, iterations // 20),
+    ),
+    "sign_batch_10": measure(
+        lambda: sign_exchange_action(
+            account,
+            batch_action,
+            None,
+            1_750_000_000_000,
+            Network.MAINNET.signature_source,
+        ),
         max(100, iterations // 20),
     ),
 }
@@ -232,7 +337,7 @@ def run_ab_ba(
 
 
 def _wheel_command(
-    name: str, wheel: Path, destination: Path, *, iterations: int
+    name: str, wheel: Path, destination: Path, *, iterations: int, probe: str
 ) -> BenchmarkCommand:
     if wheel.suffix != ".whl" or not wheel.is_file():
         raise BenchmarkFailure(f"{name} wheel does not exist: {wheel}")
@@ -256,7 +361,7 @@ def _wheel_command(
         "import async_hyperliquid as package;"
         "assert pathlib.Path(package.__file__).resolve().is_relative_to("
         f"pathlib.Path({str(destination)!r}).resolve());"
-        f"exec({WHEEL_PROBE!r})"
+        f"exec({probe!r})"
     )
     return BenchmarkCommand(
         name=name,
@@ -277,10 +382,18 @@ def compare_wheels(
     with TemporaryDirectory(prefix="async-hyperliquid-benchmark-") as temp:
         root = Path(temp)
         baseline = _wheel_command(
-            "baseline", baseline_wheel, root / "baseline", iterations=iterations
+            "baseline",
+            baseline_wheel,
+            root / "baseline",
+            iterations=iterations,
+            probe=BASELINE_WHEEL_PROBE,
         )
         candidate = _wheel_command(
-            "candidate", candidate_wheel, root / "candidate", iterations=iterations
+            "candidate",
+            candidate_wheel,
+            root / "candidate",
+            iterations=iterations,
+            probe=CANDIDATE_WHEEL_PROBE,
         )
         return run_ab_ba(baseline, candidate, rounds=rounds, warmups=warmups)
 

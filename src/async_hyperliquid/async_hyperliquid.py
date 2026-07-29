@@ -18,7 +18,7 @@ from async_hyperliquid._async_hyperliquid import actions as _actions_module
 from async_hyperliquid._async_hyperliquid import info as _info_module
 from async_hyperliquid._async_hyperliquid import orders as _orders_module
 from async_hyperliquid.async_api import AsyncAPI
-from async_hyperliquid.exchange import ExchangeAPI
+from async_hyperliquid._legacy_exchange import ExchangeAPI
 from async_hyperliquid._legacy_info import InfoAPI
 from async_hyperliquid.utils.constants import (
     HYPE_FACTOR,
