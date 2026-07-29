@@ -4,7 +4,8 @@ version = "0.5.1"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = [
     "dex",
     "hyperliquid",
@@ -18,13 +19,12 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -33,7 +33,7 @@ classifiers = [
     "Framework :: aiohttp",
     "Typing :: Typed",
 ]
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.11.12,<4.0.0",
     "msgpack (>=1.1.0,<2.0.0)",
@@ -68,17 +68,8 @@ Repository = "https://github.com/traderfiapp/async-hyperliquid"
 Issues = "https://github.com/traderfiapp/async-hyperliquid/issues"
 Changelog = "https://github.com/traderfiapp/async-hyperliquid/blob/master/CHANGELOG.md"
 
-
-#[build-system]
-#requires = ["poetry-core>=2.0.0,<3.0.0"]
-#build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
-requires-poetry = ">=2.0"
-packages = [{ include = "async_hyperliquid", from = "src" }]
-
 [build-system]
-requires = ["uv_build>=0.7.11,<0.8.0"]
+requires = ["uv_build>=0.11.0,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+          version: "0.11.32"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+
+      - name: Check formatting
+        run: uv run ruff format --check
+
+      - name: Lint
+        run: uv run ruff check src tests scripts
+
+      - name: Type-check package
+        run: uv run ty check src/async_hyperliquid
+
+      - name: Type-check tests
+        run: uv run ty check tests
+
+      - name: Type-check scripts
+        run: uv run ty check scripts
+
+      - name: Run deterministic tests
+        run: uv run pytest -q tests/unit tests/public_api tests/contracts tests/package
+
+  package:
+    name: Build and inspect distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.11"
+          version: "0.11.32"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+
+      - name: Build wheel and source distribution
+        run: uv build --no-sources
+
+      - name: Inspect wheel typing marker
+        run: uv run pytest -q tests/package
+        env:
+          ASYNC_HYPERLIQUID_WHEEL_DIR: dist
+
+      - name: Install wheel in a clean environment
+        run: |
+          uv venv .wheel-venv --python 3.11
+          uv pip install --python .wheel-venv/bin/python dist/*.whl
+          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, ExchangeAPI, InfoAPI"
