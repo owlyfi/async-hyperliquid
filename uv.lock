@@ -189,7 +189,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3,<4.0.0" },
     { name = "coincurve", specifier = ">=21.0.0" },
-    { name = "eth-account", specifier = ">=0.13.5,<0.14.0" },
+    { name = "eth-account", specifier = ">=0.13.7,<0.14.0" },
     { name = "eth-utils", specifier = ">=5.2.0,<6.0.0" },
     { name = "msgpack", specifier = ">=1.2.1,<2.0.0" },
 ]
