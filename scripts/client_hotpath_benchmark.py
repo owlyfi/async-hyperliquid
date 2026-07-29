@@ -1,443 +1,318 @@
 from __future__ import annotations
 
-import asyncio
-import gc
+import argparse
+import json
+import math
 import os
 import statistics
-import warnings
+import subprocess
+import sys
+import zipfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from time import perf_counter_ns
-from types import SimpleNamespace
-from typing import Any, Awaitable, Callable, cast
-
-from async_hyperliquid._async_hyperliquid.orders import AsyncHyperliquidOrdersClient
-from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET
-from async_hyperliquid.utils.miscs import round_float, round_px
-from async_hyperliquid.utils.types import (
-    BatchPlaceOrderRequest,
-    LimitTif,
-    limit_order_type,
-)
-
-REPEATS = int(os.getenv("BENCH_REPEATS", "7"))
-IO_ITERATIONS = int(os.getenv("BENCH_IO_ITERATIONS", "50"))
-LOOKUP_ITERATIONS = int(os.getenv("BENCH_LOOKUP_ITERATIONS", "50000"))
-IO_LATENCY_MS = float(os.getenv("BENCH_IO_LATENCY_MS", "5.0"))
-CANCEL_BATCH_SIZE = int(os.getenv("BENCH_CANCEL_BATCH_SIZE", "20"))
-WARM_BATCH_SIZE = int(os.getenv("BENCH_WARM_BATCH_SIZE", "200"))
-WARM_BATCH_ITERATIONS = int(os.getenv("BENCH_WARM_BATCH_ITERATIONS", "5000"))
-
-warnings.filterwarnings(
-    "ignore",
-    message="get_all_market_prices is deprecated and will remove in the future, use get_all_mids instead",
-)
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import TypedDict, cast
 
 
-@dataclass(frozen=True)
-class BenchmarkResult:
+class BenchmarkFailure(RuntimeError):
+    """The benchmark did not produce trustworthy comparable samples."""
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkCommand:
     name: str
-    iterations: int
+    argv: tuple[str, ...]
+    cwd: Path | None = None
+    env: Mapping[str, str] | None = None
+
+
+class Summary(TypedDict):
     median_ns: float
-    mean_ns: float
-    min_ns: float
-    max_ns: float
-
-    @property
-    def ops_per_sec(self) -> float:
-        return 1_000_000_000 / self.median_ns if self.median_ns else 0.0
+    mad_ns: float
+    p95_ns: float
 
 
-class FakeInfoAPI:
-    def __init__(self, latency_s: float) -> None:
-        self.latency_s = latency_s
-        self._perp_meta = {"universe": [{"name": "BTC", "szDecimals": 3}]}
-        self._spot_meta = {
-            "universe": [{"index": 0, "name": "PURR/USDC", "tokens": [0, 1]}],
-            "tokens": [
-                {"name": "PURR", "szDecimals": 2, "tokenId": "1", "weiDecimals": 8},
-                {"name": "USDC", "szDecimals": 6, "tokenId": "2", "weiDecimals": 6},
-            ],
-        }
-        self._perp_meta_ctx = ({}, [{"markPx": "105000"}])
-        self._spot_meta_ctx = ({}, [{"markPx": "1.25"}])
-
-    async def get_perp_meta(self, dex: str = "") -> dict[str, Any]:
-        await asyncio.sleep(self.latency_s)
-        return {
-            "universe": [{"name": "BTC" if not dex else dex.upper(), "szDecimals": 3}]
-        }
-
-    async def get_spot_meta(self) -> dict[str, Any]:
-        await asyncio.sleep(self.latency_s)
-        return self._spot_meta
-
-    async def get_spot_meta_ctx(self) -> tuple[dict[str, Any], list[dict[str, str]]]:
-        await asyncio.sleep(self.latency_s)
-        return self._spot_meta_ctx
-
-    async def get_perp_meta_ctx(self) -> tuple[dict[str, Any], list[dict[str, str]]]:
-        await asyncio.sleep(self.latency_s)
-        return self._perp_meta_ctx
+class Comparison(TypedDict):
+    baseline: Summary
+    candidate: Summary
+    candidate_delta_percent: float
 
 
-class MetaBenchmarkClient(AsyncHyperliquidOrdersClient):
-    def __init__(self, latency_s: float) -> None:
-        self.latency_s = latency_s
-        self.info = FakeInfoAPI(latency_s)
-        self.coin_assets = {"BTC": 0, "PURR/USDC": SPOT_OFFSET}
-        self.coin_names = {"BTC": "BTC", "PURR/USDC": "PURR/USDC"}
-        self.asset_sz_decimals = {0: 3, SPOT_OFFSET: 2}
-        self.spot_tokens: dict[str, Any] = {}
-        self.perp_dexs = ["", "dex-a", "dex-b", "dex-c"]
-
-    async def init_metas(self) -> None:
-        return None
-
-    async def get_all_dex_name(self) -> list[str]:
-        await asyncio.sleep(self.latency_s)
-        return self.perp_dexs
-
-    async def get_coin_name(self, coin: str) -> str:
-        return self.coin_names[coin]
+class BenchmarkReport(TypedDict):
+    schema_version: int
+    rounds: int
+    warmups: int
+    results: dict[str, Comparison]
 
 
-class CancelBenchmarkClient(AsyncHyperliquidOrdersClient):
-    def __init__(self, latency_s: float) -> None:
-        self.latency_s = latency_s
-        self.assets = {f"COIN-{index}": index for index in range(CANCEL_BATCH_SIZE)}
-        self.exchange = SimpleNamespace(post_action=self._post_action)
-        self.vault = None
-        self.expires = None
+WHEEL_PROBE = r"""
+import gc
+import json
+import os
+from time import perf_counter_ns
 
-    async def _post_action(self, action: dict[str, Any], **_: Any) -> dict[str, Any]:
-        return action
+from eth_account import Account
 
-    async def get_coin_asset(self, coin: str) -> int:
-        await asyncio.sleep(self.latency_s)
-        return self.assets[coin]
+from async_hyperliquid.utils.signing import encode_order, orders_to_action, sign_action
+from async_hyperliquid.utils.types import LimitTif, limit_order_type
 
-
-class WarmCacheBenchmarkClient(AsyncHyperliquidOrdersClient):
-    def __init__(self, batch_size: int) -> None:
-        self.exchange = SimpleNamespace(post_action=self._post_action)
-        self.vault = None
-        self.expires = None
-        self.coin_assets: dict[str, int] = {}
-        self.coin_names: dict[str, str] = {}
-        self.asset_sz_decimals: dict[int, int] = {}
-        self.spot_tokens: dict[str, Any] = {}
-        for index in range(batch_size):
-            coin = f"COIN-{index}"
-            asset = SPOT_OFFSET + index
-            self.coin_assets[coin] = asset
-            self.coin_names[coin] = coin
-            self.asset_sz_decimals[asset] = 2
-
-    async def _post_action(self, action: dict[str, Any], **_: Any) -> dict[str, Any]:
-        return action
-
-    async def get_coin_name(self, coin: str) -> str:
-        return self.coin_names[coin]
-
-    async def get_coin_asset(self, coin: str) -> int:
-        return self.coin_assets[coin]
+iterations = int(os.environ["BENCH_ITERATIONS"])
+account = Account.from_key("0x" + "11" * 32)
+order = {
+    "asset": 0,
+    "is_buy": True,
+    "px": 100_000.0,
+    "sz": 0.001,
+    "ro": False,
+    "order_type": limit_order_type(LimitTif.GTC),
+    "cloid": None,
+}
+orders = [dict(order, asset=index) for index in range(10)]
+encoded_order = encode_order(order)
+single_action = orders_to_action([encoded_order])
+batch_action = orders_to_action([encode_order(item) for item in orders])
 
 
-async def legacy_get_metas(
-    client: MetaBenchmarkClient, perp_only: bool = False
-) -> dict[str, Any]:
-    metas: dict[str, Any] = {"perp": {}, "spot": [], "dexs": {}}
-    perp_meta = await client.info.get_perp_meta()
-    if perp_only:
-        metas["perp"] = perp_meta
-        return metas
-
-    metas["spot"] = await client.info.get_spot_meta()
-    return metas
-
-
-async def legacy_get_all_metas(client: MetaBenchmarkClient) -> dict[str, Any]:
-    dexs = await client.get_all_dex_name()
-    dex_metas: dict[str, Any] = {}
-    for dex in dexs[1:]:
-        dex_metas[dex] = await client.info.get_perp_meta(dex)
-
-    spot_meta = await client.info.get_spot_meta()
-    perp_meta = await client.info.get_perp_meta()
-    return {"perp": perp_meta, "spot": spot_meta, "dexs": dex_metas}
-
-
-async def legacy_get_all_market_prices(client: MetaBenchmarkClient) -> dict[str, float]:
-    await client.init_metas()
-    spot_data = cast(Any, await client.info.get_spot_meta_ctx())
-    perp_data = cast(Any, await client.info.get_perp_meta_ctx())
-    prices: dict[str, float] = {}
-    for coin, asset in client.coin_assets.items():
-        is_perp_asset = asset < SPOT_OFFSET
-        is_spot_asset = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
-        if is_perp_asset:
-            prices[coin] = float(perp_data[1][asset]["markPx"])
-        if is_spot_asset:
-            prices[coin] = float(spot_data[1][asset - SPOT_OFFSET]["markPx"])
-    return prices
-
-
-async def legacy_get_coin_asset(client: MetaBenchmarkClient, coin: str) -> int:
-    coin_name = await client.get_coin_name(coin)
-    return client.coin_assets[coin_name]
-
-
-async def legacy_get_coin_sz_decimals(client: MetaBenchmarkClient, coin: str) -> int:
-    coin_name = await client.get_coin_name(coin)
-    asset = await legacy_get_coin_asset(client, coin_name)
-    return client.asset_sz_decimals[asset]
-
-
-async def legacy_round_sz_px(
-    client: MetaBenchmarkClient, coin: str, sz: float, px: float
-) -> tuple[int, float, float | int]:
-    asset = await legacy_get_coin_asset(client, coin)
-    is_spot = SPOT_OFFSET <= asset < PERP_DEX_OFFSET
-    sz_decimals = await legacy_get_coin_sz_decimals(client, coin)
-    px_decimals = (6 if not is_spot else 8) - sz_decimals
-    return asset, round_float(sz, sz_decimals), round_px(px, px_decimals)
-
-
-async def legacy_cancel_orders(
-    client: CancelBenchmarkClient, cancels: list[tuple[str, int]]
-) -> dict[str, Any]:
-    action = {
-        "type": "cancel",
-        "cancels": [
-            {"a": await client.get_coin_asset(coin), "o": oid} for coin, oid in cancels
-        ],
-    }
-    return await client.exchange.post_action(
-        action, vault=client.vault, expires=client.expires
-    )
-
-
-async def legacy_get_batch_limit_orders(
-    client: WarmCacheBenchmarkClient, orders: BatchPlaceOrderRequest
-) -> list[dict[str, Any]]:
-    rounded_orders = await asyncio.gather(
-        *(
-            client._round_sz_px(order["coin"], order["sz"], order["px"])
-            for order in orders
-        )
-    )
-    return [
-        {**order, "asset": asset, "sz": sz, "px": px}
-        for order, (asset, sz, px) in zip(orders, rounded_orders, strict=True)
-    ]
-
-
-async def legacy_cancel_orders_warm_cache(
-    client: WarmCacheBenchmarkClient, cancels: list[tuple[str, int]]
-) -> dict[str, Any]:
-    assets = await asyncio.gather(*(client.get_coin_asset(coin) for coin, _ in cancels))
-    action = {
-        "type": "cancel",
-        "cancels": [
-            {"a": asset, "o": oid}
-            for asset, (_, oid) in zip(assets, cancels, strict=True)
-        ],
-    }
-    return await client.exchange.post_action(
-        action, vault=client.vault, expires=client.expires
-    )
-
-
-async def run_async_benchmark(
-    name: str, iterations: int, setup: Callable[[], Callable[[], Awaitable[object]]]
-) -> BenchmarkResult:
-    timings: list[float] = []
-    for _ in range(REPEATS):
-        benchmark_fn = setup()
-        gc.collect()
-        gc.disable()
-        start = perf_counter_ns()
-        for _ in range(iterations):
-            await benchmark_fn()
-        elapsed = perf_counter_ns() - start
+def measure(fn, count):
+    for _ in range(max(10, count // 100)):
+        fn()
+    gc.collect()
+    gc.disable()
+    started = perf_counter_ns()
+    try:
+        for _ in range(count):
+            fn()
+    finally:
+        elapsed = perf_counter_ns() - started
         gc.enable()
-        timings.append(elapsed / iterations)
+    return elapsed / count
 
-    return BenchmarkResult(
-        name=name,
-        iterations=iterations,
-        median_ns=statistics.median(timings),
-        mean_ns=statistics.mean(timings),
-        min_ns=min(timings),
-        max_ns=max(timings),
+
+results = {
+    "encode_order": measure(lambda: encode_order(order), iterations),
+    "encode_batch_10": measure(
+        lambda: orders_to_action([encode_order(item) for item in orders]),
+        max(100, iterations // 10),
+    ),
+    "sign_order": measure(
+        lambda: sign_action(account, single_action, None, 1_750_000_000_000, True),
+        max(100, iterations // 20),
+    ),
+    "sign_batch_10": measure(
+        lambda: sign_action(account, batch_action, None, 1_750_000_000_000, True),
+        max(100, iterations // 20),
+    ),
+}
+print(json.dumps(results, sort_keys=True))
+"""
+
+
+def alternate_candidates(
+    baseline: BenchmarkCommand, candidate: BenchmarkCommand, *, rounds: int
+) -> tuple[tuple[BenchmarkCommand, BenchmarkCommand], ...]:
+    if rounds < 1:
+        raise ValueError("rounds must be positive")
+    return tuple(
+        (baseline, candidate) if index % 2 == 0 else (candidate, baseline)
+        for index in range(rounds)
     )
 
 
-def percent_delta(new: BenchmarkResult, old: BenchmarkResult) -> float:
-    return ((old.median_ns - new.median_ns) / old.median_ns) * 100
+def summarize(samples: Sequence[float]) -> Summary:
+    if not samples:
+        raise ValueError("samples must not be empty")
+    ordered = sorted(samples)
+    median = statistics.median(ordered)
+    deviations = [abs(sample - median) for sample in ordered]
+    rank = max(0, math.ceil(0.95 * len(ordered)) - 1)
+    return {
+        "median_ns": float(median),
+        "mad_ns": float(statistics.median(deviations)),
+        "p95_ns": float(ordered[rank]),
+    }
 
 
-def print_pair(current: BenchmarkResult, legacy: BenchmarkResult) -> None:
-    print(f"{current.name}:")
-    print(
-        f"  current median: {current.median_ns:,.1f} ns/op ({current.ops_per_sec:,.1f} ops/s)"
+def _parse_result(command: BenchmarkCommand, stdout: str) -> dict[str, float]:
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        raise BenchmarkFailure(f"{command.name} produced no JSON result")
+    try:
+        decoded = cast(object, json.loads(lines[-1]))
+    except json.JSONDecodeError as error:
+        raise BenchmarkFailure(
+            f"{command.name} produced invalid JSON: {error}"
+        ) from error
+    if not isinstance(decoded, dict) or not decoded:
+        raise BenchmarkFailure(f"{command.name} produced an empty result")
+
+    result: dict[str, float] = {}
+    for name, value in decoded.items():
+        if (
+            not isinstance(name, str)
+            or isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+            or value <= 0
+        ):
+            raise BenchmarkFailure(
+                f"{command.name} produced invalid sample {name!r}={value!r}"
+            )
+        result[name] = float(value)
+    return result
+
+
+def _run(command: BenchmarkCommand) -> dict[str, float]:
+    env = os.environ.copy()
+    if command.env is not None:
+        env.update(command.env)
+    completed = subprocess.run(
+        command.argv,
+        cwd=command.cwd,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    print(
-        f"  legacy  median: {legacy.median_ns:,.1f} ns/op ({legacy.ops_per_sec:,.1f} ops/s)"
-    )
-    print(f"  improvement:    {percent_delta(current, legacy):.2f}%")
-    print()
+    if completed.returncode:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise BenchmarkFailure(
+            f"{command.name} failed with exit code {completed.returncode}: {detail}"
+        )
+    return _parse_result(command, completed.stdout)
 
 
-async def main() -> None:
-    io_latency_s = IO_LATENCY_MS / 1000.0
-    meta_client = MetaBenchmarkClient(io_latency_s)
-    cancel_client = CancelBenchmarkClient(io_latency_s)
-    cancels = [(coin, index) for index, coin in enumerate(cancel_client.assets)]
-    warm_client = WarmCacheBenchmarkClient(WARM_BATCH_SIZE)
-    warm_orders: BatchPlaceOrderRequest = [
-        {
-            "coin": f"COIN-{index}",
-            "is_buy": index % 2 == 0,
-            "sz": 1.2345,
-            "px": 2.3456,
-            "ro": False,
-            "order_type": limit_order_type(LimitTif.GTC),
-            "cloid": None,
+def run_ab_ba(
+    baseline: BenchmarkCommand,
+    candidate: BenchmarkCommand,
+    *,
+    rounds: int,
+    warmups: int,
+) -> BenchmarkReport:
+    if warmups < 0:
+        raise ValueError("warmups must not be negative")
+    for _ in range(warmups):
+        _run(baseline)
+        _run(candidate)
+
+    samples: dict[str, dict[str, list[float]]] = {baseline.name: {}, candidate.name: {}}
+    operation_names: set[str] | None = None
+    for pair in alternate_candidates(baseline, candidate, rounds=rounds):
+        for command in pair:
+            result = _run(command)
+            names = set(result)
+            if operation_names is None:
+                operation_names = names
+            elif names != operation_names:
+                raise BenchmarkFailure(
+                    f"{command.name} operation set does not match the baseline"
+                )
+            for name, value in result.items():
+                samples[command.name].setdefault(name, []).append(value)
+
+    assert operation_names is not None
+    comparisons: dict[str, Comparison] = {}
+    for operation in sorted(operation_names):
+        baseline_summary = summarize(samples[baseline.name][operation])
+        candidate_summary = summarize(samples[candidate.name][operation])
+        comparisons[operation] = {
+            "baseline": baseline_summary,
+            "candidate": candidate_summary,
+            "candidate_delta_percent": (
+                candidate_summary["median_ns"] / baseline_summary["median_ns"] - 1
+            )
+            * 100,
         }
-        for index in range(WARM_BATCH_SIZE)
-    ]
-    warm_cancels = [(f"COIN-{index}", index) for index in range(WARM_BATCH_SIZE)]
+    return {
+        "schema_version": 1,
+        "rounds": rounds,
+        "warmups": warmups,
+        "results": comparisons,
+    }
 
-    current_get_metas = await run_async_benchmark(
-        "get_metas (spot + perp)",
-        IO_ITERATIONS,
-        lambda: (
-            lambda client=meta_client: cast(Awaitable[object], client.get_metas())
-        ),
-    )
-    legacy_get_metas_result = await run_async_benchmark(
-        "get_metas (spot + perp)",
-        IO_ITERATIONS,
-        lambda: (lambda client=meta_client: legacy_get_metas(client)),
-    )
 
-    current_get_all_metas = await run_async_benchmark(
-        "get_all_metas (3 extra dexs)",
-        IO_ITERATIONS,
-        lambda: (
-            lambda client=meta_client: cast(Awaitable[object], client.get_all_metas())
-        ),
+def _wheel_command(
+    name: str, wheel: Path, destination: Path, *, iterations: int
+) -> BenchmarkCommand:
+    if wheel.suffix != ".whl" or not wheel.is_file():
+        raise BenchmarkFailure(f"{name} wheel does not exist: {wheel}")
+    destination.mkdir(parents=True)
+    with zipfile.ZipFile(wheel) as archive:
+        members = archive.infolist()
+        for member in members:
+            path = Path(member.filename)
+            if path.is_absolute() or ".." in path.parts:
+                raise BenchmarkFailure(
+                    f"{name} has unsafe wheel member: {member.filename}"
+                )
+        if not any(
+            Path(member.filename).parts == ("async_hyperliquid", "__init__.py")
+            for member in members
+        ):
+            raise BenchmarkFailure(f"{name} wheel does not contain async_hyperliquid")
+        archive.extractall(destination)
+    bootstrap = (
+        f"import pathlib,sys;sys.path.insert(0, {str(destination)!r});"
+        "import async_hyperliquid as package;"
+        "assert pathlib.Path(package.__file__).resolve().is_relative_to("
+        f"pathlib.Path({str(destination)!r}).resolve());"
+        f"exec({WHEEL_PROBE!r})"
     )
-    legacy_get_all_metas_result = await run_async_benchmark(
-        "get_all_metas (3 extra dexs)",
-        IO_ITERATIONS,
-        lambda: (lambda client=meta_client: legacy_get_all_metas(client)),
-    )
-
-    current_market_prices = await run_async_benchmark(
-        "get_all_market_prices(all)",
-        IO_ITERATIONS,
-        lambda: (
-            lambda client=meta_client: cast(
-                Awaitable[object], client.get_all_market_prices(market="all")
-            )
-        ),
-    )
-    legacy_market_prices = await run_async_benchmark(
-        "get_all_market_prices(all)",
-        IO_ITERATIONS,
-        lambda: (lambda client=meta_client: legacy_get_all_market_prices(client)),
+    return BenchmarkCommand(
+        name=name,
+        argv=(sys.executable, "-I", "-c", bootstrap),
+        cwd=destination,
+        env={"BENCH_ITERATIONS": str(iterations)},
     )
 
-    current_round_sz_px = await run_async_benchmark(
-        "_round_sz_px warm-cache lookup",
-        LOOKUP_ITERATIONS,
-        lambda: (
-            lambda client=meta_client: cast(
-                Awaitable[object], client._round_sz_px("PURR/USDC", 12.3456, 1.234567)
-            )
-        ),
-    )
-    legacy_round_sz_px_result = await run_async_benchmark(
-        "_round_sz_px warm-cache lookup",
-        LOOKUP_ITERATIONS,
-        lambda: (
-            lambda client=meta_client: legacy_round_sz_px(
-                client, "PURR/USDC", 12.3456, 1.234567
-            )
-        ),
-    )
 
-    current_cancel_orders = await run_async_benchmark(
-        f"cancel_orders asset resolution (batch={CANCEL_BATCH_SIZE})",
-        IO_ITERATIONS,
-        lambda: (
-            lambda client=cancel_client: cast(
-                Awaitable[object], client.cancel_orders(cancels)
-            )
-        ),
-    )
-    legacy_cancel_orders_result = await run_async_benchmark(
-        f"cancel_orders asset resolution (batch={CANCEL_BATCH_SIZE})",
-        IO_ITERATIONS,
-        lambda: (lambda client=cancel_client: legacy_cancel_orders(client, cancels)),
-    )
+def compare_wheels(
+    baseline_wheel: Path,
+    candidate_wheel: Path,
+    *,
+    rounds: int,
+    warmups: int,
+    iterations: int,
+) -> BenchmarkReport:
+    with TemporaryDirectory(prefix="async-hyperliquid-benchmark-") as temp:
+        root = Path(temp)
+        baseline = _wheel_command(
+            "baseline", baseline_wheel, root / "baseline", iterations=iterations
+        )
+        candidate = _wheel_command(
+            "candidate", candidate_wheel, root / "candidate", iterations=iterations
+        )
+        return run_ab_ba(baseline, candidate, rounds=rounds, warmups=warmups)
 
-    current_warm_batch_limit_orders = await run_async_benchmark(
-        f"_get_batch_limit_orders warm-cache (batch={WARM_BATCH_SIZE})",
-        WARM_BATCH_ITERATIONS,
-        lambda: (
-            lambda client=warm_client, orders=warm_orders: cast(
-                Awaitable[object], client._get_batch_limit_orders(orders)
-            )
-        ),
-    )
-    legacy_warm_batch_limit_orders = await run_async_benchmark(
-        f"_get_batch_limit_orders warm-cache (batch={WARM_BATCH_SIZE})",
-        WARM_BATCH_ITERATIONS,
-        lambda: (
-            lambda client=warm_client, orders=warm_orders: cast(
-                Awaitable[object], legacy_get_batch_limit_orders(client, orders)
-            )
-        ),
-    )
 
-    current_warm_cancel_orders = await run_async_benchmark(
-        f"cancel_orders warm-cache (batch={WARM_BATCH_SIZE})",
-        WARM_BATCH_ITERATIONS,
-        lambda: (
-            lambda client=warm_client, cancels=warm_cancels: cast(
-                Awaitable[object], client.cancel_orders(cancels)
-            )
-        ),
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compare installed wheel hot paths using alternating AB/BA rounds."
     )
-    legacy_warm_cancel_orders = await run_async_benchmark(
-        f"cancel_orders warm-cache (batch={WARM_BATCH_SIZE})",
-        WARM_BATCH_ITERATIONS,
-        lambda: (
-            lambda client=warm_client, cancels=warm_cancels: cast(
-                Awaitable[object], legacy_cancel_orders_warm_cache(client, cancels)
-            )
-        ),
-    )
+    parser.add_argument("--baseline-wheel", type=Path, required=True)
+    parser.add_argument("--candidate-wheel", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--rounds", type=int, default=7)
+    parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument("--iterations", type=int, default=5_000)
+    return parser.parse_args()
 
-    print("Client hot-path benchmark")
-    print(
-        f"repeats={REPEATS}, io_iterations={IO_ITERATIONS}, "
-        f"lookup_iterations={LOOKUP_ITERATIONS}, io_latency_ms={IO_LATENCY_MS}, "
-        f"cancel_batch_size={CANCEL_BATCH_SIZE}, warm_batch_size={WARM_BATCH_SIZE}, "
-        f"warm_batch_iterations={WARM_BATCH_ITERATIONS}"
+
+def main() -> None:
+    args = parse_args()
+    report = compare_wheels(
+        args.baseline_wheel,
+        args.candidate_wheel,
+        rounds=args.rounds,
+        warmups=args.warmups,
+        iterations=args.iterations,
     )
-    print()
-    print_pair(current_get_metas, legacy_get_metas_result)
-    print_pair(current_get_all_metas, legacy_get_all_metas_result)
-    print_pair(current_market_prices, legacy_market_prices)
-    print_pair(current_round_sz_px, legacy_round_sz_px_result)
-    print_pair(current_cancel_orders, legacy_cancel_orders_result)
-    print_pair(current_warm_batch_limit_orders, legacy_warm_batch_limit_orders)
-    print_pair(current_warm_cancel_orders, legacy_warm_cancel_orders)
+    rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if args.output is None:
+        print(rendered, end="")
+    else:
+        args.output.write_text(rendered)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

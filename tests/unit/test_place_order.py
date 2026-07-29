@@ -1,25 +1,27 @@
 from types import SimpleNamespace
-from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from aiohttp import ClientSession
 
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.utils.types import (
-    LimitOrder,
+    BatchPlaceOrderRequest,
     LimitTif,
+    OrderBuilder,
     TriggerTpsl,
     limit_order_type,
     trigger_order_type,
 )
 
 
-def build_stub_hl() -> Any:
-    session = SimpleNamespace(closed=False, close=AsyncMock())
+def build_stub_hl() -> AsyncHyperliquid:
+    session = cast(ClientSession, SimpleNamespace(closed=False, close=AsyncMock()))
     return AsyncHyperliquid(
         "0x1111111111111111111111111111111111111111",
         "0x" + ("11" * 32),
-        session=session,  # type: ignore[arg-type]
+        session=session,
     )
 
 
@@ -73,7 +75,7 @@ async def test_place_order_routes_to_market_order() -> None:
         sz=0.1,
         px=1.0,
         is_market=True,
-        order_type=LimitOrder.ALO.value,
+        order_type=limit_order_type(LimitTif.ALO),
         slippage=0.02,
     )
 
@@ -161,10 +163,13 @@ async def test_batch_place_orders_builds_limit_orders_in_input_order() -> None:
     setattr(hl, "_round_sz_px", fake_round_sz_px)
     setattr(hl, "place_orders", place_orders)
 
-    orders = [
-        {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
-        {"coin": "ETH", "is_buy": False, "sz": 0.2, "px": 200.0, "ro": True},
-    ]
+    orders = cast(
+        BatchPlaceOrderRequest,
+        [
+            {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
+            {"coin": "ETH", "is_buy": False, "sz": 0.2, "px": 200.0, "ro": True},
+        ],
+    )
 
     resp = await hl.batch_place_orders(orders)
 
@@ -202,10 +207,13 @@ async def test_get_batch_limit_orders_uses_cached_fast_path() -> None:
     setattr(hl, "asset_sz_decimals", {10: 1, 11: 2})
     setattr(hl, "get_coin_name", get_coin_name)
 
-    orders = [
-        {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
-        {"coin": "ETH", "is_buy": False, "sz": 0.25, "px": 200.0, "ro": True},
-    ]
+    orders = cast(
+        BatchPlaceOrderRequest,
+        [
+            {"coin": "BTC", "is_buy": True, "sz": 0.1, "px": 100.0, "ro": False},
+            {"coin": "ETH", "is_buy": False, "sz": 0.25, "px": 200.0, "ro": True},
+        ],
+    )
 
     reqs = await hl._get_batch_limit_orders(orders)
 
@@ -232,7 +240,7 @@ async def test_close_all_positions_forwards_builder_to_batch_market_close() -> N
     batch_place_orders = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "get_all_positions", get_all_positions)
     setattr(hl, "batch_place_orders", batch_place_orders)
-    builder = {"b": "0xabc", "f": 10}
+    builder: OrderBuilder = {"b": "0xabc", "f": 10}
 
     resp = await hl.close_all_positions(dexs=["flx"], builder=builder)
 
@@ -255,7 +263,7 @@ async def test_close_dex_positions_reuses_close_all_positions_path_with_builder(
     hl = build_stub_hl()
     close_all_positions = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "close_all_positions", close_all_positions)
-    builder = {"b": "0xabc", "f": 10}
+    builder: OrderBuilder = {"b": "0xabc", "f": 10}
 
     resp = await hl.close_dex_positions("flx", builder=builder)
 
@@ -276,7 +284,7 @@ async def test_close_positions_batches_requested_coins_only() -> None:
     batch_place_orders = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "get_all_positions", get_all_positions)
     setattr(hl, "batch_place_orders", batch_place_orders)
-    builder = {"b": "0xabc", "f": 10}
+    builder: OrderBuilder = {"b": "0xabc", "f": 10}
 
     resp = await hl.close_positions(["ETH", "flx:BTC", "MISSING"], builder=builder)
 
@@ -297,7 +305,7 @@ async def test_close_position_reuses_close_positions_batch_path() -> None:
     hl = build_stub_hl()
     close_positions = AsyncMock(return_value={"status": "ok"})
     setattr(hl, "close_positions", close_positions)
-    builder = {"b": "0xabc", "f": 10}
+    builder: OrderBuilder = {"b": "0xabc", "f": 10}
 
     resp = await hl.close_position("BTC", builder=builder)
 

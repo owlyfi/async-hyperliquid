@@ -1,20 +1,21 @@
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from aiohttp import ClientSession
 
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.utils.constants import PERP_DEX_OFFSET, SPOT_OFFSET
 
 
-def build_stub_hl() -> Any:
-    session = SimpleNamespace(closed=False, close=AsyncMock())
+def build_stub_hl() -> AsyncHyperliquid:
+    session = cast(ClientSession, SimpleNamespace(closed=False, close=AsyncMock()))
     return AsyncHyperliquid(
         "0x1111111111111111111111111111111111111111",
         "0x" + ("11" * 32),
-        session=session,  # type: ignore[arg-type]
+        session=session,
     )
 
 
@@ -31,7 +32,7 @@ class StartBarrier:
         await asyncio.wait_for(self._ready.wait(), timeout=0.1)
 
 
-def init_spot_meta_stub() -> Any:
+def init_spot_meta_stub() -> AsyncHyperliquid:
     hl = build_stub_hl()
     setattr(hl, "coin_assets", {})
     setattr(hl, "coin_names", {})

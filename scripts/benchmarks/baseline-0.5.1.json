@@ -1,0 +1,33 @@
+{
+  "artifact": "async_hyperliquid-0.5.1-py3-none-any.whl",
+  "base_revision": "5451006",
+  "iterations": 2000,
+  "operations": {
+    "encode_batch_10": {
+      "mad_ns": 89.38,
+      "median_ns": 6927.295,
+      "p95_ns": 7463.75
+    },
+    "encode_order": {
+      "mad_ns": 12.7295,
+      "median_ns": 704.8125,
+      "p95_ns": 766.396
+    },
+    "sign_batch_10": {
+      "mad_ns": 1367.09,
+      "median_ns": 120192.5,
+      "p95_ns": 124945.42
+    },
+    "sign_order": {
+      "mad_ns": 1357.5,
+      "median_ns": 118734.17,
+      "p95_ns": 123677.08
+    }
+  },
+  "platform": "macOS-arm64",
+  "python": "3.12.13",
+  "rounds": 7,
+  "schema_version": 1,
+  "source": "local task-1 worktree; not a published package or tag",
+  "warmups": 1
+}

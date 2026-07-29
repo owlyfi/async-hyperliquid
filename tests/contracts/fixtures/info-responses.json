@@ -1,0 +1,621 @@
+{
+  "activeAssetData": {
+    "availableToTrade": [
+      "1000.0",
+      "1000.0"
+    ],
+    "coin": "BTC",
+    "leverage": {
+      "type": "cross",
+      "value": 5
+    },
+    "markPx": "105000.0",
+    "maxTradeSzs": [
+      "1.0",
+      "1.0"
+    ],
+    "user": "0x1111111111111111111111111111111111111111"
+  },
+  "alignedQuoteTokenInfo": {
+    "dailyAmountOwed": [
+      [
+        "2025-10-04",
+        "0.0"
+      ]
+    ],
+    "evmMintedSupply": "0.0",
+    "firstAlignedTime": 1758949452538,
+    "isAligned": true,
+    "predictedRate": "0.01"
+  },
+  "allMids": {
+    "APE": "4.33245",
+    "ARB": "1.21695"
+  },
+  "allPerpMetas": [
+    {
+      "universe": [
+        {
+          "isDelisted": false,
+          "maxLeverage": 50,
+          "name": "BTC",
+          "onlyIsolated": false,
+          "szDecimals": 5
+        }
+      ]
+    }
+  ],
+  "candleSnapshot": [
+    {
+      "T": 1681924499999,
+      "c": "29258.0",
+      "h": "29309.0",
+      "i": "15m",
+      "l": "29250.0",
+      "n": 189,
+      "o": "29295.0",
+      "s": "BTC",
+      "t": 1681923600000,
+      "v": "0.98639"
+    }
+  ],
+  "clearinghouseState": {
+    "assetPositions": [],
+    "crossMaintenanceMarginUsed": "0.0",
+    "crossMarginSummary": {
+      "accountValue": "100.0",
+      "totalMarginUsed": "0.0",
+      "totalNtlPos": "0.0",
+      "totalRawUsd": "100.0"
+    },
+    "marginSummary": {
+      "accountValue": "100.0",
+      "totalMarginUsed": "0.0",
+      "totalNtlPos": "0.0",
+      "totalRawUsd": "100.0"
+    },
+    "time": 1750000000000,
+    "withdrawable": "100.0"
+  },
+  "delegations": [
+    {
+      "amount": "10.0",
+      "lockedUntilTimestamp": 1750000000000,
+      "validator": "0x2222222222222222222222222222222222222222"
+    }
+  ],
+  "delegatorHistory": [
+    {
+      "delta": {
+        "delegate": {
+          "amount": "10.0",
+          "isUndelegate": false,
+          "validator": "0x2222222222222222222222222222222222222222"
+        }
+      },
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "time": 1750000000000
+    }
+  ],
+  "delegatorRewards": [
+    {
+      "source": "delegation",
+      "time": 1750000000000,
+      "totalAmount": "0.5"
+    }
+  ],
+  "delegatorSummary": {
+    "delegated": "10.0",
+    "nPendingWithdrawals": 0,
+    "totalPendingWithdrawal": "0.0",
+    "undelegated": "0.0"
+  },
+  "frontendOpenOrders": [
+    {
+      "children": [],
+      "cloid": null,
+      "coin": "BTC",
+      "isPositionTpsl": false,
+      "isTrigger": false,
+      "limitPx": "29792.0",
+      "oid": 91490942,
+      "orderType": "Limit",
+      "origSz": "5.0",
+      "reduceOnly": false,
+      "side": "A",
+      "sz": "5.0",
+      "tif": "Gtc",
+      "timestamp": 1681247412573,
+      "triggerCondition": "N/A",
+      "triggerPx": "0.0"
+    }
+  ],
+  "fundingHistory": [
+    {
+      "coin": "BTC",
+      "fundingRate": "0.0000125",
+      "premium": "0.0001",
+      "time": 1750000000000
+    }
+  ],
+  "historicalOrders": [
+    {
+      "order": {
+        "children": [],
+        "cloid": null,
+        "coin": "BTC",
+        "isPositionTpsl": false,
+        "isTrigger": false,
+        "limitPx": "29792.0",
+        "oid": 91490942,
+        "orderType": "Limit",
+        "origSz": "5.0",
+        "reduceOnly": false,
+        "side": "A",
+        "sz": "0.0",
+        "tif": "Gtc",
+        "timestamp": 1681247412573,
+        "triggerCondition": "N/A",
+        "triggerPx": "0.0"
+      },
+      "status": "filled",
+      "statusTimestamp": 1681247413000
+    }
+  ],
+  "l2Book": {
+    "coin": "BTC",
+    "levels": [
+      [
+        {
+          "n": 17,
+          "px": "113377.0",
+          "sz": "7.6699"
+        }
+      ],
+      [
+        {
+          "n": 3,
+          "px": "113397.0",
+          "sz": "0.11543"
+        }
+      ]
+    ],
+    "time": 1754450974231
+  },
+  "maxBuilderFee": 10,
+  "meta": {
+    "universe": [
+      {
+        "isDelisted": false,
+        "maxLeverage": 50,
+        "name": "BTC",
+        "onlyIsolated": false,
+        "szDecimals": 5
+      }
+    ]
+  },
+  "metaAndAssetCtxs": [
+    {
+      "universe": [
+        {
+          "isDelisted": false,
+          "maxLeverage": 50,
+          "name": "BTC",
+          "onlyIsolated": false,
+          "szDecimals": 5
+        }
+      ]
+    },
+    [
+      {
+        "dayNtlVlm": "1000000.0",
+        "funding": "0.0000125",
+        "impactPxs": [
+          "104999.0",
+          "105001.0"
+        ],
+        "markPx": "105000.0",
+        "midPx": "105000.0",
+        "openInterest": "1000.0",
+        "oraclePx": "105000.0",
+        "premium": "0.0",
+        "prevDayPx": "104000.0"
+      }
+    ]
+  ],
+  "openOrders": [
+    {
+      "coin": "BTC",
+      "limitPx": "29792.0",
+      "oid": 91490942,
+      "origSz": "5.0",
+      "side": "A",
+      "sz": "5.0",
+      "timestamp": 1681247412573
+    }
+  ],
+  "orderStatus": {
+    "order": {
+      "order": {
+        "children": [],
+        "cloid": null,
+        "coin": "BTC",
+        "isPositionTpsl": false,
+        "isTrigger": false,
+        "limitPx": "29792.0",
+        "oid": 91490942,
+        "orderType": "Limit",
+        "origSz": "5.0",
+        "reduceOnly": false,
+        "side": "A",
+        "sz": "0.0",
+        "tif": "Gtc",
+        "timestamp": 1681247412573,
+        "triggerCondition": "N/A",
+        "triggerPx": "0.0"
+      },
+      "status": "filled",
+      "statusTimestamp": 1681247413000
+    },
+    "status": "order"
+  },
+  "perpDeployAuctionStatus": {
+    "currentGas": "100.0",
+    "durationSeconds": 3600,
+    "endGas": null,
+    "startGas": "1000.0",
+    "startTimeSeconds": 1750000000
+  },
+  "perpDexs": [
+    null,
+    {
+      "assetToFundingMultiplier": [
+        [
+          "EXAMPLE",
+          "1.0"
+        ]
+      ],
+      "assetToStreamingOiCap": [],
+      "deployer": "0x2222222222222222222222222222222222222222",
+      "feeRecipient": "0x3333333333333333333333333333333333333333",
+      "fullName": "Example DEX",
+      "name": "example",
+      "oracleUpdater": null
+    }
+  ],
+  "perpsAtOpenInterestCap": [
+    "BTC"
+  ],
+  "portfolio": [
+    [
+      "day",
+      {
+        "accountValueHistory": [
+          [
+            1741886630493,
+            "0.0"
+          ]
+        ],
+        "pnlHistory": [
+          [
+            1741886630493,
+            "0.0"
+          ]
+        ],
+        "vlm": "0.0"
+      }
+    ]
+  ],
+  "predictedFundings": [
+    [
+      "BTC",
+      [
+        [
+          "HlPerp",
+          {
+            "fundingRate": "0.0000125",
+            "nextFundingTime": 1750003600000
+          }
+        ]
+      ]
+    ]
+  ],
+  "referral": {
+    "builderRewards": "0.0",
+    "claimedRewards": "0.0",
+    "cumVlm": "0.0",
+    "referredBy": {
+      "code": "CODE",
+      "referrer": "0x2222222222222222222222222222222222222222"
+    },
+    "referrerState": {
+      "data": {
+        "code": "CODE",
+        "referralStates": []
+      },
+      "stage": "ready"
+    },
+    "rewardHistory": [],
+    "unclaimedRewards": "0.0"
+  },
+  "spotClearinghouseState": {
+    "balances": [
+      {
+        "coin": "USDC",
+        "entryNtl": "0.0",
+        "hold": "0.0",
+        "token": 0,
+        "total": "100.0"
+      }
+    ]
+  },
+  "spotDeployState": {
+    "gasAuction": {
+      "currentGas": null,
+      "durationSeconds": 3600,
+      "endGas": "100.0",
+      "startGas": "1000.0",
+      "startTimeSeconds": 1750000000
+    },
+    "states": []
+  },
+  "spotMeta": {
+    "tokens": [
+      {
+        "evmContract": null,
+        "fullName": "USD Coin",
+        "index": 0,
+        "isCanonical": true,
+        "name": "USDC",
+        "szDecimals": 6,
+        "tokenId": "0x00000000000000000000000000000000",
+        "weiDecimals": 6
+      }
+    ],
+    "universe": [
+      {
+        "index": 0,
+        "isCanonical": true,
+        "name": "PURR/USDC",
+        "tokens": [
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  "spotMetaAndAssetCtxs": [
+    {
+      "tokens": [
+        {
+          "evmContract": null,
+          "fullName": "USD Coin",
+          "index": 0,
+          "isCanonical": true,
+          "name": "USDC",
+          "szDecimals": 6,
+          "tokenId": "0x00000000000000000000000000000000",
+          "weiDecimals": 6
+        }
+      ],
+      "universe": [
+        {
+          "index": 0,
+          "isCanonical": true,
+          "name": "PURR/USDC",
+          "tokens": [
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    [
+      {
+        "dayNtlVlm": "1000.0",
+        "markPx": "1.25",
+        "midPx": "1.25",
+        "prevDayPx": "1.20"
+      }
+    ]
+  ],
+  "subAccounts": [
+    {
+      "clearinghouseState": {
+        "assetPositions": [],
+        "crossMaintenanceMarginUsed": "0.0",
+        "crossMarginSummary": {
+          "accountValue": "0.0",
+          "totalMarginUsed": "0.0",
+          "totalNtlPos": "0.0",
+          "totalRawUsd": "0.0"
+        },
+        "marginSummary": {
+          "accountValue": "0.0",
+          "totalMarginUsed": "0.0",
+          "totalNtlPos": "0.0",
+          "totalRawUsd": "0.0"
+        },
+        "time": 1750000000000,
+        "withdrawable": "0.0"
+      },
+      "master": "0x1111111111111111111111111111111111111111",
+      "name": "example",
+      "spotState": {
+        "balances": []
+      },
+      "subAccountUser": "0x2222222222222222222222222222222222222222"
+    }
+  ],
+  "tokenDetails": {
+    "circulatingSupply": "1000000.0",
+    "deployGas": "1000.0",
+    "deployTime": "1750000000000",
+    "deployer": "0x2222222222222222222222222222222222222222",
+    "futureEmissions": "0.0",
+    "genesis": [],
+    "markPx": "1.0",
+    "maxSupply": "1000000.0",
+    "midPx": "1.0",
+    "name": "TOKEN",
+    "nonCirculatingUserBalances": [],
+    "prevDayPx": "1.0",
+    "seededUsdc": "10000.0",
+    "szDecimals": 2,
+    "totalSupply": "1000000.0",
+    "weiDecimals": 8
+  },
+  "userAbstraction": "disabled",
+  "userDexAbstraction": false,
+  "userFees": {
+    "activeReferralDiscount": "0.0",
+    "activeStakingDiscount": {
+      "bpsOfMaxSupply": "0.0",
+      "discount": "0.0"
+    },
+    "dailyUserVlm": [],
+    "feeSchedule": {
+      "add": "0.0001",
+      "cross": "0.00035",
+      "referralDiscount": "0.0",
+      "spotAdd": "0.0001",
+      "spotCross": "0.00035",
+      "stakingDiscount": [],
+      "tiers": {
+        "mm": [],
+        "vip": []
+      }
+    },
+    "feeTrialReward": "0.0",
+    "nextTrialAvailableTimestamp": null,
+    "stakingLink": {
+      "stakingUser": "0x1111111111111111111111111111111111111111",
+      "type": "self"
+    },
+    "trial": null,
+    "userAddRate": "0.0001",
+    "userCrossRate": "0.00035",
+    "userSpotAddRate": "0.0001",
+    "userSpotCrossRate": "0.00035"
+  },
+  "userFills": [
+    {
+      "builderFee": null,
+      "closedPnl": "0.0",
+      "coin": "AVAX",
+      "crossed": false,
+      "dir": "Open Long",
+      "fee": "0.01",
+      "feeToken": "USDC",
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "oid": 90542681,
+      "px": "18.435",
+      "side": "B",
+      "startPosition": "26.86",
+      "sz": "93.53",
+      "tid": 118906512037719,
+      "time": 1681222254710
+    }
+  ],
+  "userFillsByTime": [
+    {
+      "builderFee": null,
+      "closedPnl": "0.0",
+      "coin": "AVAX",
+      "crossed": false,
+      "dir": "Open Long",
+      "fee": "0.01",
+      "feeToken": "USDC",
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "oid": 90542681,
+      "px": "18.435",
+      "side": "B",
+      "startPosition": "26.86",
+      "sz": "93.53",
+      "tid": 118906512037719,
+      "time": 1681222254710
+    }
+  ],
+  "userFunding": [
+    {
+      "delta": {
+        "coin": "BTC",
+        "fundingRate": "0.0000125",
+        "szi": "0.1",
+        "type": "funding",
+        "usdc": "-0.01"
+      },
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "time": 1750000000000
+    }
+  ],
+  "userNonFundingLedgerUpdates": [
+    {
+      "delta": {
+        "type": "deposit",
+        "usdc": "100.0"
+      },
+      "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "time": 1750000000000
+    }
+  ],
+  "userRateLimit": {
+    "cumVlm": "2854574.593578",
+    "nRequestsCap": 2864574,
+    "nRequestsSurplus": 0,
+    "nRequestsUsed": 2890
+  },
+  "userRole": {
+    "role": "missing"
+  },
+  "userTwapSliceFills": [
+    {
+      "fill": {
+        "closedPnl": "0.0",
+        "coin": "AVAX",
+        "crossed": true,
+        "dir": "Open Long",
+        "fee": "0.01",
+        "feeToken": "USDC",
+        "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "oid": 90542681,
+        "px": "18.435",
+        "side": "B",
+        "startPosition": "26.86",
+        "sz": "93.53",
+        "tid": 118906512037719,
+        "time": 1681222254710
+      },
+      "twapId": 3156
+    }
+  ],
+  "userVaultEquities": [
+    {
+      "equity": "100.0",
+      "vaultAddress": "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
+    }
+  ],
+  "vaultDetails": {
+    "allowDeposits": true,
+    "alwaysCloseOnWithdraw": false,
+    "apr": 0.1,
+    "description": "Example vault",
+    "followerState": null,
+    "followers": [],
+    "isClosed": false,
+    "leader": "0x2222222222222222222222222222222222222222",
+    "leaderCommission": 0.1,
+    "leaderFraction": 0.2,
+    "maxDistributable": 1000.0,
+    "maxWithdrawable": 1000.0,
+    "name": "Example",
+    "portfolio": [],
+    "relationship": {
+      "data": {
+        "childAddresses": []
+      },
+      "type": "normal"
+    },
+    "vaultAddress": "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
+  }
+}

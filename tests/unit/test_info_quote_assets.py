@@ -3,13 +3,14 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from aiohttp import ClientSession
 
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.info import InfoAPI
 
 
-def build_stub_hl() -> Any:
-    session = cast(Any, SimpleNamespace(closed=False, close=AsyncMock()))
+def build_stub_hl() -> AsyncHyperliquid:
+    session = cast(ClientSession, SimpleNamespace(closed=False, close=AsyncMock()))
     return AsyncHyperliquid(
         "0x1111111111111111111111111111111111111111",
         "0x" + ("11" * 32),

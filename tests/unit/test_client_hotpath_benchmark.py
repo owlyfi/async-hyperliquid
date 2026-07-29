@@ -1,0 +1,87 @@
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from scripts.client_hotpath_benchmark import (
+    BenchmarkCommand,
+    BenchmarkFailure,
+    alternate_candidates,
+    compare_wheels,
+    run_ab_ba,
+    summarize,
+)
+
+
+def test_alternate_candidates_uses_ab_ba_rounds() -> None:
+    baseline = BenchmarkCommand("baseline", (sys.executable, "-c", ""))
+    candidate = BenchmarkCommand("candidate", (sys.executable, "-c", ""))
+
+    assert alternate_candidates(baseline, candidate, rounds=4) == (
+        (baseline, candidate),
+        (candidate, baseline),
+        (baseline, candidate),
+        (candidate, baseline),
+    )
+
+
+def test_summary_reports_median_mad_and_nearest_rank_p95() -> None:
+    assert summarize([10.0, 20.0, 30.0, 40.0, 100.0]) == {
+        "median_ns": 30.0,
+        "mad_ns": 10.0,
+        "p95_ns": 100.0,
+    }
+
+
+def test_benchmark_fails_on_an_unexpected_child_exception() -> None:
+    baseline = BenchmarkCommand(
+        "baseline",
+        (sys.executable, "-c", "import json; print(json.dumps({'encode_order': 1.0}))"),
+    )
+    candidate = BenchmarkCommand(
+        "candidate", (sys.executable, "-c", "raise RuntimeError('broken benchmark')")
+    )
+
+    with pytest.raises(BenchmarkFailure, match="candidate"):
+        run_ab_ba(baseline, candidate, rounds=1, warmups=0)
+
+
+def test_benchmark_rejects_mismatched_operation_sets() -> None:
+    baseline = BenchmarkCommand(
+        "baseline",
+        (sys.executable, "-c", "import json; print(json.dumps({'encode_order': 1.0}))"),
+    )
+    candidate = BenchmarkCommand(
+        "candidate",
+        (sys.executable, "-c", "import json; print(json.dumps({'sign_batch': 1.0}))"),
+    )
+
+    with pytest.raises(BenchmarkFailure, match="operation"):
+        run_ab_ba(baseline, candidate, rounds=1, warmups=0)
+
+
+def test_benchmark_output_is_json_serializable() -> None:
+    baseline = BenchmarkCommand(
+        "baseline",
+        (sys.executable, "-c", "import json; print(json.dumps({'encode_order': 2.0}))"),
+    )
+    candidate = BenchmarkCommand(
+        "candidate",
+        (sys.executable, "-c", "import json; print(json.dumps({'encode_order': 1.0}))"),
+    )
+
+    report = run_ab_ba(baseline, candidate, rounds=2, warmups=0)
+
+    json.dumps(report)
+    assert report["results"]["encode_order"]["candidate"]["median_ns"] == 1.0
+
+
+def test_benchmark_rejects_a_wheel_with_path_traversal(tmp_path: Path) -> None:
+    wheel = tmp_path / "malicious.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("../outside.py", "raise RuntimeError")
+
+    with pytest.raises(BenchmarkFailure, match="unsafe wheel member"):
+        compare_wheels(wheel, wheel, rounds=1, warmups=0, iterations=1)

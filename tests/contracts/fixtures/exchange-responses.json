@@ -1,0 +1,71 @@
+{
+  "cancel_error": {
+    "response": {
+      "data": {
+        "statuses": [
+          {
+            "error": "Order was never placed, already canceled, or filled."
+          }
+        ]
+      },
+      "type": "cancel"
+    },
+    "status": "ok"
+  },
+  "cancel_success": {
+    "response": {
+      "data": {
+        "statuses": [
+          "success"
+        ]
+      },
+      "type": "cancel"
+    },
+    "status": "ok"
+  },
+  "order_error": {
+    "response": {
+      "data": {
+        "statuses": [
+          {
+            "error": "Order must have minimum value of $10."
+          }
+        ]
+      },
+      "type": "order"
+    },
+    "status": "ok"
+  },
+  "order_filled": {
+    "response": {
+      "data": {
+        "statuses": [
+          {
+            "filled": {
+              "avgPx": "1891.4",
+              "oid": 77747314,
+              "totalSz": "0.02"
+            }
+          }
+        ]
+      },
+      "type": "order"
+    },
+    "status": "ok"
+  },
+  "order_resting": {
+    "response": {
+      "data": {
+        "statuses": [
+          {
+            "resting": {
+              "oid": 77738308
+            }
+          }
+        ]
+      },
+      "type": "order"
+    },
+    "status": "ok"
+  }
+}
