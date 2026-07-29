@@ -1,0 +1,40 @@
+from typing import Literal, assert_type
+
+from async_hyperliquid.types import CancelByCloid, Cloid, LimitOrder, Network, Side
+from async_hyperliquid.types.exchange import CancelOrderResponse, PlaceOrderResponse
+from async_hyperliquid.types.info import (
+    AllMids,
+    L2Book,
+    L2Level,
+    PerpMetaAndContexts,
+    SpotMetaAndContexts,
+    UserRateLimit,
+)
+
+
+def check_v1_contract_types(
+    mids: AllMids,
+    book: L2Book,
+    rate_limit: UserRateLimit,
+    perp_meta: PerpMetaAndContexts,
+    spot_meta: SpotMetaAndContexts,
+    order_response: PlaceOrderResponse,
+    cancel_response: CancelOrderResponse,
+) -> None:
+    assert_type(mids["BTC"], str)
+    assert_type(book["levels"], list[list[L2Level]])
+    assert_type(rate_limit["nRequestsSurplus"], int)
+    assert_type(perp_meta[0]["universe"][0]["szDecimals"], int)
+    assert_type(spot_meta[0]["tokens"][0]["tokenId"], str)
+    assert_type(order_response["status"], Literal["ok", "err"])
+    assert_type(cancel_response["status"], Literal["ok", "err"])
+
+
+def check_v1_command_types() -> None:
+    cloid = Cloid("0x" + "12" * 16)
+    order = LimitOrder("BTC", Side.BUY, 0.01, 100_000.0)
+    cancel = CancelByCloid("BTC", cloid)
+
+    assert_type(Network.MAINNET.signature_source, Literal["a", "b"])
+    assert_type(order.client_order_id, Cloid | None)
+    assert_type(cancel.client_order_id, Cloid)

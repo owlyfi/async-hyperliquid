@@ -33,17 +33,49 @@
     "ARB": "1.21695"
   },
   "allPerpMetas": [
-    {
-      "universe": [
+    [
+      {
+        "marginTables": [
+          [
+            50,
+            {
+              "description": "",
+              "marginTiers": [
+                {
+                  "lowerBound": "0.0",
+                  "maxLeverage": 50
+                }
+              ]
+            }
+          ]
+        ],
+        "universe": [
+          {
+            "isDelisted": false,
+            "maxLeverage": 50,
+            "name": "BTC",
+            "onlyIsolated": false,
+            "szDecimals": 5
+          }
+        ]
+      },
+      [
         {
-          "isDelisted": false,
-          "maxLeverage": 50,
-          "name": "BTC",
-          "onlyIsolated": false,
-          "szDecimals": 5
+          "dayNtlVlm": "1000000.0",
+          "funding": "0.0000125",
+          "impactPxs": [
+            "104999.0",
+            "105001.0"
+          ],
+          "markPx": "105000.0",
+          "midPx": "105000.0",
+          "openInterest": "1000.0",
+          "oraclePx": "105000.0",
+          "premium": "0.0",
+          "prevDayPx": "104000.0"
         }
       ]
-    }
+    ]
   ],
   "candleSnapshot": [
     {
@@ -184,6 +216,20 @@
   },
   "maxBuilderFee": 10,
   "meta": {
+    "marginTables": [
+      [
+        50,
+        {
+          "description": "",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 50
+            }
+          ]
+        }
+      ]
+    ],
     "universe": [
       {
         "isDelisted": false,
@@ -196,6 +242,20 @@
   },
   "metaAndAssetCtxs": [
     {
+      "marginTables": [
+        [
+          50,
+          {
+            "description": "",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 50
+              }
+            ]
+          }
+        ]
+      ],
       "universe": [
         {
           "isDelisted": false,
@@ -331,11 +391,41 @@
     "referrerState": {
       "data": {
         "code": "CODE",
-        "referralStates": []
+        "nReferrals": 1,
+        "referralStates": [
+          {
+            "cumFeesRewardedToReferrer": "0.1",
+            "cumRewardedFeesSinceReferred": "1.0",
+            "cumVlm": "1000.0",
+            "timeJoined": 1750000000000,
+            "tokenToState": [
+              [
+                0,
+                {
+                  "cumFeesRewardedToReferrer": "0.1",
+                  "cumRewardedFeesSinceReferred": "1.0",
+                  "cumVlm": "1000.0"
+                }
+              ]
+            ],
+            "user": "0x3333333333333333333333333333333333333333"
+          }
+        ]
       },
       "stage": "ready"
     },
     "rewardHistory": [],
+    "tokenToState": [
+      [
+        0,
+        {
+          "builderRewards": "0.0",
+          "claimedRewards": "0.0",
+          "cumVlm": "0.0",
+          "unclaimedRewards": "0.0"
+        }
+      ]
+    ],
     "unclaimedRewards": "0.0"
   },
   "spotClearinghouseState": {

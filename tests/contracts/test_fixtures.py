@@ -72,3 +72,12 @@ def test_exchange_fixture_freezes_all_order_and_cancel_status_shapes() -> None:
         "order_filled",
         "order_resting",
     }
+
+
+def test_meta_context_fixtures_keep_exact_two_item_pairs() -> None:
+    responses = load_fixture("info-responses.json")
+
+    assert len(cast(list[object], responses["metaAndAssetCtxs"])) == 2
+    assert len(cast(list[object], responses["spotMetaAndAssetCtxs"])) == 2
+    all_perp_metas = cast(list[list[object]], responses["allPerpMetas"])
+    assert all(len(meta_and_contexts) == 2 for meta_and_contexts in all_perp_metas)

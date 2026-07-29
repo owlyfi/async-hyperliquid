@@ -806,23 +806,23 @@ unbounded total.
 - Preserves: every existing 0.5 public method, response and mutable
   `InfoAPI.base_url` compatibility behavior.
 
-- [ ] **Step 1:** Write a test proving default `base_url=None` resolves both
+- [x] **Step 1:** Write a test proving default `base_url=None` resolves both
   request URL and signing flag to mainnet; run it and confirm failure on
   `b6b2844`.
-- [ ] **Step 2:** Resolve the URL before the signing flag and let the top-level
+- [x] **Step 2:** Resolve the URL before the signing flag and let the top-level
   core pass `is_mainnet` explicitly, so a custom 0.5 proxy URL cannot silently
   change the signing domain.
-- [ ] **Step 3:** Write a regression test for the existing consumer pattern
+- [x] **Step 3:** Write a regression test for the existing consumer pattern
   `info.base_url = local_origin` and make the request URL derive from the
   current base URL at call time; do not add another transport wrapper or modify
   a consumer repository.
-- [ ] **Step 4:** Write a two-waiter cancellation test that cancels the active
+- [x] **Step 4:** Write a two-waiter cancellation test that cancels the active
   metadata loader and asserts the second waiter retries successfully.
-- [ ] **Step 5:** Replace `_meta_init_task` with the existing lock plus a
+- [x] **Step 5:** Replace `_meta_init_task` with the existing lock plus a
   double-check; keep snapshot construction local.
-- [ ] **Step 6:** Run:
+- [x] **Step 6:** Run:
   `/Users/yuki/.local/bin/uv run pytest -q tests/unit/test_http_and_nonce.py tests/unit/test_metadata_cancellation.py`.
-- [ ] **Step 7:** Commit:
+- [x] **Step 7:** Commit:
   `fix: align signing network and metadata cancellation`.
 
 ### Task 1: Freeze contracts and repair performance evidence
@@ -842,18 +842,18 @@ unbounded total.
   task.
 - Consumes: tagged `0.5.1` wheel as the baseline candidate.
 
-- [ ] **Step 1:** Add import snapshots for the existing documented public
+- [x] **Step 1:** Add import snapshots for the existing documented public
   surface and execute them against an installed 0.5.1 wheel.
-- [ ] **Step 2:** Replace `build_stub_hl() -> Any`-style factories with typed
+- [x] **Step 2:** Replace `build_stub_hl() -> Any`-style factories with typed
   test doubles exposing only the methods each test uses.
-- [ ] **Step 3:** Record official JSON fixtures for every implemented info
+- [x] **Step 3:** Record official JSON fixtures for every implemented info
   endpoint and order/cancel success/error shape.
-- [ ] **Step 4:** Rewrite the hot-path benchmark to install baseline and
+- [x] **Step 4:** Rewrite the hot-path benchmark to install baseline and
   candidate wheels, alternate AB/BA rounds, warm up, and report median/MAD/p95.
-- [ ] **Step 5:** Make any unexpected benchmark exception fail immediately;
+- [x] **Step 5:** Make any unexpected benchmark exception fail immediately;
   do not count `gather(return_exceptions=True)` values as success.
-- [ ] **Step 6:** Run unit tests, Ruff, Ty and the repaired local benchmark.
-- [ ] **Step 7:** Commit:
+- [x] **Step 6:** Run unit tests, Ruff, Ty and the repaired local benchmark.
+- [x] **Step 7:** Commit:
   `test: freeze v1 contracts and performance baseline`.
 
 ### Task 2: Establish the Python 3.11 typed package boundary
@@ -870,13 +870,13 @@ unbounded total.
 - Produces: Python 3.11-3.14 package/test matrix and an inline-typed wheel.
 - Does not change: runtime dependency versions or endpoint behavior.
 
-- [ ] **Step 1:** Set `requires-python = ">=3.11"`, update classifiers, remove
+- [x] **Step 1:** Set `requires-python = ">=3.11"`, update classifiers, remove
   the stale Poetry block and move `uv_build` to the tested 0.11 range.
-- [ ] **Step 2:** Add `py.typed` and a wheel-content assertion.
-- [ ] **Step 3:** Add Python 3.11, 3.12, 3.13 and 3.14 CI jobs.
-- [ ] **Step 4:** Run `uv build --no-sources`, install the wheel in a clean
+- [x] **Step 2:** Add `py.typed` and a wheel-content assertion.
+- [x] **Step 3:** Add Python 3.11, 3.12, 3.13 and 3.14 CI jobs.
+- [x] **Step 4:** Run `uv build --no-sources`, install the wheel in a clean
   environment and execute import/type smoke tests.
-- [ ] **Step 5:** Commit:
+- [x] **Step 5:** Commit:
   `build: establish the typed Python 3.11 package boundary`.
 
 ### Task 3: Define exact wire and command types
@@ -897,21 +897,21 @@ unbounded total.
   dataclasses.
 - Consumes: Task 1 wire fixtures.
 
-- [ ] **Step 1:** Define Python 3.11-compatible recursive `TypeAlias` values and
+- [x] **Step 1:** Define Python 3.11-compatible recursive `TypeAlias` values and
   a `Network` enum that owns both exact official endpoint URLs and the signing
   source.
-- [ ] **Step 2:** Define response `TypedDict`s with `Literal` discriminators;
+- [x] **Step 2:** Define response `TypedDict`s with `Literal` discriminators;
   correct candle intervals, all-mids strings, L2 book, rate-limit and order
   status contracts.
-- [ ] **Step 3:** Define frozen slotted `LimitOrder`, `TriggerOrder`,
+- [x] **Step 3:** Define frozen slotted `LimitOrder`, `TriggerOrder`,
   `MarketOrder`, `CancelOrder`, `CancelByCloid`, `ModifyOrder` and
   `BuilderFee` without inheritance.
-- [ ] **Step 4:** Represent meta/context pairs as exact two-tuples and validate
+- [x] **Step 4:** Represent meta/context pairs as exact two-tuples and validate
   only their top-level length/shape at the endpoint boundary.
-- [ ] **Step 5:** Add an AST test rejecting `Any` and naked containers only in
+- [x] **Step 5:** Add an AST test rejecting `Any` and naked containers only in
   public signatures; allow exact forms such as `list[Order]`.
-- [ ] **Step 6:** Run unit and typing tests on Python 3.11.
-- [ ] **Step 7:** Commit:
+- [x] **Step 6:** Run unit and typing tests on Python 3.11.
+- [x] **Step 7:** Commit:
   `feat(types): add exact v1 wire and command contracts`.
 
 ### Task 4: Add one strict HTTP transport and lifecycle state machine
