@@ -931,22 +931,22 @@ unbounded total.
   `HttpError`, and `ProtocolError`.
 - Does not produce: retry policy, signing errors or background tasks.
 
-- [ ] **Step 1:** Write lifecycle tests for `NEW -> OPEN -> CLOSED`, idempotent
+- [x] **Step 1:** Write lifecycle tests for `NEW -> OPEN -> CLOSED`, idempotent
   `open/close`, forbidden reopen, and endpoint rejection before `open()`.
-- [ ] **Step 2:** Implement synchronous transport configuration only; allocate
+- [x] **Step 2:** Implement synchronous transport configuration only; allocate
   no async resource in the constructor.
-- [ ] **Step 3:** Create an owned session only in `open()`; validate but never
+- [x] **Step 3:** Create an owned session only in `open()`; validate but never
   close a borrowed session. Remove connector injection.
-- [ ] **Step 4:** Accept an exact URL per request, set finite total/connect/read
+- [x] **Step 4:** Accept an exact URL per request, set finite total/connect/read
   request timeouts, and apply them even with a borrowed session. Transport must
   neither store a generic base URL nor infer a signing network from a URL.
-- [ ] **Step 5:** Decode JSON once; raise `HttpError` for status failure and
+- [x] **Step 5:** Decode JSON once; raise `HttpError` for status failure and
   `ProtocolError` for an invalid JSON contract. Never return raw text.
-- [ ] **Step 6:** Add redaction tests proving logs/exceptions exclude signing
+- [x] **Step 6:** Add redaction tests proving logs/exceptions exclude signing
   keys, signatures, full payloads and exact third-party URLs containing
   credentials in userinfo, path or query values.
-- [ ] **Step 7:** Run transport/lifecycle tests against a local aiohttp server.
-- [ ] **Step 8:** Commit:
+- [x] **Step 7:** Run transport/lifecycle tests against a local aiohttp server.
+- [x] **Step 8:** Commit:
   `refactor: add strict transport and explicit lifecycle`.
 
 ### Task 5: Build standalone and bound InfoClient modes
