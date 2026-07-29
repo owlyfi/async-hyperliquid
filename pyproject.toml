@@ -1,6 +1,6 @@
 [project]
 name = "async-hyperliquid"
-version = "0.5.1"
+version = "1.0.0rc1"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]
 readme = "README.md"
@@ -74,6 +74,11 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "async_hyperliquid"
 src-layout = true
+source-include = [
+    "CHANGELOG.md",
+    "docs/coin-name-mapping.md",
+    "docs/migration-0.5-to-1.0.md",
+]
 
 
 [tool.pytest.ini_options]

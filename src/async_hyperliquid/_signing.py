@@ -250,11 +250,15 @@ def encode_order(
     price_decimals = (
         8 if SPOT_ASSET_OFFSET <= asset < PERP_DEX_ASSET_OFFSET else 6
     ) - size_decimals
+    price = _round_price(order.price, price_decimals)
+    size = _round_float(order.size, size_decimals)
+    if price <= 0 or size <= 0:
+        raise ValueError("order value is below market precision")
     encoded: EncodedOrder = {
         "a": asset,
         "b": order.side is Side.BUY,
-        "p": _wire_float(_round_price(order.price, price_decimals)),
-        "s": _wire_float(_round_float(order.size, size_decimals)),
+        "p": _wire_float(price),
+        "s": _wire_float(size),
         "r": order.reduce_only,
         "t": (
             {"limit": {"tif": order.time_in_force.value}}

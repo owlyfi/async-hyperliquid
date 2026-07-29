@@ -147,9 +147,7 @@ async def test_all_info_endpoints_match_the_frozen_request_and_response_contract
     assert await info.perp_meta_and_contexts() == tuple(
         cast(list[JsonValue], responses["metaAndAssetCtxs"])
     )
-    assert await info.all_perp_metas() == [
-        tuple(pair) for pair in cast(list[list[JsonValue]], responses["allPerpMetas"])
-    ]
+    assert await info.all_perp_metas() == responses["allPerpMetas"]
     assert await info.perp_dexes() == responses["perpDexs"]
     assert await info.perp_account_state(ADDRESS) == responses["clearinghouseState"]
     assert (
@@ -208,6 +206,22 @@ async def test_endpoint_boundary_rejects_the_wrong_top_level_shape() -> None:
 
     transport.responses = {"tokenDetails": None}
     assert await info.token_details("0x00") is None
+
+
+async def test_all_perp_metas_returns_the_current_meta_object_list() -> None:
+    meta: JsonObject = {
+        "universe": [
+            {"name": "BTC", "szDecimals": 5, "maxLeverage": 40, "marginTableId": 56}
+        ],
+        "marginTables": [],
+        "collateralToken": 0,
+    }
+    transport = RecordingTransport({"allPerpMetas": [meta]})
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    assert await info.all_perp_metas() == [meta]
 
 
 async def test_self_hosted_info_url_receives_unsigned_info_payload_only() -> None:

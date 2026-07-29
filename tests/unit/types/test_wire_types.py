@@ -52,7 +52,10 @@ def test_unknown_order_status_spelling_matches_the_wire() -> None:
 def test_meta_context_pairs_are_exact_two_tuples() -> None:
     assert get_args(PerpMetaAndContexts)[0] is PerpMeta
     assert get_args(SpotMetaAndContexts)[0] is SpotMeta
-    assert get_args(AllPerpMetas)[0] == PerpMetaAndContexts
+
+
+def test_all_perp_metas_is_a_list_of_meta_objects() -> None:
+    assert get_args(AllPerpMetas)[0] is PerpMeta
 
 
 def test_encoded_cloid_is_a_raw_string() -> None:

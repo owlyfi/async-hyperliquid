@@ -51,10 +51,7 @@ HIP3_PERP_META: JsonObject = {
     "marginTables": [],
     "collateralToken": 0,
 }
-ALL_PERP_METAS: list[JsonValue] = [
-    [BASE_PERP_META, [BASE_CONTEXT]],
-    [HIP3_PERP_META, [HIP3_CONTEXT]],
-]
+ALL_PERP_METAS: list[JsonValue] = [BASE_PERP_META, HIP3_PERP_META]
 SPOT_META: JsonObject = {
     "tokens": [
         {
@@ -269,6 +266,17 @@ async def test_failed_refresh_preserves_the_last_complete_snapshot() -> None:
     assert info._metadata is not original_snapshot
 
 
+async def test_missing_perp_dex_metadata_is_rejected_without_publication() -> None:
+    transport = MetadataTransport()
+    transport.all_perp_metas = [deepcopy(BASE_PERP_META)]
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError, match="missing dex metadata"):
+        await info.refresh_metadata()
+
+    assert info._metadata is None
+
+
 @pytest.mark.parametrize("malformed_branch", ["perp", "spot"])
 async def test_malformed_metadata_is_rejected_without_partial_publication(
     malformed_branch: str,
@@ -276,7 +284,7 @@ async def test_malformed_metadata_is_rejected_without_partial_publication(
     transport = MetadataTransport()
     info = build_info(transport)
     if malformed_branch == "perp":
-        transport.all_perp_metas = [[{"marginTables": []}, []]]
+        transport.all_perp_metas = [{"marginTables": []}]
     else:
         token = cast(
             JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[0]

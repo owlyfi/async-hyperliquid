@@ -386,9 +386,9 @@ class InfoClient:
 
     async def all_perp_metas(self) -> AllPerpMetas:
         value = await self._post({"type": "allPerpMetas"})
-        pairs = _expect_list(value, "allPerpMetas")
+        metas = _expect_list(value, "allPerpMetas")
         return cast(
-            AllPerpMetas, [_expect_pair(pair, "allPerpMetas") for pair in pairs]
+            AllPerpMetas, [_expect_object(meta, "allPerpMetas") for meta in metas]
         )
 
     async def perp_dexes(self) -> PerpDexes:

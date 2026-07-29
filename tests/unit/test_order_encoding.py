@@ -3,6 +3,7 @@ from copy import deepcopy
 from eth_account import Account
 from hyperliquid.utils.signing import action_hash as sdk_action_hash
 from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
+import pytest
 
 from async_hyperliquid._signing import (
     _USD_SEND_SPEC,
@@ -141,6 +142,20 @@ def test_limit_order_encoding_is_exact_and_does_not_mutate_command() -> None:
     }
     assert order.size == 0.010_000_000_01
     assert order.price == 100_000.4
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        LimitOrder("BTC", Side.BUY, 0.000_001, 100_000),
+        LimitOrder("BTC", Side.BUY, 0.01, 0.01),
+    ],
+)
+def test_order_encoding_rejects_values_below_market_precision(
+    order: LimitOrder,
+) -> None:
+    with pytest.raises(ValueError, match="market precision"):
+        encode_order(order, asset=0, size_decimals=5)
 
 
 def test_trigger_order_encoding_preserves_trigger_contract() -> None:

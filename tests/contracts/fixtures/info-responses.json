@@ -33,49 +33,31 @@
     "ARB": "1.21695"
   },
   "allPerpMetas": [
-    [
-      {
-        "marginTables": [
-          [
-            50,
-            {
-              "description": "",
-              "marginTiers": [
-                {
-                  "lowerBound": "0.0",
-                  "maxLeverage": 50
-                }
-              ]
-            }
-          ]
-        ],
-        "universe": [
+    {
+      "marginTables": [
+        [
+          50,
           {
-            "isDelisted": false,
-            "maxLeverage": 50,
-            "name": "BTC",
-            "onlyIsolated": false,
-            "szDecimals": 5
+            "description": "",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 50
+              }
+            ]
           }
         ]
-      },
-      [
+      ],
+      "universe": [
         {
-          "dayNtlVlm": "1000000.0",
-          "funding": "0.0000125",
-          "impactPxs": [
-            "104999.0",
-            "105001.0"
-          ],
-          "markPx": "105000.0",
-          "midPx": "105000.0",
-          "openInterest": "1000.0",
-          "oraclePx": "105000.0",
-          "premium": "0.0",
-          "prevDayPx": "104000.0"
+          "isDelisted": false,
+          "maxLeverage": 50,
+          "name": "BTC",
+          "onlyIsolated": false,
+          "szDecimals": 5
         }
       ]
-    ]
+    }
   ],
   "candleSnapshot": [
     {

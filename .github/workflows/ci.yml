@@ -78,8 +78,14 @@ jobs:
         env:
           ASYNC_HYPERLIQUID_WHEEL_DIR: dist
 
-      - name: Install wheel in a clean environment
+      - name: Smoke-test installed wheel public API
         run: |
           uv venv .wheel-venv --python 3.11
           uv pip install --python .wheel-venv/bin/python dist/*.whl
-          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, ExchangeAPI, InfoAPI"
+          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+
+      - name: Smoke-test installed source distribution public API
+        run: |
+          uv venv .sdist-venv --python 3.11
+          uv pip install --python .sdist-venv/bin/python dist/*.tar.gz
+          .sdist-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"

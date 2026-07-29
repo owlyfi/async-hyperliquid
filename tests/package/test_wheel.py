@@ -1,4 +1,5 @@
 import os
+import tarfile
 import tomllib
 import zipfile
 from pathlib import Path
@@ -9,6 +10,7 @@ import pytest
 ROOT = Path(__file__).parents[2]
 WHEEL_DIR = Path(os.environ.get("ASYNC_HYPERLIQUID_WHEEL_DIR", ROOT / "dist"))
 WHEELS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.whl"))
+SDISTS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.tar.gz"))
 
 
 def test_project_requires_python_3_11_without_an_artificial_upper_bound() -> None:
@@ -51,3 +53,17 @@ def test_built_wheel_contains_inline_typing_marker() -> None:
     assert len(WHEELS) == 1
     with zipfile.ZipFile(WHEELS[0]) as wheel:
         assert "async_hyperliquid/py.typed" in wheel.namelist()
+
+
+@pytest.mark.skipif(
+    not SDISTS, reason="build an sdist or set ASYNC_HYPERLIQUID_WHEEL_DIR"
+)
+def test_sdist_contains_release_and_migration_documentation() -> None:
+    assert len(SDISTS) == 1
+    with tarfile.open(SDISTS[0]) as sdist:
+        names = sdist.getnames()
+
+    assert any(name.endswith("/CHANGELOG.md") for name in names)
+    assert any(name.endswith("/docs/coin-name-mapping.md") for name in names)
+    assert any(name.endswith("/docs/migration-0.5-to-1.0.md") for name in names)
+    assert not any("/docs/superpowers/" in name for name in names)

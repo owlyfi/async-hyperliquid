@@ -969,7 +969,7 @@ unbounded total.
 - Produces all read-only derived helpers currently stranded on the root facade;
   neither mode requires or fabricates an address/signing key.
 
-- [ ] **Step 1:** Write tests for standalone ownership and bound transport
+- [x] **Step 1:** Write tests for standalone ownership and bound transport
   borrowing; assert exactly one closer per object graph. Assert construction
   and every public read path work without importing or creating a signer.
 - [x] **Step 2:** Test official mainnet/testnet defaults plus an HTTP
@@ -986,7 +986,7 @@ unbounded total.
 - [x] **Step 6:** Use one lock with double-check. Test normal 20-reader cold
   start as one fetch set, waiting-reader cancellation, active-loader
   cancellation/retry and failed-refresh recovery.
-- [ ] **Step 7:** Add API/type tests proving `InfoClient` has no signing
+- [x] **Step 7:** Add API/type tests proving `InfoClient` has no signing
   parameters or `.exchange`, while `AsyncHyperliquid` rejects missing or empty
   credentials before opening a session.
 - [x] **Step 8:** Run info, contract, concurrency and type tests.
@@ -1010,28 +1010,28 @@ unbounded total.
   order methods; `IndeterminateActionError(action_type, nonce)`.
 - Consumes: Task 3 command/wire types, Task 4 transport and Task 5 metadata.
 
-- [ ] **Step 1:** Freeze golden signing vectors and bit-for-bit parity with the
+- [x] **Step 1:** Freeze golden signing vectors and bit-for-bit parity with the
   0.5.1 wheel before moving functions.
-- [ ] **Step 2:** Move pure signing functions, replace `id(payload_types)`
+- [x] **Step 2:** Move pure signing functions, replace `id(payload_types)`
   caches with fixed module constants, and never mutate caller mappings.
-- [ ] **Step 3:** Implement explicit order methods; each calls private encoding
+- [x] **Step 3:** Implement explicit order methods; each calls private encoding
   plus `_submit_action` directly, and batch performs one hash/sign/POST.
-- [ ] **Step 4:** Bind `_submit_action` to the resolved `exchange_url`; prove
+- [x] **Step 4:** Bind `_submit_action` to the resolved `exchange_url`; prove
   with a split-endpoint test that `info_url` never receives signed payloads and
   that a custom `exchange_url` cannot change `signature_source`.
-- [ ] **Step 5:** Put `builder_fee`, `grouping` and `expires_after` at action
+- [x] **Step 5:** Put `builder_fee`, `grouping` and `expires_after` at action
   level; remove mutable client expiry and `SignType`.
-- [ ] **Step 6:** Keep one-off admin actions as typed method parameters; do not
+- [x] **Step 6:** Keep one-off admin actions as typed method parameters; do not
   create command classes without reuse or invariants.
-- [ ] **Step 7:** Wrap timeout/connection/untrusted acknowledgement in
+- [x] **Step 7:** Wrap timeout/connection/untrusted acknowledgement in
   `IndeterminateActionError` inside `_submit_action`; preserve
   `CancelledError` and never retry or shield.
-- [ ] **Step 8:** Verify no caller input mutation, nonce uniqueness, one
+- [x] **Step 8:** Verify no caller input mutation, nonce uniqueness, one
   sign/POST per batch and exact exchange response types. Cover official
   defaults, custom Info only, custom Exchange only and both custom endpoints on
   both `Network` values.
-- [ ] **Step 9:** Run signing parity and AB/BA hot-path benchmarks.
-- [ ] **Step 10:** Commit:
+- [x] **Step 9:** Run signing parity and AB/BA hot-path benchmarks.
+- [x] **Step 10:** Commit:
   `refactor(exchange): flatten signed action hot paths`.
 
 ### Task 7: Atomically cut over the root API and delete legacy topology
@@ -1051,21 +1051,21 @@ unbounded total.
 - Produces concrete `client.info: InfoClient` and
   `client.exchange: ExchangeClient`.
 
-- [ ] **Step 1:** Implement `AsyncHyperliquid` as lifecycle/resource owner with
+- [x] **Step 1:** Implement `AsyncHyperliquid` as lifecycle/resource owner with
   explicit `account_address`, `signing_key`, `network` and optional
   constructor-only `info_url` / `exchange_url`; validate/parse signer inputs
   before `open()` can allocate a session.
-- [ ] **Step 2:** Bind info/exchange components to the same transport but
+- [x] **Step 2:** Bind info/exchange components to the same transport but
   independently resolved exact URLs; expose no flat endpoint forwarding.
-- [ ] **Step 3:** Delete `AsyncAPI`, dynamic proxying, capability mixins,
+- [x] **Step 3:** Delete `AsyncAPI`, dynamic proxying, capability mixins,
   monkeypatch propagation, `AsyncHyper`, aliases, decorators and deep shims.
-- [ ] **Step 4:** Remove embedded EVM support and `hl-web3` from the core
+- [x] **Step 4:** Remove embedded EVM support and `hl-web3` from the core
   dependency set.
-- [ ] **Step 5:** Assert exact root exports, no `__getattr__`, no public
+- [x] **Step 5:** Assert exact root exports, no `__getattr__`, no public
   `ExchangeClient` constructor, exact `info_url` / `exchange_url` constructor
   parameters and no legacy import success.
-- [ ] **Step 6:** Run unit, integration, public API, typing and benchmark gates.
-- [ ] **Step 7:** Commit:
+- [x] **Step 6:** Run unit, integration, public API, typing and benchmark gates.
+- [x] **Step 7:** Commit:
   `refactor!: replace facade with explicit v1 clients`.
 
 ### Task 8: Upgrade dependencies one at a time
@@ -1080,16 +1080,16 @@ unbounded total.
 
 - Preserves: Task 7 public API, signing bytes and performance gates.
 
-- [ ] **Step 1:** Upgrade `aiohttp`; run transport, lifecycle and full unit
+- [x] **Step 1:** Upgrade `aiohttp`; run transport, lifecycle and full unit
   suites before committing its lockfile diff.
-- [ ] **Step 2:** Upgrade `msgpack`; run golden hash/signing vectors and AB/BA
+- [x] **Step 2:** Upgrade `msgpack`; run golden hash/signing vectors and AB/BA
   benchmark before committing.
-- [ ] **Step 3:** Upgrade `eth-account` and test `eth-utils` 6 compatibility;
+- [x] **Step 3:** Upgrade `eth-account` and test `eth-utils` 6 compatibility;
   accept only a resolver-clean set with signing parity.
-- [ ] **Step 4:** Update the dev parity oracle to official SDK 0.24.x.
-- [ ] **Step 5:** Remove direct `coincurve` unless the controlled benchmark
+- [x] **Step 4:** Update the dev parity oracle to official SDK 0.24.x.
+- [x] **Step 5:** Remove direct `coincurve` unless the controlled benchmark
   proves an end-to-end win.
-- [ ] **Step 6:** Commit each accepted dependency independently; never combine
+- [x] **Step 6:** Commit each accepted dependency independently; never combine
   all lockfile changes into one opaque commit.
 
 ### Task 9: Document, soak and release
@@ -1106,23 +1106,23 @@ unbounded total.
 
 - Produces: `1.0.0rc1`, then `1.0.0`.
 
-- [ ] **Step 1:** Document the two entry points, lifecycle, typed commands,
+- [x] **Step 1:** Document the two entry points, lifecycle, typed commands,
   batching, self-hosted/third-party endpoint routing, cancellation and
   indeterminate-action reconciliation.
-- [ ] **Step 2:** Provide a mechanical old-to-new import/method mapping without
+- [x] **Step 2:** Provide a mechanical old-to-new import/method mapping without
   a runtime compatibility wrapper; document constructor-time endpoint
   injection and direct EVM users to `hl-web3`. Do not edit consumer
   repositories.
 - [ ] **Step 3:** Run testnet place/cancel/modify/close and metadata soak tests,
   plus read/write staging soaks through independently configured
   protocol-compatible endpoint URLs.
-- [ ] **Step 4:** Build wheel/sdist with `--no-sources`, inspect contents,
+- [x] **Step 4:** Build wheel/sdist with `--no-sources`, inspect contents,
   install both into clean environments and run README snippets.
 - [ ] **Step 5:** Publish `1.0.0rc1`, let consumer owners validate their
   migrations against the separate Copycat workstream below, then publish
   `1.0.0` only after all release gates remain green.
-- [ ] **Step 6:** Commit:
-  `release: async-hyperliquid 1.0.0`.
+- [x] **Step 6:** Commit the locally verified RC preparation:
+  `release: prepare async-hyperliquid 1.0.0rc1`.
 
 ## Separate consumer workstream: Copycat
 
@@ -1214,28 +1214,38 @@ No task merges with an open P0/P1 finding.
 
 ## Final acceptance checklist
 
-- [ ] Default network and signing domain cannot disagree.
-- [ ] `InfoClient` requires no address/key, exposes every supported read-only
+- [x] Default network and signing domain cannot disagree.
+- [x] `InfoClient` requires no address/key, exposes every supported read-only
   query needed by metadata consumers and has no Exchange capability.
-- [ ] `AsyncHyperliquid` requires valid account/signing credentials and always
+- [x] `AsyncHyperliquid` requires valid account/signing credentials and always
   exposes a concrete `ExchangeClient`, never `None`.
-- [ ] `info_url` and `exchange_url` independently route their own service
+- [x] `info_url` and `exchange_url` independently route their own service
   without changing the signing source.
-- [ ] Custom Exchange requests are signed for `network`, never inferred from
+- [x] Custom Exchange requests are signed for `network`, never inferred from
   the provider URL, and the private key never leaves the client.
-- [ ] Endpoint URLs are fixed at construction; no stale cached URL remains
+- [x] Endpoint URLs are fixed at construction; no stale cached URL remains
   after a supported configuration change because there is no supported
   mutation path.
-- [ ] Public return types match recorded wire fixtures.
-- [ ] Public signatures contain no `Any`, naked `dict` or naked `list`.
-- [ ] Built wheel contains `py.typed`.
-- [ ] No dynamic proxy, monkeypatch propagation or public forwarding chain.
-- [ ] One owned session, finite total timeout, explicit session ownership.
-- [ ] Metadata cancellation cannot poison the cache or cancel unrelated
+- [x] Public return types match recorded wire fixtures.
+- [x] Public signatures contain no `Any`, naked `dict` or naked `list`.
+- [x] Built wheel contains `py.typed`.
+- [x] No dynamic proxy, monkeypatch propagation or public forwarding chain.
+- [x] One owned session, finite total timeout, explicit session ownership.
+- [x] Metadata cancellation cannot poison the cache or cancel unrelated
   waiters; active-loader cancellation may cause one controlled retry.
-- [ ] Batch N means one signature and one POST.
+- [x] Batch N means one signature and one POST.
 - [ ] Signing/encoding p50 and p95 regression is at most 5% on the fixed runner.
-- [ ] README imports execute from the installed wheel.
+- [x] README imports execute from the installed wheel.
 - [ ] Python 3.11-3.14 unit, type and package tests pass.
 - [ ] Testnet integration suite passes.
-- [ ] Migration and rollback documentation is complete.
+- [x] Migration and rollback documentation is complete.
+
+RC-local evidence does not close the three remaining release gates:
+
+- The median AB/BA deltas are within 1.55%, but this runner's identical-wheel
+  control itself produced signing p95 deltas above 5%; rerun the p95 gate on a
+  controlled runner before stable release.
+- Python 3.11 clean wheel/sdist installs pass and local tests pass on 3.12; the
+  configured 3.11-3.14 CI matrix still needs to run on the committed branch.
+- Signed testnet and independent-provider staging soaks require operator
+  credentials/providers and remain intentionally unexecuted.

@@ -75,7 +75,7 @@ def _build_metadata_snapshot(
     spot_context_by_coin: dict[str, int] = {}
 
     seen_perp_dexes: set[str] = set()
-    for meta, _ in all_perp_metas:
+    for meta in all_perp_metas:
         meta_object = cast(JsonObject, meta)
         universe = _require_list(meta_object.get("universe"), "allPerpMetas[].universe")
         if not universe:
@@ -107,6 +107,9 @@ def _build_metadata_snapshot(
             symbol_by_coin[name] = name
             size_decimals_by_asset[asset_id] = decimals
             perp_context_by_coin[name] = (dex, index)
+
+    if seen_perp_dexes != offsets.keys():
+        raise ProtocolError("allPerpMetas is missing dex metadata")
 
     spot_object = cast(JsonObject, spot_meta)
     token_objects = _require_list(spot_object.get("tokens"), "spotMeta.tokens")

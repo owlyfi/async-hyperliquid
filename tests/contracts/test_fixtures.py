@@ -79,5 +79,14 @@ def test_meta_context_fixtures_keep_exact_two_item_pairs() -> None:
 
     assert len(cast(list[object], responses["metaAndAssetCtxs"])) == 2
     assert len(cast(list[object], responses["spotMetaAndAssetCtxs"])) == 2
-    all_perp_metas = cast(list[list[object]], responses["allPerpMetas"])
-    assert all(len(meta_and_contexts) == 2 for meta_and_contexts in all_perp_metas)
+
+
+def test_all_perp_metas_fixture_is_a_list_of_meta_objects() -> None:
+    responses = load_fixture("info-responses.json")
+    all_perp_metas = cast(list[object], responses["allPerpMetas"])
+
+    assert all(
+        isinstance(meta, dict)
+        and isinstance(cast(dict[str, object], meta).get("universe"), list)
+        for meta in all_perp_metas
+    )

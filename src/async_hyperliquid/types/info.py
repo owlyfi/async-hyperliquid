@@ -484,7 +484,7 @@ class PerpAssetContext(TypedDict):
 
 
 PerpMetaAndContexts: TypeAlias = tuple[PerpMeta, list[PerpAssetContext]]
-AllPerpMetas: TypeAlias = list[PerpMetaAndContexts]
+AllPerpMetas: TypeAlias = list[PerpMeta]
 
 
 class PerpDex(TypedDict):

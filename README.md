@@ -1,194 +1,232 @@
 # Async Hyperliquid
 
-An asynchronous Python client for interacting with the Hyperliquid API using `aiohttp`.
+Typed, asynchronous Hyperliquid REST client for Python 3.11+.
 
-## Overview
+Version 1 has two explicit entry points:
 
-This library provides an easy-to-use asynchronous interface for the Hyperliquid cryptocurrency exchange, supporting both mainnet and testnet environments. It handles API interactions, request signing, and data processing for both perpetual futures and spot trading.
+- `InfoClient` is credential-free and only calls the Info API.
+- `AsyncHyperliquid` owns one shared HTTP transport and exposes concrete
+  `.info` and `.exchange` clients. It always requires an account address and
+  signing key.
 
-Compared with the [Hyperliquid Python SDK](https://github.com/hyperliquid-dex/hyperliquid-python-sdk), Async Hyperliquid shows a significant performance improvement. The specific benchmark results are as follows.
-
-![benchmark](https://github.com/traderfiapp/async-hyperliquid/blob/main/benchmarks/benchmarks.png)
-
-## Features
-
-- Asynchronous API communication using `aiohttp`
-- Support for both mainnet and testnet environments
-- Message signing for authenticated endpoints
-- Trading operations for both perpetual futures and spot markets
-- Comprehensive type hints for better IDE integration
+The client uses `aiohttp`, preserves Hyperliquid's raw JSON response shapes as
+`TypedDict`, and represents caller-created commands as immutable, slotted
+dataclasses.
 
 ## Installation
 
 ```bash
-# Using pip
 pip install async-hyperliquid
+```
 
-# Using Poetry
-poetry add async-hyperliquid
+With uv:
 
-# Using uv
+```bash
 uv add async-hyperliquid
 ```
 
-## Quick Start
+## Read-only use
+
+Read-only callers do not need an address, API wallet, or generated private key.
+`info_url` may be an official endpoint, a self-hosted node, or a compatible
+third-party provider. The URL is used exactly as supplied, so include the
+provider's complete `/info` path.
+
+```python
+import asyncio
+
+from async_hyperliquid import InfoClient
+from async_hyperliquid.types import Network
+
+
+async def main() -> None:
+    async with InfoClient(
+        network=Network.MAINNET,
+        info_url="https://provider.example/hyperliquid/info",
+    ) as info:
+        mids = await info.all_mids()
+        positions = await info.positions(
+            "0x0000000000000000000000000000000000000000"
+        )
+        print(mids.get("BTC"), positions)
+
+
+asyncio.run(main())
+```
+
+Omit `info_url` to use `Network.MAINNET.info_url` or
+`Network.TESTNET.info_url`.
+
+## Trading
+
+Trading is deliberately separate from read-only access. `AsyncHyperliquid`
+requires both credentials and exposes no forwarded endpoint methods: read from
+`client.info` and submit signed actions through `client.exchange`.
 
 ```python
 import asyncio
 import os
-from async_hyperliquid.async_hyper import AsyncHyper
 
-async def main():
-    # Initialize the client
-    address = os.getenv("HYPER_ADDRESS")
-    api_key = os.getenv("HYPER_API_KEY")
-    # Test on testnet
-    client = AsyncHyper(address, api_key, is_mainnet=False)
+from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.types import LimitOrder, Network, Side, TimeInForce
 
-    # Place a market order
-    response = await client.place_order(
-        coin="BTC",
-        is_buy=True,
-        sz=0.001,
-        px=0,  # For market orders, price is ignored
-        is_market=True
+
+async def main() -> None:
+    async with AsyncHyperliquid(
+        os.environ["HL_ADDR"],
+        os.environ["HL_AK"],
+        network=Network.TESTNET,
+    ) as client:
+        result = await client.exchange.place_limit_order(
+            LimitOrder(
+                coin="BTC",
+                side=Side.BUY,
+                size=0.001,
+                price=50_000,
+                time_in_force=TimeInForce.ALO,
+            )
+        )
+        print(result)
+
+
+asyncio.run(main())
+```
+
+`HL_AK` is a 32-byte private key. It is parsed locally and is never sent to an
+Info or Exchange provider.
+
+### Batch actions
+
+One `place_orders` call creates one action, one signature, and one HTTP POST.
+Use it instead of looping when the orders belong in one atomic Hyperliquid
+batch.
+
+```python
+import asyncio
+import os
+
+from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.types import LimitOrder, Network, Side
+
+
+async def main() -> None:
+    orders = (
+        LimitOrder("BTC", Side.BUY, size=0.001, price=50_000),
+        LimitOrder("ETH", Side.SELL, size=0.01, price=4_000),
     )
+    async with AsyncHyperliquid(
+        os.environ["HL_ADDR"],
+        os.environ["HL_AK"],
+        network=Network.TESTNET,
+    ) as client:
+        result = await client.exchange.place_orders(orders)
+        print(result)
 
-    print(response)
 
-    # Clean up
-    await client.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
 ```
 
-Or if you perfer context way:
+The command types exported from `async_hyperliquid.types` include
+`LimitOrder`, `TriggerOrder`, `MarketOrder`, `ModifyOrder`, `CancelOrder`,
+`CancelByCloid`, `BuilderFee`, and `Cloid`.
+
+## Network and endpoint routing
+
+`Network` is the only signing-domain selector. URLs never decide whether an
+action is signed for mainnet or testnet.
+
+| Setting | Responsibility |
+|---|---|
+| `network` | Signing domain and official endpoint defaults |
+| `info_url` | Exact URL used only by `InfoClient` |
+| `exchange_url` | Exact URL used only by `ExchangeClient` |
+
+This supports independently routing reads and writes:
 
 ```python
 import asyncio
 import os
-from async_hyperliquid.async_hyper import AsyncHyper
 
-async def main():
-    # Initialize the client
-    address = os.getenv("HYPER_ADDRESS")
-    api_key = os.getenv("HYPER_API_KEY")
-    # Test on testnet
-    async with AsyncHyper(address, api_key, is_mannet=False) as client:
-        # place an market order open a BTC Long position
-        resp = await client.place_order(coin="BTC", is_buy=True, sz=0.0001, px=0, is_market=True)
-        print(resp)
+from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.types import Network
 
-if __name__ == "__main__":
-    asyncio.run(main())
 
+async def main() -> None:
+    async with AsyncHyperliquid(
+        os.environ["HL_ADDR"],
+        os.environ["HL_AK"],
+        network=Network.MAINNET,
+        info_url="http://127.0.0.1:3001/info",
+        exchange_url="https://trading-provider.example/exchange",
+    ) as client:
+        print(await client.info.mid_price("BTC"))
+
+
+asyncio.run(main())
 ```
 
-### Place TP/SL orders
+The example still signs for mainnet. The self-hosted Info node receives
+unsigned Info requests. The Exchange provider receives the signed action
+envelope, never the signing key.
 
-```python
-    coin = "BTC"
-    is_buy = True
-    sz = 0.001
-    px = 105_000
-    tp_px = px + 5_000
-    sl_px = px - 5_000
-    o1 = {
-        "coin": coin,
-        "is_buy": is_buy,
-        "sz": sz,
-        "px": px,
-        "ro": False,
-        "order_type": LimitOrder.ALO.value,
-    }
-    # Take profit
-    tp_order_type = {
-        "trigger": {"isMarket": False, "triggerPx": tp_px, "tpsl": "tp"}
-    }
-    o2 = {
-        "coin": coin,
-        "is_buy": not is_buy,
-        "sz": sz,
-        "px": px,
-        "ro": True,
-        "order_type": tp_order_type,
-    }
-    # Stop loss
-    sl_order_type = {
-        "trigger": {"isMarket": False, "triggerPx": sl_px, "tpsl": "sl"}
-    }
-    o3 = {
-        "coin": coin,
-        "is_buy": not is_buy,
-        "sz": sz,
-        "px": px,
-        "ro": True,
-        "order_type": sl_order_type,
-    }
+The library does not add endpoint fallback, provider authentication, health
+checks, or load balancing. Applications own those policies.
 
-    # Place a market order to open position
-    resp = await client.batch_place_orders([o1], is_market=True)
-    print("\nBatch place market orders response: ", resp)
-    assert resp["status"] == "ok"
+## Lifecycle and sessions
 
-    # Position TP/SL orders: position must be opened, otherwise it would failed
-    orders = [o2, o3]
-    resp = await client.batch_place_orders(orders, grouping="positionTpsl")
-    print("Batch place orders with 'positionTpsl' response: ", resp)
-    assert resp["status"] == "ok"
+Constructors do not create asynchronous resources. Prefer `async with`, or call
+`open()` and `close()` explicitly.
 
-    # Close all positions
-    resp = await client.close_all_positions()
-    print("Close all positions response: ", resp)
-    assert resp["status"] == "ok"
+When no session is supplied, the client owns and closes one session. When an
+`aiohttp.ClientSession` is supplied, the client borrows it and never closes it.
+`AsyncHyperliquid.info` and `.exchange` share exactly one transport.
 
-    # Normal TP/SL orders: main order and tp/sl must exists, each coin's normal
-    # TP/SL orders can not batch with other coins', i.e. one coin one request.
-    orders = [o1, o2, o3]
-    resp = await client.batch_place_orders(orders, grouping="normalTpsl")
-    print("Batch place orders with 'normalTpsl' response: ", resp)
+The default timeout has finite total, connect, and socket-read budgets. A
+custom `aiohttp.ClientTimeout` must keep all three budgets finite and positive.
 
-    # Retrieve user opened orders
-    orders = await client.get_user_open_orders(is_frontend=True)
-    cancels = []
-    for o in orders:
-        coin = o["coin"]
-        oid = o["oid"]
-        cancels.append((coin, oid))
-    resp = await client.batch_cancel_orders(cancels)
-    print("Batch cancel orders response: ", resp)
-```
+## Errors and signed-action reconciliation
 
-For detailed usage, please check the test cases under `test/` directory.
+All library errors derive from `HyperliquidError`. Import detailed error types
+from `async_hyperliquid.errors`.
 
-## Environment Variables
+A timeout, connection failure, non-success HTTP response, or untrusted JSON
+response after submitting a signed action raises `IndeterminateActionError`.
+The client does not retry signed actions automatically: the server may already
+have accepted the nonce. Reconcile using Info calls such as `order_status`,
+`open_orders`, or `user_fills` before deciding whether to submit another
+action.
 
-Create a `.env.local` file with the following variables:
+## Typing
 
-```
-HYPER_ADDRESS=your_ethereum_address
-HYPER_API_KEY=your_ethereum_private_key or api key generate hyperliquid website
-```
+The package includes `py.typed`.
+
+- Info and Exchange wire responses use exact `TypedDict` contracts.
+- Commands use frozen, slotted dataclasses.
+- Public signatures contain no `Any` or unparameterized containers.
+- Response dictionaries are not copied into runtime model objects.
 
 ## Testing
 
-Tests use pytest and pytest-asyncio. To run tests:
+The default suite performs no live API calls:
 
 ```bash
-uv pip install -e .
-
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=async_hyperliquid
+uv run pytest -q tests/unit tests/contracts tests/public_api tests/package
+uv run ruff check src tests scripts
+uv run ty check src
+uv run ty check tests
+uv run ty check scripts
 ```
+
+Read-only live tests require `RUN_LIVE_INFO_TESTS=true`. Signed integration is
+restricted to testnet and additionally requires
+`RUN_LIVE_EXCHANGE_TESTS=true`, `IS_MAINNET=false`, `HL_ADDR`, and `HL_AK`.
+
+## Migrating from 0.5
+
+Version 1 intentionally removes the dynamic facade, flat forwarding methods,
+legacy aliases, mutable endpoint reassignment, and embedded EVM client. See
+[the 0.5 to 1.0 migration guide](https://github.com/traderfiapp/async-hyperliquid/blob/master/docs/migration-0.5-to-1.0.md).
 
 ## License
 
-MIT
-
-## Acknowledgements
-
-This library is a community-developed project and is not officially affiliated with Hyperliquid.
+MIT. This community project is not affiliated with Hyperliquid.

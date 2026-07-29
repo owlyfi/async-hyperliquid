@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0rc1] - 2026-07-29
+
+### Added
+
+- Add credential-free `InfoClient` with exact constructor-time routing for
+  official, self-hosted, and third-party Info endpoints.
+- Add immutable typed command dataclasses and exact `TypedDict` wire-response
+  contracts, plus the `py.typed` marker.
+- Add independent `info_url` and `exchange_url` routing while keeping `Network`
+  as the sole signing-domain selector.
+- Add deterministic lifecycle, finite timeout budgets, cancellation-safe atomic
+  metadata snapshots, and explicit `IndeterminateActionError` reconciliation
+  semantics.
+
+### Changed
+
+- Replace the dynamic facade with an explicit resource owner whose concrete
+  `.info` and `.exchange` clients share one HTTP transport.
+- Require valid account and signing credentials for `AsyncHyperliquid`; use
+  `InfoClient` for read-only access.
+- Batch order preparation performs one metadata snapshot lookup, one signature,
+  and one HTTP POST.
+- Require Python 3.11+ and upgrade aiohttp to 3.14.3, msgpack to 1.2.1,
+  eth-account to 0.13.7, eth-utils to the resolver-compatible 5.3.1, and the
+  development signing oracle to the official Hyperliquid SDK 0.24.0.
+- Keep `coincurve` as a runtime dependency after an isolated end-to-end
+  benchmark showed approximately 94% lower signing latency than the native
+  fallback.
+
+### Removed
+
+- Remove flat forwarding methods, `AsyncHyper`, `InfoAPI`, `ExchangeAPI`,
+  dynamic proxying, import-time monkeypatching, and legacy utility re-exports.
+- Remove mutable `base_url` routing and URL-derived signing-network decisions.
+- Remove embedded EVM support and the `hl-web3` dependency; EVM users should
+  construct `hl-web3` directly.
+- Remove Python 3.10 support.
+
+### Fixed
+
+- Prevent the `base_url=None` path from posting to mainnet while signing for
+  testnet.
+- Prevent a cancelled metadata waiter from cancelling or poisoning unrelated
+  refresh work.
+- Match the live `allPerpMetas` response as a list of perpetual metadata
+  objects rather than conflating it with `metaAndAssetCtxs` pairs.
+- Reject partial `allPerpMetas` snapshots that omit a DEX declared by
+  `perpDexs`.
+- Reject order prices or sizes that round to zero at the market precision
+  before signing.
+- Reject malformed JSON and mismatched protocol response shapes at the
+  transport/client boundary without leaking request signatures.
+
 ## [0.5.0] - 2026-04-20
 
 ### Added
