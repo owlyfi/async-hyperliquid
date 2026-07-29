@@ -49,7 +49,10 @@ class AsyncAPI:
         self.base_url = (base_url or MAINNET_API_URL).rstrip("/")
         self.session = session
         self._owns_session = owns_session
-        self._request_url = f"{self.base_url}/{self.endpoint.value}"
+
+    @property
+    def _request_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}/{self.endpoint.value}"
 
     # for async with AsyncAPI() as api usage
     async def __aenter__(self: _AsyncAPISelf) -> _AsyncAPISelf:

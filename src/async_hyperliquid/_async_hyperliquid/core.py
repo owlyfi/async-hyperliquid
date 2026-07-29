@@ -36,7 +36,6 @@ class AsyncHyperliquidCore(AsyncAPI):
     asset_sz_decimals: dict[int, int]
     spot_tokens: dict[str, SpotTokenMeta]
     _meta_init_lock: asyncio.Lock
-    _meta_init_task: asyncio.Task[None] | None
     _metas_initialized: bool
 
     perp_dexs: list[str]
@@ -76,6 +75,7 @@ class AsyncHyperliquidCore(AsyncAPI):
             self.base_url,
             address=self.address,
             nonce_factory=self.next_nonce,
+            is_mainnet=self.is_mainnet,
         )
 
         self.coin_assets = {}
@@ -84,7 +84,6 @@ class AsyncHyperliquidCore(AsyncAPI):
         self.asset_sz_decimals = {}
         self.spot_tokens = {}
         self._meta_init_lock = asyncio.Lock()
-        self._meta_init_task = None
         self._metas_initialized = False
 
         self.vault = vault
@@ -421,24 +420,10 @@ class AsyncHyperliquidCore(AsyncAPI):
         if only_if_missing and getattr(self, "_metas_initialized", False):
             return
 
-        task = getattr(self, "_meta_init_task", None)
-        if task is not None and not task.done():
-            await task
-            return
-
         async with self._get_meta_init_lock():
-            task = getattr(self, "_meta_init_task", None)
-            if task is None or task.done():
-                if only_if_missing and getattr(self, "_metas_initialized", False):
-                    return
-                task = asyncio.create_task(self._refresh_metas())
-                self._meta_init_task = task
-
-        try:
-            await task
-        finally:
-            if getattr(self, "_meta_init_task", None) is task and task.done():
-                self._meta_init_task = None
+            if only_if_missing and getattr(self, "_metas_initialized", False):
+                return
+            await self._refresh_metas()
 
     async def _ensure_metas_initialized(self) -> None:
         await self._run_meta_refresh(only_if_missing=True)

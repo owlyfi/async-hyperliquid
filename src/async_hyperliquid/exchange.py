@@ -22,12 +22,19 @@ class ExchangeAPI(AsyncAPI):
         base_url: str | None = None,
         address: str | None = None,
         nonce_factory: Callable[[], int] | None = None,
+        *,
+        is_mainnet: bool | None = None,
     ):
+        resolved_base_url = (base_url or MAINNET_API_URL).rstrip("/")
         self.account = account
         self.address = address or account.address
-        self.is_mainnet = base_url == MAINNET_API_URL
+        self.is_mainnet = (
+            resolved_base_url == MAINNET_API_URL if is_mainnet is None else is_mainnet
+        )
         self._next_nonce = nonce_factory or get_timestamp_ms
-        super().__init__(Endpoint.EXCHANGE, base_url, session, owns_session=False)
+        super().__init__(
+            Endpoint.EXCHANGE, resolved_base_url, session, owns_session=False
+        )
 
     async def multi_sig(
         self,

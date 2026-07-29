@@ -11,6 +11,7 @@ import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid.async_api import AsyncAPI
 from async_hyperliquid.exchange import ExchangeAPI
+from async_hyperliquid.info import InfoAPI
 
 
 def build_stub_hl() -> Any:
@@ -20,6 +21,36 @@ def build_stub_hl() -> Any:
         "0x" + ("11" * 32),
         session=session,
     )
+
+
+class StubResponse:
+    async def __aenter__(self) -> "StubResponse":
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        return None
+
+    async def json(self) -> dict[str, str]:
+        return {"status": "ok"}
+
+
+class RecordingSession:
+    closed = False
+
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def post(self, url: str, *, json: object) -> StubResponse:
+        self.urls.append(url)
+        return StubResponse()
 
 
 def test_next_nonce_increments_when_clock_repeats(
@@ -143,7 +174,7 @@ async def test_exchange_post_action_uses_injected_nonce_factory(
     assert signed["action"] == {"type": "reserveRequestWeight", "weight": 5}
     assert signed["vault"] is None
     assert signed["nonce"] == 1_700_000_000_123
-    assert signed["is_mainnet"] is False
+    assert signed["is_mainnet"] is True
     assert signed["expires"] is None
 
     await_args = post_action_with_sig.await_args
@@ -153,3 +184,26 @@ async def test_exchange_post_action_uses_injected_nonce_factory(
         expected_sig,
         1_700_000_000_123,
     )
+
+
+def test_custom_exchange_url_uses_explicit_signing_network() -> None:
+    account = Account.from_key("0x" + ("22" * 32))
+    session = cast(Any, SimpleNamespace())
+
+    api = ExchangeAPI(
+        account, session, base_url="https://provider.example", is_mainnet=True
+    )
+
+    assert api.is_mainnet is True
+    assert api._request_url == "https://provider.example/exchange"
+
+
+@pytest.mark.asyncio
+async def test_info_base_url_change_routes_the_next_request() -> None:
+    session = RecordingSession()
+    info = InfoAPI("https://api.hyperliquid.xyz", cast(Any, session))
+
+    info.base_url = "http://local-node:3001"
+    await info.get_all_mids()
+
+    assert session.urls == ["http://local-node:3001/info"]
