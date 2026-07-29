@@ -8,6 +8,7 @@ import pytest
 from scripts.client_hotpath_benchmark import (
     BenchmarkCommand,
     BenchmarkFailure,
+    CANDIDATE_WHEEL_PROBE,
     alternate_candidates,
     compare_wheels,
     run_ab_ba,
@@ -85,3 +86,22 @@ def test_benchmark_rejects_a_wheel_with_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(BenchmarkFailure, match="unsafe wheel member"):
         compare_wheels(wheel, wheel, rounds=1, warmups=0, iterations=1)
+
+
+def test_v1_dependency_comparison_uses_independent_interpreters(tmp_path: Path) -> None:
+    wheel = tmp_path / "package.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("async_hyperliquid/__init__.py", "")
+
+    missing_python = tmp_path / "missing-python"
+    with pytest.raises(BenchmarkFailure, match="baseline"):
+        compare_wheels(
+            wheel,
+            wheel,
+            rounds=1,
+            warmups=0,
+            iterations=1,
+            baseline_probe=CANDIDATE_WHEEL_PROBE,
+            baseline_python=missing_python,
+            candidate_python=Path(sys.executable),
+        )

@@ -271,14 +271,17 @@ def _run(command: BenchmarkCommand) -> dict[str, float]:
     env = os.environ.copy()
     if command.env is not None:
         env.update(command.env)
-    completed = subprocess.run(
-        command.argv,
-        cwd=command.cwd,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            command.argv,
+            cwd=command.cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise BenchmarkFailure(f"{command.name} could not start: {error}") from error
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise BenchmarkFailure(
@@ -337,7 +340,13 @@ def run_ab_ba(
 
 
 def _wheel_command(
-    name: str, wheel: Path, destination: Path, *, iterations: int, probe: str
+    name: str,
+    wheel: Path,
+    destination: Path,
+    *,
+    iterations: int,
+    probe: str,
+    python: Path,
 ) -> BenchmarkCommand:
     if wheel.suffix != ".whl" or not wheel.is_file():
         raise BenchmarkFailure(f"{name} wheel does not exist: {wheel}")
@@ -365,7 +374,7 @@ def _wheel_command(
     )
     return BenchmarkCommand(
         name=name,
-        argv=(sys.executable, "-I", "-c", bootstrap),
+        argv=(str(python), "-I", "-c", bootstrap),
         cwd=destination,
         env={"BENCH_ITERATIONS": str(iterations)},
     )
@@ -378,6 +387,9 @@ def compare_wheels(
     rounds: int,
     warmups: int,
     iterations: int,
+    baseline_probe: str = BASELINE_WHEEL_PROBE,
+    baseline_python: Path = Path(sys.executable),
+    candidate_python: Path = Path(sys.executable),
 ) -> BenchmarkReport:
     with TemporaryDirectory(prefix="async-hyperliquid-benchmark-") as temp:
         root = Path(temp)
@@ -386,7 +398,8 @@ def compare_wheels(
             baseline_wheel,
             root / "baseline",
             iterations=iterations,
-            probe=BASELINE_WHEEL_PROBE,
+            probe=baseline_probe,
+            python=baseline_python,
         )
         candidate = _wheel_command(
             "candidate",
@@ -394,6 +407,7 @@ def compare_wheels(
             root / "candidate",
             iterations=iterations,
             probe=CANDIDATE_WHEEL_PROBE,
+            python=candidate_python,
         )
         return run_ab_ba(baseline, candidate, rounds=rounds, warmups=warmups)
 
@@ -404,6 +418,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--baseline-wheel", type=Path, required=True)
     parser.add_argument("--candidate-wheel", type=Path, required=True)
+    parser.add_argument(
+        "--baseline-api",
+        choices=("legacy", "v1"),
+        default="legacy",
+        help="Use the legacy or v1 probe for the baseline wheel.",
+    )
+    parser.add_argument(
+        "--baseline-python",
+        type=Path,
+        default=Path(sys.executable),
+        help="Interpreter containing the baseline dependency set.",
+    )
+    parser.add_argument(
+        "--candidate-python",
+        type=Path,
+        default=Path(sys.executable),
+        help="Interpreter containing the candidate dependency set.",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--rounds", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=1)
@@ -419,6 +451,13 @@ def main() -> None:
         rounds=args.rounds,
         warmups=args.warmups,
         iterations=args.iterations,
+        baseline_probe=(
+            BASELINE_WHEEL_PROBE
+            if args.baseline_api == "legacy"
+            else CANDIDATE_WHEEL_PROBE
+        ),
+        baseline_python=args.baseline_python,
+        candidate_python=args.candidate_python,
     )
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output is None:
