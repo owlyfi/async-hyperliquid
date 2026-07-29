@@ -1,6 +1,8 @@
 from copy import deepcopy
 
 from eth_account import Account
+from hyperliquid.utils.signing import action_hash as sdk_action_hash
+from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
 
 from async_hyperliquid._signing import (
     _USD_SEND_SPEC,
@@ -67,6 +69,25 @@ def test_exchange_signatures_match_both_0_5_1_network_vectors() -> None:
         "s": "0x26ca51a08fb60df7ee0117deffc34e2fe8caa80561dd4e90e524c9d75afd0e65",
         "v": 27,
     }
+
+
+def test_hashes_and_signatures_match_the_official_sdk_oracle() -> None:
+    wallet = Account.from_key("0x" + "11" * 32)
+    vault_address = "0x2222222222222222222222222222222222222222"
+    expires_after = NONCE + 1_000
+
+    assert hash_action(ORDER_ACTION, None, NONCE) == sdk_action_hash(
+        ORDER_ACTION, None, NONCE, None
+    )
+    assert hash_action(
+        ORDER_ACTION, vault_address, NONCE, expires_after
+    ) == sdk_action_hash(ORDER_ACTION, vault_address, NONCE, expires_after)
+    assert sign_exchange_action(
+        wallet, ORDER_ACTION, None, NONCE, Network.MAINNET.signature_source
+    ) == sdk_sign_l1_action(wallet, ORDER_ACTION, None, NONCE, None, True)
+    assert sign_exchange_action(
+        wallet, ORDER_ACTION, None, NONCE, Network.TESTNET.signature_source
+    ) == sdk_sign_l1_action(wallet, ORDER_ACTION, None, NONCE, None, False)
 
 
 def test_user_signed_action_matches_0_5_1_without_mutating_input() -> None:
