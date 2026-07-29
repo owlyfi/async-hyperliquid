@@ -1,5 +1,5 @@
-from ._legacy_info import InfoAPI
-from ._legacy_exchange import ExchangeAPI
-from .async_hyperliquid import AsyncHyper, AsyncHyperliquid
+from .client import AsyncHyperliquid
+from .errors import HyperliquidError
+from .info import InfoClient
 
-__all__ = ["AsyncHyper", "InfoAPI", "ExchangeAPI", "AsyncHyperliquid"]
+__all__ = ["AsyncHyperliquid", "InfoClient", "HyperliquidError"]

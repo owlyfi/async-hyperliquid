@@ -32,6 +32,18 @@ def test_source_package_declares_inline_typing() -> None:
     assert (ROOT / "src" / "async_hyperliquid" / "py.typed").is_file()
 
 
+def test_v1_source_tree_has_no_legacy_topology_or_embedded_evm_dependency() -> None:
+    package = ROOT / "src" / "async_hyperliquid"
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert not (package / "async_api.py").exists()
+    assert not (package / "async_hyperliquid.py").exists()
+    assert not (package / "_async_hyperliquid").exists()
+    assert not (package / "utils").exists()
+    assert all(not dependency.startswith("hl-web3") for dependency in dependencies)
+
+
 @pytest.mark.skipif(
     not WHEELS, reason="build a wheel or set ASYNC_HYPERLIQUID_WHEEL_DIR"
 )

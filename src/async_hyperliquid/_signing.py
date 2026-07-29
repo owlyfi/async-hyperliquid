@@ -8,14 +8,12 @@ from eth_utils.conversions import to_hex
 from eth_utils.crypto import keccak
 import msgpack
 
+from .constants import PERP_DEX_ASSET_OFFSET, SIGNATURE_CHAIN_ID, SPOT_ASSET_OFFSET
 from .types import JsonObject, LimitOrder, Network, Side, TriggerOrder
 from .types.exchange import EncodedOrder, Signature
 
 
-_SIGNATURE_CHAIN_ID = "0x66eee"
 _ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
-_SPOT_ASSET_OFFSET = 10_000
-_PERP_DEX_ASSET_OFFSET = 110_000
 _EXCHANGE_DOMAIN: dict[str, str | int] = {
     "chainId": 1337,
     "name": "Exchange",
@@ -31,7 +29,7 @@ _EXCHANGE_MESSAGE_TYPES = {
 _USER_DOMAIN: dict[str, str | int] = {
     "name": "HyperliquidSignTransaction",
     "version": "1",
-    "chainId": int(_SIGNATURE_CHAIN_ID, 16),
+    "chainId": int(SIGNATURE_CHAIN_ID, 16),
     "verifyingContract": _ZERO_ADDRESS,
 }
 
@@ -212,7 +210,7 @@ def _sign_user_action(
 ) -> tuple[JsonObject, Signature]:
     wire_action: JsonObject = {
         **action,
-        "signatureChainId": _SIGNATURE_CHAIN_ID,
+        "signatureChainId": SIGNATURE_CHAIN_ID,
         "hyperliquidChain": ("Mainnet" if network is Network.MAINNET else "Testnet"),
     }
     signable = encode_typed_data(
@@ -250,7 +248,7 @@ def encode_order(
     order: LimitOrder | TriggerOrder, *, asset: int, size_decimals: int
 ) -> EncodedOrder:
     price_decimals = (
-        8 if _SPOT_ASSET_OFFSET <= asset < _PERP_DEX_ASSET_OFFSET else 6
+        8 if SPOT_ASSET_OFFSET <= asset < PERP_DEX_ASSET_OFFSET else 6
     ) - size_decimals
     encoded: EncodedOrder = {
         "a": asset,

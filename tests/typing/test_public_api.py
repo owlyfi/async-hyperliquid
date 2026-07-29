@@ -1,13 +1,15 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from async_hyperliquid import AsyncHyperliquid, ExchangeAPI, InfoAPI
-from async_hyperliquid.utils.types import UserOpenOrders
+
+from async_hyperliquid import AsyncHyperliquid, InfoClient
+from async_hyperliquid.exchange import ExchangeClient
+from async_hyperliquid.types.info import OpenOrders
 
 
 async def check_public_types(client: AsyncHyperliquid) -> None:
-    info: InfoAPI = client.info
-    exchange: ExchangeAPI = client.exchange
-    orders: UserOpenOrders = await info.get_user_open_orders("0x" + "00" * 20)
+    info: InfoClient = client.info
+    exchange: ExchangeClient = client.exchange
+    orders: OpenOrders = await info.open_orders("0x" + "00" * 20)
     del exchange, orders
 
 

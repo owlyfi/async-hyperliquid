@@ -6,7 +6,7 @@ from typing import Literal, Self, cast, overload
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._http import _HttpTransport
+from ._http import _HttpTransport, _validate_endpoint_url
 from ._metadata import _MetadataSnapshot, _build_metadata_snapshot
 from .errors import ProtocolError
 from .types import CandleInterval, JsonObject, JsonValue, Network
@@ -160,7 +160,7 @@ class InfoClient:
         self, *, transport: _HttpTransport, info_url: str, owns_transport: bool
     ) -> None:
         self._transport = transport
-        self._info_url = info_url
+        self._info_url = _validate_endpoint_url(info_url)
         self._owns_transport = owns_transport
         self._metadata = None
         self._metadata_lock = None

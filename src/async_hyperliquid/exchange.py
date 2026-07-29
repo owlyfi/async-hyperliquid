@@ -9,7 +9,7 @@ from typing import Literal, Self, cast, overload
 
 from eth_account.signers.local import LocalAccount
 
-from ._http import _HttpTransport
+from ._http import _HttpTransport, _validate_endpoint_url
 from ._signing import (
     _APPROVE_AGENT_SPEC,
     _APPROVE_BUILDER_FEE_SPEC,
@@ -151,6 +151,7 @@ class ExchangeClient:
         "_info",
         "_last_nonce",
         "_network",
+        "_perp_dexes",
         "_transport",
     )
 
@@ -159,6 +160,7 @@ class ExchangeClient:
     _account: LocalAccount
     _account_address: str
     _network: Network
+    _perp_dexes: tuple[str, ...]
     _exchange_url: str
     _last_nonce: int
 
@@ -175,6 +177,7 @@ class ExchangeClient:
         account_address: str,
         network: Network,
         exchange_url: str | None = None,
+        perp_dexes: tuple[str, ...] = ("",),
     ) -> Self:
         client = cls.__new__(cls)
         client._transport = transport
@@ -182,7 +185,8 @@ class ExchangeClient:
         client._account = account
         client._account_address = account_address
         client._network = network
-        client._exchange_url = (
+        client._perp_dexes = perp_dexes
+        client._exchange_url = _validate_endpoint_url(
             network.exchange_url if exchange_url is None else exchange_url
         )
         client._last_nonce = 0
@@ -512,7 +516,7 @@ class ExchangeClient:
         self,
         coins: Sequence[str] | None = None,
         *,
-        perp_dexes: tuple[str, ...] = ("",),
+        perp_dexes: tuple[str, ...] | None = None,
         slippage: float = 0.05,
         builder_fee: BuilderFee | None = None,
         expires_after: int | None = None,
@@ -521,7 +525,8 @@ class ExchangeClient:
         if requested is not None and not requested:
             return None
         positions = await self._info.positions(
-            self._account_address, perp_dexes=perp_dexes
+            self._account_address,
+            perp_dexes=self._perp_dexes if perp_dexes is None else perp_dexes,
         )
         orders: list[MarketOrder] = []
         for position in positions:

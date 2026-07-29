@@ -1,14 +1,10 @@
 from dataclasses import dataclass
 from typing import cast
 
+from .constants import PERP_DEX_ASSET_OFFSET, PERP_DEX_ASSET_STRIDE, SPOT_ASSET_OFFSET
 from .errors import ProtocolError
 from .types import JsonObject, JsonValue
 from .types.info import AllPerpMetas, SpotMeta, SpotToken
-
-
-_SPOT_ASSET_OFFSET = 10_000
-_PERP_DEX_ASSET_OFFSET = 110_000
-_PERP_DEX_ASSET_STRIDE = 10_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +52,7 @@ def _dex_offsets(dex_names: tuple[str, ...]) -> dict[str, int]:
         name: (
             0
             if index == 0
-            else _PERP_DEX_ASSET_OFFSET + (index - 1) * _PERP_DEX_ASSET_STRIDE
+            else PERP_DEX_ASSET_OFFSET + (index - 1) * PERP_DEX_ASSET_STRIDE
         )
         for index, name in enumerate(dex_names)
     }
@@ -147,7 +143,7 @@ def _build_metadata_snapshot(
         base_name = base["name"]
         quote_name = quote["name"]
         display_name = f"{base_name}/{quote_name}"
-        asset_id = _SPOT_ASSET_OFFSET + pair_index
+        asset_id = SPOT_ASSET_OFFSET + pair_index
 
         coin_by_alias[coin] = coin
         coin_by_alias.setdefault(display_name, coin)

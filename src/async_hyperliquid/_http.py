@@ -4,6 +4,7 @@ import math
 from time import monotonic
 from types import TracebackType
 from typing import Literal, Self, cast
+from urllib.parse import urlsplit
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -14,6 +15,17 @@ from .types import JsonObject, JsonValue
 _DEFAULT_TIMEOUT = ClientTimeout(total=15, connect=3, sock_read=10)
 _State = Literal["new", "open", "closed"]
 _logger = logging.getLogger(__name__)
+
+
+def _validate_endpoint_url(url: str) -> str:
+    try:
+        parsed = urlsplit(url)
+        valid = parsed.scheme in {"http", "https"} and parsed.hostname is not None
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise ValueError("endpoint URL must be an absolute HTTP(S) URL")
+    return url
 
 
 def _validate_timeout(timeout: ClientTimeout) -> None:

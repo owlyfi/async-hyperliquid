@@ -1,30 +1,49 @@
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncIterator
 from pathlib import Path
 
-import pytest_asyncio
 from dotenv import load_dotenv
+import pytest
+import pytest_asyncio
 
 from async_hyperliquid import AsyncHyperliquid
-
-env_file = Path(".env.local")
-load_dotenv(env_file)
+from async_hyperliquid.types import Network
 
 
-def get_is_mainnet() -> bool:
-    return os.getenv("IS_MAINNET", "true").lower() == "true"
+load_dotenv(Path(".env.local"))
+
+
+def get_network() -> Network:
+    return (
+        Network.MAINNET
+        if os.getenv("IS_MAINNET", "true").lower() == "true"
+        else Network.TESTNET
+    )
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def hl() -> AsyncGenerator[AsyncHyperliquid, None]:
-    address = os.getenv("HL_ADDR", "")
-    api_key = os.getenv("HL_AK", "")
-    is_mainnet = get_is_mainnet()
-    hl = AsyncHyperliquid(
-        address, api_key, is_mainnet, perp_dexs=["", "flx", "vntl", "xyz"]
-    )
-    try:
-        await hl.init_metas()
-        yield hl
-    finally:
-        await hl.close()
+async def hl() -> AsyncIterator[AsyncHyperliquid]:
+    if os.getenv("RUN_LIVE_EXCHANGE_TESTS") != "true":
+        raise pytest.skip.Exception(
+            "set RUN_LIVE_EXCHANGE_TESTS=true to run exchange integration"
+        )
+    if get_network() is not Network.TESTNET:
+        raise pytest.skip.Exception(
+            "live exchange integration is restricted to testnet"
+        )
+
+    account_address = os.getenv("HL_ADDR")
+    signing_key = os.getenv("HL_AK")
+    if not account_address or not signing_key:
+        raise pytest.skip.Exception(
+            "HL_ADDR and HL_AK are required for exchange integration"
+        )
+
+    async with AsyncHyperliquid(
+        account_address,
+        signing_key,
+        network=Network.TESTNET,
+        perp_dexes=("", "flx", "vntl", "xyz"),
+    ) as client:
+        await client.info.refresh_metadata()
+        yield client
