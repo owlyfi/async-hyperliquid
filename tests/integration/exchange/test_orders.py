@@ -1,3 +1,4 @@
+from decimal import Decimal
 from time import time
 from typing import cast
 from collections.abc import Sequence
@@ -5,6 +6,7 @@ from collections.abc import Sequence
 import pytest
 
 from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE
 from async_hyperliquid.types import (
     Cloid,
     Builder,
@@ -72,6 +74,34 @@ async def _cancel(client: AsyncHyperliquid, orders: Sequence[CancelOrder]) -> No
         assert response["status"] == "ok"
 
 
+async def _assert_resting_price(
+    client: AsyncHyperliquid, coin: str, expected_px: Decimal
+) -> None:
+    mid = await client.info.mid_price(coin)
+    px = float(expected_px)
+    is_buy = px < mid
+    size_decimals = await client.info.size_decimals(coin)
+    size = round(20 / px, size_decimals)
+    oid: int | None = None
+    try:
+        order: PlaceOrderRequest = {
+            "coin": coin,
+            "is_buy": is_buy,
+            "sz": size,
+            "px": px,
+            "is_market": False,
+            "order_type": limit_order_type(TimeInForce.ALO),
+        }
+        response = await client.place_limit_order(order)
+        oid = _resting_oid(response)
+        result = await client.info.order_status(client.exchange.execution_address, oid)
+        assert result["status"] == "order"
+        assert Decimal(result["order"]["order"]["limitPx"]) == expected_px
+    finally:
+        if oid is not None:
+            await _cancel(client, (CancelOrder(coin, oid),))
+
+
 async def _order_coins(client: AsyncHyperliquid) -> tuple[str, ...]:
     coins = ["BTC"]
     spot = await client.info.spot_meta()
@@ -97,6 +127,66 @@ async def test_place_limit_order(api_hl: AsyncHyperliquid) -> None:
             cancels.append(CancelOrder(coin, _resting_oid(response)))
     finally:
         await _cancel(api_hl, cancels)
+
+
+async def test_outcome_minimum_notional_is_exchange_owned(
+    api_hl: AsyncHyperliquid,
+) -> None:
+    mids = await api_hl.info.all_mids()
+    coin = next(
+        (
+            name
+            for name, price in mids.items()
+            if name.startswith("#") and float(price) != 0.5
+        ),
+        None,
+    )
+    if coin is None:
+        raise pytest.skip.Exception("testnet allMids has no priced outcome market")
+    mid = float(mids[coin])
+    is_buy = mid > OUTCOME_MIN_PRICE
+    px = OUTCOME_MIN_PRICE if is_buy else OUTCOME_MAX_PRICE
+    oid: int | None = None
+    try:
+        response = await api_hl.place_limit_order(
+            {
+                "coin": coin,
+                "is_buy": is_buy,
+                "sz": 1.0,
+                "px": px,
+                "is_market": False,
+                "order_type": limit_order_type(TimeInForce.ALO),
+            }
+        )
+        assert response["status"] == "ok"
+        status = cast(JsonObject, response["response"]["data"]["statuses"][0])
+        resting = status.get("resting")
+        if isinstance(resting, dict):
+            resting_oid = resting.get("oid")
+            if isinstance(resting_oid, int):
+                oid = resting_oid
+        error = status.get("error")
+        assert isinstance(error, str)
+        assert "minimum value" in error.lower()
+    finally:
+        if oid is not None:
+            await _cancel(api_hl, (CancelOrder(coin, oid),))
+
+
+async def test_btc_integer_price_above_10000_is_preserved(
+    api_hl: AsyncHyperliquid,
+) -> None:
+    expected_px = Decimal("10001")
+    mid = await api_hl.info.mid_price("BTC")
+    if not mid * 0.2 <= float(expected_px) <= mid * 1.8:
+        raise pytest.skip.Exception(
+            "BTC 10001 is outside the Exchange 80% reference-price gate"
+        )
+    await _assert_resting_price(api_hl, "BTC", expected_px)
+
+
+async def test_kpepe_six_decimal_price_is_preserved(api_hl: AsyncHyperliquid) -> None:
+    await _assert_resting_price(api_hl, "kPEPE", Decimal("0.002001"))
 
 
 async def test_place_trigger_order(api_hl: AsyncHyperliquid) -> None:

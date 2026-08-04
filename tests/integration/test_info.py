@@ -50,6 +50,35 @@ async def test_all_mids(info: InfoClient) -> None:
     assert await info.all_mids()
 
 
+async def test_spot_mid_price_uses_testnet_protocol_coin(info: InfoClient) -> None:
+    mids = await info.all_mids()
+
+    assert "@1035" in mids
+    assert await info.mid_price("HYPE/USDC") == float(mids["@1035"])
+    assert await info.asset_id("HYPE/USDC") == 11_035
+
+
+async def test_purr_mid_price_preserves_named_pair(info: InfoClient) -> None:
+    mids = await info.all_mids()
+
+    assert "PURR/USDC" in mids
+    assert await info.mid_price("PURR/USDC") == float(mids["PURR/USDC"])
+
+
+async def test_outcome_market_uses_spot_like_encoding(info: InfoClient) -> None:
+    mids = await info.all_mids()
+    coin = next((name for name in mids if name.startswith("#")), None)
+    if coin is None:
+        raise pytest.skip.Exception("testnet allMids has no outcome market")
+    encoding = int(coin[1:])
+
+    assert encoding % 10 in (0, 1)
+    assert await info.asset_id(coin) == 100_000_000 + encoding
+    assert await info.asset_id(f"+{encoding}") == 100_000_000 + encoding
+    assert await info.size_decimals(coin) == 0
+    assert await info.mid_price(coin) == float(mids[coin])
+
+
 async def test_open_orders(info: InfoClient, master_address: str) -> None:
     assert isinstance(await info.open_orders(master_address), list)
     assert isinstance(await info.open_orders(master_address, frontend=True), list)
