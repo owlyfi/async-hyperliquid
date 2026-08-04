@@ -1,7 +1,6 @@
 import math
 from typing import cast
 
-from .constants import PERP_DEX_ASSET_OFFSET, SPOT_ASSET_OFFSET
 from .types import TimeInForce
 from .types.exchange import (
     EncodedOrder,
@@ -36,11 +35,13 @@ def _wire_float(value: float | int) -> str:
 
 
 def encode_order(
-    order: PlaceOrderRequest | ModifyOrderRequest, *, asset: int, size_decimals: int
+    order: PlaceOrderRequest | ModifyOrderRequest,
+    *,
+    asset: int,
+    size_decimals: int,
+    is_spot: bool,
 ) -> EncodedOrder:
-    price_decimals = (
-        8 if SPOT_ASSET_OFFSET <= asset < PERP_DEX_ASSET_OFFSET else 6
-    ) - size_decimals
+    price_decimals = (8 if is_spot else 6) - size_decimals
     price = _round_price(order["px"], price_decimals)
     size = _round_float(order["sz"], size_decimals)
     if price <= 0 or size <= 0:

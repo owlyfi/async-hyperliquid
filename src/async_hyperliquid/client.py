@@ -9,6 +9,7 @@ from aiohttp import ClientSession, ClientTimeout
 
 from ._encoding import _round_float, _wire_float, encode_order
 from ._http import _HttpTransport
+from ._metadata import _MarketInfo
 from .errors import ProtocolError
 from .info import InfoClient
 from .types import (
@@ -105,18 +106,26 @@ class AsyncHyperliquid:
     async def _encode_orders(
         self, orders: Sequence[PlaceOrderRequest]
     ) -> tuple[EncodedOrder, ...]:
-        market_info = await self._info._market_infos(
+        markets = await self._info._market_infos(
             tuple(order["coin"] for order in orders)
         )
         return tuple(
-            encode_order(order, asset=asset, size_decimals=size_decimals)
-            for order, (asset, size_decimals) in zip(orders, market_info, strict=True)
+            encode_order(
+                order,
+                asset=market.asset,
+                size_decimals=market.size_decimals,
+                is_spot=market.is_spot,
+            )
+            for order, market in zip(orders, markets, strict=True)
         )
 
     async def _encode_market_orders(
         self, orders: Sequence[PlaceOrderRequest]
     ) -> tuple[EncodedOrder, ...]:
-        mids = await self._info._mid_prices(tuple(order["coin"] for order in orders))
+        markets = await self._info._market_infos(
+            tuple(order["coin"] for order in orders)
+        )
+        mids = await self._info._mid_prices(markets)
         limits: list[PlaceOrderRequest] = []
         for order, mid in zip(orders, mids, strict=True):
             slippage = order.get("slippage", 0.05)
@@ -135,7 +144,15 @@ class AsyncHyperliquid:
             if cloid is not None:
                 limit["cloid"] = cloid
             limits.append(limit)
-        return await self._encode_orders(limits)
+        return tuple(
+            encode_order(
+                order,
+                asset=market.asset,
+                size_decimals=market.size_decimals,
+                is_spot=market.is_spot,
+            )
+            for order, market in zip(limits, markets, strict=True)
+        )
 
     async def place_order(
         self,
@@ -273,12 +290,12 @@ class AsyncHyperliquid:
         commands = tuple(orders)
         if not commands:
             raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
+        markets = await self._info._market_infos(
             tuple(order.coin for order in commands)
         )
         cancels = tuple(
-            EncodedCancel(a=asset, o=order.oid)
-            for order, (asset, _) in zip(commands, market_info, strict=True)
+            EncodedCancel(a=market.asset, o=order.oid)
+            for order, market in zip(commands, markets, strict=True)
         )
         return await self._exchange._submit_cancels(
             cancels, expires_after=expires_after
@@ -295,25 +312,28 @@ class AsyncHyperliquid:
         commands = tuple(orders)
         if not commands:
             raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
+        markets = await self._info._market_infos(
             tuple(order.coin for order in commands)
         )
         cancels = tuple(
-            EncodedCancelByCloid(asset=asset, cloid=str(order.cloid))
-            for order, (asset, _) in zip(commands, market_info, strict=True)
+            EncodedCancelByCloid(asset=market.asset, cloid=str(order.cloid))
+            for order, market in zip(commands, markets, strict=True)
         )
         return await self._exchange._submit_cloid_cancels(
             cancels, expires_after=expires_after
         )
 
     @staticmethod
-    def _encode_modify(
-        order: ModifyOrderRequest, asset: int, size_decimals: int
-    ) -> EncodedModify:
+    def _encode_modify(order: ModifyOrderRequest, market: _MarketInfo) -> EncodedModify:
         oid = order["oid"]
         return EncodedModify(
             oid=oid if isinstance(oid, int) else str(oid),
-            order=encode_order(order, asset=asset, size_decimals=size_decimals),
+            order=encode_order(
+                order,
+                asset=market.asset,
+                size_decimals=market.size_decimals,
+                is_spot=market.is_spot,
+            ),
         )
 
     async def modify_order(
@@ -322,10 +342,9 @@ class AsyncHyperliquid:
         oid = order["oid"]
         if isinstance(oid, int) and oid < 0:
             raise ValueError("oid must not be negative")
-        asset, size_decimals = await self._info._market_info(order["coin"])
+        market = await self._info._market_info(order["coin"])
         return await self._exchange._submit_modify(
-            self._encode_modify(order, asset, size_decimals),
-            expires_after=expires_after,
+            self._encode_modify(order, market), expires_after=expires_after
         )
 
     async def modify_orders(
@@ -339,14 +358,12 @@ class AsyncHyperliquid:
             for command in commands
         ):
             raise ValueError("oid must not be negative")
-        market_info = await self._info._market_infos(
+        markets = await self._info._market_infos(
             tuple(command["coin"] for command in commands)
         )
         modifies = tuple(
-            self._encode_modify(command, asset, size_decimals)
-            for command, (asset, size_decimals) in zip(
-                commands, market_info, strict=True
-            )
+            self._encode_modify(command, market)
+            for command, market in zip(commands, markets, strict=True)
         )
         return await self._exchange._submit_modifies(
             modifies, expires_after=expires_after
@@ -390,12 +407,12 @@ class AsyncHyperliquid:
             raise ValueError("minutes must be greater than zero")
         if not math.isfinite(size) or size <= 0:
             raise ValueError("size must be finite and greater than zero")
-        asset, size_decimals = await self._info._market_info(coin)
-        rounded_size = _round_float(size, size_decimals)
+        market = await self._info._market_info(coin)
+        rounded_size = _round_float(size, market.size_decimals)
         if rounded_size == 0:
             raise ValueError("size is below market precision")
         twap = EncodedTwapOrder(
-            a=asset,
+            a=market.asset,
             b=is_buy,
             s=_wire_float(rounded_size),
             r=reduce_only,

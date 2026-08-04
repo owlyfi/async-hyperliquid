@@ -154,7 +154,7 @@ orders = tuple(
     }
     for index in range(10)
 )
-encoded_order = encode_order(order, asset=0, size_decimals=5)
+encoded_order = encode_order(order, asset=0, size_decimals=5, is_spot=False)
 single_action = {
     "type": "order",
     "orders": [encoded_order],
@@ -163,7 +163,7 @@ single_action = {
 batch_action = {
     "type": "order",
     "orders": [
-        encode_order(item, asset=index, size_decimals=5)
+        encode_order(item, asset=index, size_decimals=5, is_spot=False)
         for index, item in enumerate(orders)
     ],
     "grouping": "na",
@@ -187,14 +187,14 @@ def measure(fn, count):
 
 results = {
     "prepare_order": measure(
-        lambda: encode_order(order, asset=0, size_decimals=5),
+        lambda: encode_order(order, asset=0, size_decimals=5, is_spot=False),
         iterations,
     ),
     "prepare_batch_10": measure(
         lambda: {
             "type": "order",
             "orders": [
-                encode_order(item, asset=index, size_decimals=5)
+                encode_order(item, asset=index, size_decimals=5, is_spot=False)
                 for index, item in enumerate(orders)
             ],
             "grouping": "na",

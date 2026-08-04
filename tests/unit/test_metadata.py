@@ -5,9 +5,11 @@ from typing import cast
 import pytest
 
 from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._metadata import _MarketInfo, _build_metadata, _market_info
 from async_hyperliquid.errors import ProtocolError
 from async_hyperliquid.info import InfoClient
 from async_hyperliquid.types import JsonObject, JsonValue
+from async_hyperliquid.types.info import AllPerpMetas, SpotMeta
 
 
 ADDRESS = "0x1111111111111111111111111111111111111111"
@@ -95,6 +97,7 @@ class MetadataTransport:
         self.spot_meta = deepcopy(SPOT_META)
         self.perp_context = deepcopy(BASE_CONTEXT)
         self.spot_contexts = [deepcopy(SPOT_CONTEXT)]
+        self.all_mids = {"BTC": "100", "xyz:NVDA": "201", "@0": "2.1"}
         self.all_mids_dexes: list[str] = []
 
     async def post_json(self, url: str, payload: JsonObject) -> JsonValue:
@@ -124,7 +127,7 @@ class MetadataTransport:
             return [deepcopy(SPOT_META), deepcopy(self.spot_contexts)]
         if request_type == "allMids":
             self.all_mids_dexes.append(cast(str, payload["dex"]))
-            return {"BTC": "100", "xyz:NVDA": "201", "@0": "2.1"}
+            return deepcopy(self.all_mids)
         if request_type == "clearinghouseState":
             if self.malformed_positions:
                 return {"assetPositions": [{}]}
@@ -178,6 +181,22 @@ def build_info(transport: MetadataTransport) -> InfoClient:
     )
 
 
+def test_build_metadata_assembles_perp_and_spot_indexes() -> None:
+    snapshot = _build_metadata(
+        ("", "xyz"), cast(AllPerpMetas, ALL_PERP_METAS), cast(SpotMeta, SPOT_META)
+    )
+
+    assert snapshot.asset_by_coin["BTC"] == 0
+    assert snapshot.size_decimals_by_asset[0] == 5
+    assert snapshot.asset_by_coin["@0"] == 10_000
+    assert snapshot.symbol_by_coin["@0"] == "PURR/USDC"
+    assert snapshot.spot_market_coins == frozenset({"@0"})
+    assert snapshot.perp_context_by_coin["xyz:NVDA"] == ("xyz", 0)
+    assert _market_info(snapshot, "BTC") == _MarketInfo(
+        coin="BTC", asset=0, size_decimals=5, is_spot=False, dex=""
+    )
+
+
 async def test_metadata_builds_exact_asset_and_alias_lookups() -> None:
     info = build_info(MetadataTransport())
 
@@ -194,6 +213,54 @@ async def test_metadata_builds_exact_asset_and_alias_lookups() -> None:
     assert await info.size_decimals("@0") == 0
     assert (await info.spot_token_metadata("@0"))["name"] == "PURR"
     assert await info.token_id("PURR/USDC") == "0x01"
+
+
+async def test_spot_alias_resolves_to_protocol_coin_before_mid_lookup() -> None:
+    transport = MetadataTransport()
+    base = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[1])
+    pair = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["universe"])[0])
+    base["name"] = "HYPE"
+    base["szDecimals"] = 2
+    pair["name"] = "@107"
+    pair["index"] = 107
+    transport.all_mids = {"BTC": "100", "@107": "42.5"}
+    info = build_info(transport)
+
+    assert await info._market_info("HYPE/USDC") == _MarketInfo(
+        coin="@107", asset=10_107, size_decimals=2, is_spot=True, dex=""
+    )
+    assert await info.mid_price("HYPE/USDC") == 42.5
+    assert transport.all_mids_dexes == [""]
+
+
+async def test_purr_named_pair_is_its_protocol_coin() -> None:
+    transport = MetadataTransport()
+    pair = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["universe"])[0])
+    pair["name"] = "PURR/USDC"
+    transport.all_mids = {"BTC": "100", "PURR/USDC": "0.123"}
+    info = build_info(transport)
+
+    assert (await info._market_info("PURR/USDC")).coin == "PURR/USDC"
+    assert await info.mid_price("PURR/USDC") == 0.123
+
+
+@pytest.mark.parametrize("coin", ["#10", "+10"])
+async def test_outcome_market_uses_documented_encoding(coin: str) -> None:
+    info = build_info(MetadataTransport())
+
+    assert await info._market_info(coin) == _MarketInfo(
+        coin="#10", asset=100_000_010, size_decimals=0, is_spot=True, dex=""
+    )
+    assert await info.asset_id(coin) == 100_000_010
+    assert await info.size_decimals(coin) == 0
+
+
+@pytest.mark.parametrize("coin", ["#", "+abc", "#12"])
+async def test_outcome_market_rejects_invalid_encoding(coin: str) -> None:
+    info = build_info(MetadataTransport())
+
+    with pytest.raises(ValueError, match="outcome"):
+        await info._market_info(coin)
 
 
 async def test_spot_token_metadata_returns_an_isolated_snapshot() -> None:
@@ -293,8 +360,9 @@ async def test_spot_mark_price_matches_context_by_coin_not_list_position() -> No
 async def test_mid_prices_fetch_once_per_distinct_dex() -> None:
     transport = MetadataTransport()
     info = build_info(transport)
+    markets = await info._market_infos(("BTC", "BTC", "xyz:NVDA", "PURR/USDC"))
 
-    prices = await info._mid_prices(("BTC", "BTC", "xyz:NVDA", "PURR/USDC"))
+    prices = await info._mid_prices(markets)
 
     assert prices == (100.0, 100.0, 201.0, 2.1)
     assert transport.all_mids_dexes == ["", "xyz"]
@@ -304,9 +372,10 @@ async def test_mid_prices_preserve_the_underlying_request_error() -> None:
     transport = MetadataTransport()
     transport.fail_type = "allMids"
     info = build_info(transport)
+    markets = await info._market_infos(("BTC", "xyz:NVDA"))
 
     with pytest.raises(ProtocolError, match="allMids failed"):
-        await info._mid_prices(("BTC", "xyz:NVDA"))
+        await info._mid_prices(markets)
 
 
 @pytest.mark.parametrize("method_name", ["account_state", "positions"])

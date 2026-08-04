@@ -16,6 +16,7 @@ import pytest
 import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._metadata import _MarketInfo
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.info import InfoClient
 from async_hyperliquid.types import (
@@ -104,10 +105,17 @@ class SdkInfo:
 
 
 class AsyncInfo:
-    async def _market_infos(
-        self, coins: tuple[str, ...]
-    ) -> tuple[tuple[int, int], ...]:
-        return tuple((int(coin.removeprefix("ASSET-")), 5) for coin in coins)
+    async def _market_infos(self, coins: tuple[str, ...]) -> tuple[_MarketInfo, ...]:
+        return tuple(
+            _MarketInfo(
+                coin=coin,
+                asset=int(coin.removeprefix("ASSET-")),
+                size_decimals=5,
+                is_spot=False,
+                dex="",
+            )
+            for coin in coins
+        )
 
 
 def _sdk_payload(

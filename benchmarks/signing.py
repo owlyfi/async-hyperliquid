@@ -308,7 +308,7 @@ def _async_hyperliquid_probes() -> dict[str, Callable[[], object]]:
         action: JsonObject = {
             "type": "order",
             "orders": [
-                encode_order(item, asset=asset, size_decimals=5)
+                encode_order(item, asset=asset, size_decimals=5, is_spot=False)
                 for asset, item in enumerate(items)
             ],
             "grouping": "na",

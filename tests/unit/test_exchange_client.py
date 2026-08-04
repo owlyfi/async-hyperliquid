@@ -10,6 +10,7 @@ import pytest
 import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._metadata import _MarketInfo
 from async_hyperliquid._signing import (
     _APPROVE_AGENT_SPEC,
     _USD_SEND_SPEC,
@@ -93,24 +94,27 @@ class StubInfo:
         self.mid_price_calls = 0
         self.position_accounts: list[str] = []
 
-    async def _market_info(self, coin: str) -> tuple[int, int]:
-        markets = {"BTC": (0, 5), "ETH": (1, 4), "xyz:NVDA": (110_002, 3)}
+    async def _market_info(self, coin: str) -> _MarketInfo:
+        markets = {
+            "BTC": _MarketInfo("BTC", 0, 5, False, ""),
+            "ETH": _MarketInfo("ETH", 1, 4, False, ""),
+            "xyz:NVDA": _MarketInfo("xyz:NVDA", 110_002, 3, False, "xyz"),
+        }
         return markets[coin]
 
-    async def _market_infos(
-        self, coins: tuple[str, ...]
-    ) -> tuple[tuple[int, int], ...]:
+    async def _market_infos(self, coins: tuple[str, ...]) -> tuple[_MarketInfo, ...]:
         self.market_info_calls += 1
         return tuple([await self._market_info(coin) for coin in coins])
 
     async def asset_id(self, coin: str) -> int:
-        return (await self._market_info(coin))[0]
+        return (await self._market_info(coin)).asset
 
     async def mid_price(self, coin: str) -> float:
         self.mid_price_calls += 1
         return self.mids[coin]
 
-    async def _mid_prices(self, coins: tuple[str, ...]) -> tuple[float, ...]:
+    async def _mid_prices(self, markets: tuple[_MarketInfo, ...]) -> tuple[float, ...]:
+        coins = tuple(market.coin for market in markets)
         self.mid_price_batches.append(coins)
         return tuple(self.mids[coin] for coin in coins)
 

@@ -167,7 +167,7 @@ def test_limit_order_encoding_is_exact_and_does_not_mutate_request() -> None:
     }
     original = deepcopy(order)
 
-    encoded = encode_order(order, asset=0, size_decimals=5)
+    encoded = encode_order(order, asset=0, size_decimals=5, is_spot=False)
 
     assert encoded == {
         "a": 0,
@@ -190,7 +190,7 @@ def test_missing_order_type_defaults_to_ioc_limit() -> None:
         "is_market": False,
     }
 
-    assert encode_order(order, asset=0, size_decimals=5)["t"] == {
+    assert encode_order(order, asset=0, size_decimals=5, is_spot=False)["t"] == {
         "limit": {"tif": "Ioc"}
     }
 
@@ -212,7 +212,7 @@ def test_order_encoding_rejects_values_below_market_precision(
     order: PlaceOrderRequest,
 ) -> None:
     with pytest.raises(ValueError, match="market precision"):
-        encode_order(order, asset=0, size_decimals=5)
+        encode_order(order, asset=0, size_decimals=5, is_spot=False)
 
 
 def test_trigger_order_encoding_preserves_trigger_contract() -> None:
@@ -228,7 +228,7 @@ def test_trigger_order_encoding_preserves_trigger_contract() -> None:
         ),
     }
 
-    assert encode_order(order, asset=110_002, size_decimals=3) == {
+    assert encode_order(order, asset=110_002, size_decimals=3, is_spot=False) == {
         "a": 110_002,
         "b": False,
         "p": "177.06",

@@ -6,7 +6,7 @@ from typing import Literal, Self, cast, overload
 from aiohttp import ClientSession, ClientTimeout
 
 from ._http import _HttpTransport, _validate_endpoint_url
-from ._metadata import _MetadataSnapshot, _build_metadata_snapshot
+from ._metadata import _MarketInfo, _MetadataSnapshot, _build_metadata, _market_info
 from .errors import ProtocolError
 from .types import CandleInterval, JsonObject, JsonValue, Network
 from .types.info import (
@@ -115,17 +115,6 @@ async def _wait_for_tasks(tasks: Sequence[asyncio.Task[object]]) -> None:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
-
-
-def _market_info_from_snapshot(
-    snapshot: _MetadataSnapshot, coin: str
-) -> tuple[int, int]:
-    name = snapshot.coin_by_alias.get(coin)
-    asset = None if name is None else snapshot.asset_by_coin.get(name)
-    decimals = None if asset is None else snapshot.size_decimals_by_asset.get(asset)
-    if asset is None or decimals is None:
-        raise ValueError(f"unknown market: {coin}")
-    return asset, decimals
 
 
 class InfoClient:
@@ -532,7 +521,7 @@ class InfoClient:
         perp_task = asyncio.create_task(self.all_perp_metas())
         spot_task = asyncio.create_task(self.spot_meta())
         await _wait_for_tasks((dex_task, perp_task, spot_task))
-        return _build_metadata_snapshot(
+        return _build_metadata(
             dex_task.result(), perp_task.result(), spot_task.result()
         )
 
@@ -570,29 +559,17 @@ class InfoClient:
         return symbol
 
     async def asset_id(self, coin: str) -> int:
-        snapshot = await self._ensure_metadata()
-        name = snapshot.coin_by_alias.get(coin)
-        asset = None if name is None else snapshot.asset_by_coin.get(name)
-        if asset is None:
-            raise ValueError(f"unknown market: {coin}")
-        return asset
+        return (await self._market_info(coin)).asset
 
     async def size_decimals(self, coin: str) -> int:
-        snapshot = await self._ensure_metadata()
-        name = snapshot.coin_by_alias.get(coin)
-        asset = None if name is None else snapshot.asset_by_coin.get(name)
-        decimals = None if asset is None else snapshot.size_decimals_by_asset.get(asset)
-        if decimals is None:
-            raise ValueError(f"unknown market: {coin}")
-        return decimals
+        return (await self._market_info(coin)).size_decimals
 
-    async def _market_info(self, coin: str) -> tuple[int, int]:
-        snapshot = await self._ensure_metadata()
-        return _market_info_from_snapshot(snapshot, coin)
+    async def _market_info(self, coin: str) -> _MarketInfo:
+        return _market_info(await self._ensure_metadata(), coin)
 
-    async def _market_infos(self, coins: Sequence[str]) -> tuple[tuple[int, int], ...]:
+    async def _market_infos(self, coins: Sequence[str]) -> tuple[_MarketInfo, ...]:
         snapshot = await self._ensure_metadata()
-        return tuple(_market_info_from_snapshot(snapshot, coin) for coin in coins)
+        return tuple(_market_info(snapshot, coin) for coin in coins)
 
     async def spot_token_metadata(self, coin: str) -> SpotToken:
         snapshot = await self._ensure_metadata()
@@ -626,27 +603,18 @@ class InfoClient:
             cast(list[JsonValue], contexts), context_index, "markPx", "metaAndAssetCtxs"
         )
 
-    async def _mid_prices(self, coins: Sequence[str]) -> tuple[float, ...]:
-        commands = tuple(coins)
+    async def _mid_prices(self, markets: Sequence[_MarketInfo]) -> tuple[float, ...]:
+        commands = tuple(markets)
         if not commands:
             return ()
-        snapshot = await self._ensure_metadata()
-        markets: list[tuple[str, str]] = []
-        for coin in commands:
-            name = snapshot.coin_by_alias.get(coin)
-            if name is None:
-                raise ValueError(f"unknown coin: {coin}")
-            perp_context = snapshot.perp_context_by_coin.get(name)
-            markets.append((name, "" if perp_context is None else perp_context[0]))
-
-        dexs = tuple(dict.fromkeys(dex for _, dex in markets))
+        dexs = tuple(dict.fromkeys(market.dex for market in commands))
         tasks = {dex: asyncio.create_task(self.all_mids(dex)) for dex in dexs}
         await _wait_for_tasks(tuple(tasks.values()))
         mids_by_dex = {dex: task.result() for dex, task in tasks.items()}
 
         prices: list[float] = []
-        for name, dex in markets:
-            price = mids_by_dex[dex].get(name)
+        for market in commands:
+            price = mids_by_dex[market.dex].get(market.coin)
             if not isinstance(price, str):
                 raise ProtocolError("allMids is missing a string price")
             try:
@@ -656,7 +624,8 @@ class InfoClient:
         return tuple(prices)
 
     async def mid_price(self, coin: str) -> float:
-        return (await self._mid_prices((coin,)))[0]
+        market = await self._market_info(coin)
+        return (await self._mid_prices((market,)))[0]
 
     async def account_state(
         self, account_address: str, *, dexs: tuple[str, ...] = ("",)
