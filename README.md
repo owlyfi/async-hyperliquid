@@ -9,9 +9,9 @@ Version 1 has two explicit entry points:
   `.info` and `.exchange` clients. It always requires an account address and
   signing key.
 
-The client uses `aiohttp`, preserves Hyperliquid's raw JSON response shapes as
-`TypedDict`, and represents caller-created commands as immutable, slotted
-dataclasses.
+The client uses `aiohttp` and preserves Hyperliquid's JSON-shaped requests and
+responses as `TypedDict`. Small value inputs such as `Builder` remain frozen,
+slotted dataclasses; responses are not wrapped in runtime model layers.
 
 ## Installation
 
@@ -60,40 +60,43 @@ Omit `info_url` to use `Network.MAINNET.info_url` or
 ## Trading
 
 Trading is deliberately separate from read-only access. `AsyncHyperliquid`
-requires both credentials and exposes no forwarded endpoint methods: read from
-`client.info` and submit signed actions through `client.exchange`.
+requires both credentials. Read from `client.info`, call `client.exchange` for
+Info-independent signed actions, and use root workflows when a request needs
+both market data and signed execution.
 
 ```python
 import asyncio
 import os
 
 from async_hyperliquid import AsyncHyperliquid
-from async_hyperliquid.types import LimitOrder, Network, Side, TimeInForce
+from async_hyperliquid.types import Network, PlaceOrderRequest, TimeInForce, limit_order_type
 
 
 async def main() -> None:
     async with AsyncHyperliquid(
         os.environ["HL_ADDR"],
-        os.environ["HL_AK"],
+        os.environ["HL_SK"],
+        vault_address=os.environ["HL_SUB"],
         network=Network.TESTNET,
     ) as client:
-        result = await client.exchange.place_limit_order(
-            LimitOrder(
-                coin="BTC",
-                side=Side.BUY,
-                size=0.001,
-                price=50_000,
-                time_in_force=TimeInForce.ALO,
-            )
-        )
+        order: PlaceOrderRequest = {
+            "coin": "BTC",
+            "is_buy": True,
+            "sz": 0.001,
+            "px": 50_000,
+            "is_market": False,
+            "order_type": limit_order_type(TimeInForce.ALO),
+        }
+        result = await client.place_limit_order(order)
         print(result)
 
 
 asyncio.run(main())
 ```
 
-`HL_AK` is a 32-byte private key. It is parsed locally and is never sent to an
-Info or Exchange provider.
+`HL_SK` is the API-wallet private key. It is parsed locally and is never sent
+to an Info or Exchange provider. `HL_AK` is the corresponding public API-wallet
+address; it is not a signing key and it is not a portfolio address.
 
 Set `vault_address=` when the signer trades on behalf of a Hyperliquid vault or
 subaccount:
@@ -101,8 +104,8 @@ subaccount:
 ```python
 client = AsyncHyperliquid(
     os.environ["HL_ADDR"],
-    os.environ["HL_AK"],
-    vault_address=os.environ["HL_VAULT_ADDR"],
+    os.environ["HL_SK"],
+    vault_address=os.environ["HL_SUB"],
     network=Network.MAINNET,
 )
 ```
@@ -127,29 +130,65 @@ import asyncio
 import os
 
 from async_hyperliquid import AsyncHyperliquid
-from async_hyperliquid.types import LimitOrder, Network, Side
+from async_hyperliquid.types import Network, PlaceOrderRequest, TimeInForce, limit_order_type
 
 
 async def main() -> None:
-    orders = (
-        LimitOrder("BTC", Side.BUY, size=0.001, price=50_000),
-        LimitOrder("ETH", Side.SELL, size=0.01, price=4_000),
+    orders: tuple[PlaceOrderRequest, ...] = (
+        {
+            "coin": "BTC",
+            "is_buy": True,
+            "sz": 0.001,
+            "px": 50_000,
+            "is_market": False,
+            "order_type": limit_order_type(TimeInForce.GTC),
+        },
+        {
+            "coin": "ETH",
+            "is_buy": False,
+            "sz": 0.01,
+            "px": 4_000,
+            "is_market": False,
+            "order_type": limit_order_type(TimeInForce.GTC),
+        },
     )
     async with AsyncHyperliquid(
         os.environ["HL_ADDR"],
-        os.environ["HL_AK"],
+        os.environ["HL_SK"],
+        vault_address=os.environ["HL_SUB"],
         network=Network.TESTNET,
     ) as client:
-        result = await client.exchange.place_orders(orders)
+        result = await client.place_orders(orders)
         print(result)
 
 
 asyncio.run(main())
 ```
 
-The command types exported from `async_hyperliquid.types` include
-`LimitOrder`, `TriggerOrder`, `MarketOrder`, `ModifyOrder`, `CancelOrder`,
-`CancelByCloid`, `BuilderFee`, and `Cloid`.
+`PlaceOrderRequest` is the one placement vocabulary for direct and batch order
+methods, and `is_market` is explicit on every request. `ModifyOrderRequest`
+adds `oid` to the same shared order fields.
+`LimitOrderOption` and `TriggerOrderOption` mirror the protocol's nested order
+type, `cloid` is the only client-order-ID spelling, and order attribution uses
+`Builder`.
+
+### Root trading workflows
+
+`AsyncHyperliquid.place_order(...)` deliberately keeps the expanded 0.5 call
+shape. `is_market=True` selects market-price discovery; otherwise the nested
+`order_type` selects limit or trigger placement. `place_orders` consumes typed
+requests, and `batch_place_orders` is the same function—not a forwarding
+wrapper.
+
+Order placement, cancellation, modification, TWAP, leverage, margin, and token
+actions that resolve coin metadata live on `AsyncHyperliquid`. The concrete
+`ExchangeClient` owns only Info-independent action construction, nonce/signing,
+vault targeting, and submission; it never holds an `InfoClient`.
+
+`close_position`, `close_positions`, and `close_all_positions` close the full
+live size. They expose no size or slippage override. One workflow performs one
+position query and submits all required reduce-only market orders in one
+Exchange batch.
 
 ## Network and endpoint routing
 
@@ -175,7 +214,8 @@ from async_hyperliquid.types import Network
 async def main() -> None:
     async with AsyncHyperliquid(
         os.environ["HL_ADDR"],
-        os.environ["HL_AK"],
+        os.environ["HL_SK"],
+        vault_address=os.environ["HL_SUB"],
         network=Network.MAINNET,
         info_url="http://127.0.0.1:3001/info",
         exchange_url="https://trading-provider.example/exchange",
@@ -240,7 +280,8 @@ async def main() -> None:
     async with ClientSession(middlewares=(provider_auth,)) as session:
         async with AsyncHyperliquid(
             os.environ["HL_ADDR"],
-            os.environ["HL_AK"],
+            os.environ["HL_SK"],
+            vault_address=os.environ["HL_SUB"],
             info_url="http://127.0.0.1:3001/info",
             exchange_url="https://trading-provider.example/exchange",
             session=session,
@@ -276,7 +317,8 @@ credential-free `InfoClient` instances.
 The package includes `py.typed`.
 
 - Info and Exchange wire responses use exact `TypedDict` contracts.
-- Commands use frozen, slotted dataclasses.
+- JSON-shaped order commands use `TypedDict`; value objects use frozen,
+  slotted dataclasses.
 - Public signatures contain no `Any` or unparameterized containers.
 - Response dictionaries are not copied into runtime model objects.
 
@@ -285,16 +327,69 @@ The package includes `py.typed`.
 The default suite performs no live API calls:
 
 ```bash
-uv run pytest -q tests/unit tests/contracts tests/public_api tests/package
-uv run ruff check src tests scripts
+uv run pytest -q tests/unit tests/contracts tests/oracle tests/public_api tests/package
+uv run ruff check src tests scripts benchmarks
 uv run ty check src
 uv run ty check tests
 uv run ty check scripts
+uv run ty check benchmarks
 ```
 
+### Signing benchmark
+
+The repository includes a parity-gated CPU benchmark of the real CCXT,
+official SDK, and async-hyperliquid signing implementations. It reports action
+hashing, signing-only, and order-to-payload construction separately; imports,
+initialization, metadata, HTTP, and subprocess startup are outside the timed
+loops.
+
+```bash
+uv run --frozen --group benchmark python benchmarks/signing.py --rounds 7 --warmups 1 --iterations 5000
+```
+
+See the
+[reproducible benchmark manual](https://github.com/traderfiapp/async-hyperliquid/blob/master/benchmarks/README.md)
+for environment setup, fairness gates, exact measurement semantics, JSON
+output, and result interpretation.
+
+#### Local overall result
+
+On an Apple M5 with Python 3.12.13 and CoinCurve 21.0.0, three independent
+complete runs produced this equal-weight, geometric-mean throughput across all
+five measured operations:
+
+| Library | Overall throughput | Relative to SDK | Relative to fastest |
+|---|---:|---:|---:|
+| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x | 100.0% |
+| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x | 68.5% |
+| CCXT 4.5.71 | 803 ops/s | 0.0476x | 3.3% |
+
+Higher is better. This is a synthetic signing/payload-construction score, not
+end-to-end order latency. Every report used seven measured rounds after one
+warmup, and CCXT's CoinCurve signer was verified before timing. The detailed
+manual contains the machine specification, per-operation median/MAD/p95,
+throughput, aggregation formula, and exact reproduction command.
+
 Read-only live tests require `RUN_LIVE_INFO_TESTS=true`. Signed integration is
-restricted to testnet and additionally requires
-`RUN_LIVE_EXCHANGE_TESTS=true`, `IS_MAINNET=false`, `HL_ADDR`, and `HL_AK`.
+restricted to testnet and excluded by default. It additionally requires
+`RUN_LIVE_EXCHANGE_TESTS=true` and `IS_MAINNET=false`. Destructive cases require
+`RUN_DESTRUCTIVE_EXCHANGE_TESTS=true` as a second opt-in.
+
+The local `.env.local` roles are:
+
+| Variable | Role |
+|---|---|
+| `HL_ADDR` | master account address and portfolio identity |
+| `HL_PK` | master account private key for master-only actions |
+| `HL_AK` | API-wallet public address used only for role/key validation |
+| `HL_SK` | API-wallet private key used for signed trading |
+| `HL_SUB` | subaccount execution and portfolio address |
+
+Tests validate that each private key derives the declared public address, that
+local SDK and async-hyperliquid payloads match exactly, that `HL_AK` is an API
+wallet for `HL_ADDR`, and that `HL_SUB` belongs to `HL_ADDR`. Private keys,
+real signatures, and real payloads are never included in assertion messages,
+logs, or fixtures.
 
 ## Migrating from 0.5
 

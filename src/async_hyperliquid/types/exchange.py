@@ -1,13 +1,7 @@
-import math
 from dataclasses import dataclass
 from typing import Literal, NotRequired, TypeAlias, TypedDict
 
-from .common import Cloid, Side, TimeInForce, TriggerKind
-
-
-def _require_positive_finite(name: str, value: float) -> None:
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"{name} must be finite and greater than zero")
+from .common import Cloid, TimeInForce, TriggerKind
 
 
 def _require_non_negative(name: str, value: int) -> None:
@@ -15,81 +9,77 @@ def _require_non_negative(name: str, value: int) -> None:
         raise ValueError(f"{name} must not be negative")
 
 
-@dataclass(frozen=True, slots=True)
-class LimitOrder:
+class LimitOrderOption(TypedDict):
+    tif: TimeInForce
+
+
+class LimitOrderType(TypedDict):
+    limit: LimitOrderOption
+
+
+class TriggerOrderOption(TypedDict):
+    isMarket: bool
+    triggerPx: str
+    tpsl: Literal["tp", "sl"]
+
+
+class TriggerOrderType(TypedDict):
+    trigger: TriggerOrderOption
+
+
+OrderType: TypeAlias = LimitOrderType | TriggerOrderType
+
+
+def limit_order_type(tif: TimeInForce) -> LimitOrderType:
+    return {"limit": {"tif": tif}}
+
+
+def trigger_order_type(
+    *, is_market: bool, trigger_px: str, tpsl: TriggerKind
+) -> TriggerOrderType:
+    return {
+        "trigger": {"isMarket": is_market, "triggerPx": trigger_px, "tpsl": tpsl.value}
+    }
+
+
+class BaseOrderRequest(TypedDict):
     coin: str
-    side: Side
-    size: float
-    price: float
-    time_in_force: TimeInForce = TimeInForce.GTC
-    reduce_only: bool = False
-    client_order_id: Cloid | None = None
-
-    def __post_init__(self) -> None:
-        _require_positive_finite("size", self.size)
-        _require_positive_finite("price", self.price)
+    is_buy: bool
+    sz: float
+    px: float
+    cloid: NotRequired[Cloid | None]
 
 
-@dataclass(frozen=True, slots=True)
-class TriggerOrder:
-    coin: str
-    side: Side
-    size: float
-    price: float
-    trigger_price: float
-    trigger_kind: TriggerKind
-    is_market: bool = False
-    reduce_only: bool = False
-    client_order_id: Cloid | None = None
-
-    def __post_init__(self) -> None:
-        _require_positive_finite("size", self.size)
-        _require_positive_finite("price", self.price)
-        _require_positive_finite("trigger_price", self.trigger_price)
+class PlaceOrderRequest(BaseOrderRequest):
+    is_market: bool
+    ro: NotRequired[bool]
+    order_type: NotRequired[OrderType | None]
+    slippage: NotRequired[float]
 
 
-@dataclass(frozen=True, slots=True)
-class MarketOrder:
-    coin: str
-    side: Side
-    size: float
-    slippage: float = 0.05
-    reduce_only: bool = False
-    client_order_id: Cloid | None = None
-
-    def __post_init__(self) -> None:
-        _require_positive_finite("size", self.size)
-        if not math.isfinite(self.slippage) or not 0 <= self.slippage < 1:
-            raise ValueError("slippage must be finite and in [0, 1)")
+class ModifyOrderRequest(BaseOrderRequest):
+    oid: int | Cloid
+    ro: NotRequired[bool]
+    order_type: NotRequired[OrderType | None]
 
 
 @dataclass(frozen=True, slots=True)
 class CancelOrder:
     coin: str
-    order_id: int
+    oid: int
 
     def __post_init__(self) -> None:
-        _require_non_negative("order_id", self.order_id)
+        _require_non_negative("oid", self.oid)
 
 
 @dataclass(frozen=True, slots=True)
 class CancelByCloid:
     coin: str
-    client_order_id: Cloid
+    cloid: Cloid
 
 
 @dataclass(frozen=True, slots=True)
-class ModifyOrder:
-    order_id: int | Cloid
-    order: LimitOrder | TriggerOrder
-
-    def __post_init__(self) -> None:
-        if isinstance(self.order_id, int):
-            _require_non_negative("order_id", self.order_id)
-
-
-@dataclass(frozen=True, slots=True)
-class BuilderFee:
+class Builder:
     address: str
     fee_tenths_bps: int
 
@@ -103,25 +93,25 @@ class Signature(TypedDict):
     v: int
 
 
-class EncodedLimitOptions(TypedDict):
+class EncodedLimitOrderOption(TypedDict):
     tif: Literal["Alo", "Ioc", "Gtc"]
 
 
-class EncodedLimitType(TypedDict):
-    limit: EncodedLimitOptions
+class EncodedLimitOrderType(TypedDict):
+    limit: EncodedLimitOrderOption
 
 
-class EncodedTriggerOptions(TypedDict):
+class EncodedTriggerOrderOption(TypedDict):
     isMarket: bool
     triggerPx: str
     tpsl: Literal["tp", "sl"]
 
 
-class EncodedTriggerType(TypedDict):
-    trigger: EncodedTriggerOptions
+class EncodedTriggerOrderType(TypedDict):
+    trigger: EncodedTriggerOrderOption
 
 
-EncodedOrderType: TypeAlias = EncodedLimitType | EncodedTriggerType
+EncodedOrderType: TypeAlias = EncodedLimitOrderType | EncodedTriggerOrderType
 
 
 class EncodedOrder(TypedDict):
@@ -134,7 +124,7 @@ class EncodedOrder(TypedDict):
     c: NotRequired[str]
 
 
-class EncodedBuilderFee(TypedDict):
+class EncodedBuilder(TypedDict):
     b: str
     f: int
 
@@ -143,7 +133,7 @@ class OrderAction(TypedDict):
     type: Literal["order"]
     orders: list[EncodedOrder]
     grouping: Literal["na", "normalTpsl", "positionTpsl"]
-    builder: NotRequired[EncodedBuilderFee]
+    builder: NotRequired[EncodedBuilder]
 
 
 class EncodedCancel(TypedDict):
@@ -172,6 +162,12 @@ class EncodedModify(TypedDict):
 
 
 class ModifyAction(TypedDict):
+    type: Literal["modify"]
+    oid: int | str
+    order: EncodedOrder
+
+
+class BatchModifyAction(TypedDict):
     type: Literal["batchModify"]
     modifies: list[EncodedModify]
 
@@ -251,6 +247,84 @@ class AgentSetAbstractionAction(TypedDict):
     abstraction: Literal["i", "u", "p"]
 
 
+class AgentSendAssetAction(TypedDict):
+    type: Literal["agentSendAsset"]
+    destination: str
+    sourceDex: str
+    destinationDex: str
+    token: str
+    amount: str
+    fromSubAccount: str
+    nonce: int
+
+
+class Hip3LiquidatorTransferAction(TypedDict):
+    type: Literal["hip3LiquidatorTransfer"]
+    dex: str
+    ntl: int
+    isDeposit: bool
+
+
+class NoopAction(TypedDict):
+    type: Literal["noop"]
+
+
+class SplitOutcome(TypedDict):
+    outcome: int
+    amount: str
+
+
+class SplitOutcomeAction(TypedDict):
+    type: Literal["userOutcome"]
+    splitOutcome: SplitOutcome
+
+
+class MergeOutcome(TypedDict):
+    outcome: int
+    amount: str | None
+
+
+class MergeOutcomeAction(TypedDict):
+    type: Literal["userOutcome"]
+    mergeOutcome: MergeOutcome
+
+
+class MergeQuestion(TypedDict):
+    question: int
+    amount: str | None
+
+
+class MergeQuestionAction(TypedDict):
+    type: Literal["userOutcome"]
+    mergeQuestion: MergeQuestion
+
+
+class NegateOutcome(TypedDict):
+    question: int
+    outcome: int
+    amount: str
+
+
+class NegateOutcomeAction(TypedDict):
+    type: Literal["userOutcome"]
+    negateOutcome: NegateOutcome
+
+
+class ValidatorL1StreamAction(TypedDict):
+    type: Literal["validatorL1Stream"]
+    riskFreeRate: str
+
+
+class AuthorizeAqav2RoleAction(TypedDict):
+    type: Literal["authorizeAqav2Role"]
+    token: int
+    role: Literal["technical", "treasury"]
+
+
+class ClaimRewardsAction(TypedDict):
+    type: Literal["claimRewards"]
+
+
 class UserSignedFields(TypedDict):
     signatureChainId: Literal["0x66eee"]
     hyperliquidChain: Literal["Mainnet", "Testnet"]
@@ -293,6 +367,19 @@ class SendAssetAction(UserSignedFields):
     sourceDex: str
     destinationDex: str
     fromSubAccount: str
+    nonce: int
+
+
+class SendToEvmWithDataAction(UserSignedFields):
+    type: Literal["sendToEvmWithData"]
+    token: str
+    amount: str
+    sourceDex: str
+    destinationRecipient: str
+    addressEncoding: Literal["hex", "base58"]
+    destinationChainId: int
+    gasLimit: int
+    data: str
     nonce: int
 
 
@@ -355,6 +442,7 @@ ExchangeAction: TypeAlias = (
     | CancelAction
     | CancelByCloidAction
     | ModifyAction
+    | BatchModifyAction
     | ScheduleCancelAction
     | UpdateLeverageAction
     | UpdateIsolatedMarginAction
@@ -367,11 +455,22 @@ ExchangeAction: TypeAlias = (
     | EvmUserModifyAction
     | AgentEnableDexAbstractionAction
     | AgentSetAbstractionAction
+    | AgentSendAssetAction
+    | Hip3LiquidatorTransferAction
+    | NoopAction
+    | SplitOutcomeAction
+    | MergeOutcomeAction
+    | MergeQuestionAction
+    | NegateOutcomeAction
+    | ValidatorL1StreamAction
+    | AuthorizeAqav2RoleAction
+    | ClaimRewardsAction
     | UsdSendAction
     | SpotSendAction
     | WithdrawAction
     | UsdClassTransferAction
     | SendAssetAction
+    | SendToEvmWithDataAction
     | StakingDepositAction
     | StakingWithdrawAction
     | TokenDelegateAction
@@ -387,8 +486,8 @@ class ActionEnvelope(TypedDict):
     action: ExchangeAction
     nonce: int
     signature: Signature
-    vaultAddress: NotRequired[str]
-    expiresAfter: NotRequired[int]
+    vaultAddress: str | None
+    expiresAfter: int | None
 
 
 class RestingOrderStatus(TypedDict):

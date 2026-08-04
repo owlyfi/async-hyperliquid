@@ -611,14 +611,10 @@ class InfoClient:
         if name is None:
             raise ValueError(f"unknown coin: {coin}")
 
-        spot_index = snapshot.spot_context_by_coin.get(name)
-        if spot_index is not None:
+        if name in snapshot.spot_market_coins:
             _, contexts = await self.spot_meta_and_contexts()
-            return _context_price(
-                cast(list[JsonValue], contexts),
-                spot_index,
-                "markPx",
-                "spotMetaAndAssetCtxs",
+            return _context_price_by_coin(
+                cast(list[JsonValue], contexts), name, "markPx", "spotMetaAndAssetCtxs"
             )
 
         perp_context = snapshot.perp_context_by_coin.get(name)
@@ -663,9 +659,9 @@ class InfoClient:
         return (await self._mid_prices((coin,)))[0]
 
     async def account_state(
-        self, account_address: str, *, perp_dexes: tuple[str, ...] = ("",)
+        self, account_address: str, *, dexs: tuple[str, ...] = ("",)
     ) -> AccountState:
-        additional_dexes = tuple(dict.fromkeys(dex for dex in perp_dexes if dex))
+        additional_dexes = tuple(dict.fromkeys(dex for dex in dexs if dex))
         perp_task = asyncio.create_task(self.perp_account_state(account_address))
         spot_task = asyncio.create_task(self.spot_account_state(account_address))
         dex_tasks = {
@@ -680,9 +676,9 @@ class InfoClient:
         }
 
     async def positions(
-        self, account_address: str, *, perp_dexes: tuple[str, ...] = ("",)
+        self, account_address: str, *, dexs: tuple[str, ...] = ("",)
     ) -> list[Position]:
-        dexs = tuple(dict.fromkeys(perp_dexes))
+        dexs = tuple(dict.fromkeys(dexs))
         tasks = tuple(
             asyncio.create_task(self.perp_account_state(account_address, dex))
             for dex in dexs
@@ -707,6 +703,20 @@ def _context_price(
     if not 0 <= index < len(contexts):
         raise ProtocolError(f"{request_type} is missing a market context")
     context = _expect_object(contexts[index], request_type)
+    return _price_from_context(context, field, request_type)
+
+
+def _context_price_by_coin(
+    contexts: list[JsonValue], coin: str, field: str, request_type: str
+) -> float:
+    for value in contexts:
+        context = _expect_object(value, request_type)
+        if context.get("coin") == coin:
+            return _price_from_context(context, field, request_type)
+    raise ProtocolError(f"{request_type} is missing a market context for {coin}")
+
+
+def _price_from_context(context: JsonObject, field: str, request_type: str) -> float:
     value = context.get(field)
     if not isinstance(value, str):
         raise ProtocolError(f"{request_type} contains a malformed price")

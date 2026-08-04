@@ -131,14 +131,27 @@ from time import perf_counter_ns
 
 from eth_account import Account
 
-from async_hyperliquid._signing import encode_order, sign_exchange_action
-from async_hyperliquid.types import LimitOrder, Network, Side
+from async_hyperliquid._encoding import encode_order
+from async_hyperliquid._signing import sign_exchange_action
+from async_hyperliquid.types import Network, TimeInForce, limit_order_type
 
 iterations = int(os.environ["BENCH_ITERATIONS"])
 account = Account.from_key("0x" + "11" * 32)
-order = LimitOrder("BTC", Side.BUY, 0.001, 100_000.0)
+order = {
+    "coin": "BTC",
+    "is_buy": True,
+    "sz": 0.001,
+    "px": 100_000.0,
+    "order_type": limit_order_type(TimeInForce.GTC),
+}
 orders = tuple(
-    LimitOrder(f"ASSET-{index}", Side.BUY, 0.001, 100_000.0)
+    {
+        "coin": f"ASSET-{index}",
+        "is_buy": True,
+        "sz": 0.001,
+        "px": 100_000.0,
+        "order_type": limit_order_type(TimeInForce.GTC),
+    }
     for index in range(10)
 )
 encoded_order = encode_order(order, asset=0, size_decimals=5)

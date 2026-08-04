@@ -1,6 +1,5 @@
-import math
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from eth_account.messages import SignableMessage, encode_typed_data
 from eth_account.signers.local import LocalAccount
@@ -8,24 +7,29 @@ from eth_utils.conversions import to_hex
 from eth_utils.crypto import keccak
 import msgpack
 
-from .constants import PERP_DEX_ASSET_OFFSET, SIGNATURE_CHAIN_ID, SPOT_ASSET_OFFSET
-from .types import JsonObject, LimitOrder, Network, Side, TriggerOrder
-from .types.exchange import EncodedOrder, Signature
+from .constants import SIGNATURE_CHAIN_ID
+from .types import JsonObject, Network
+from .types.exchange import Signature
+
+
+if TYPE_CHECKING:
+    from eth_typing import Hash32
 
 
 _ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
-_EXCHANGE_DOMAIN: dict[str, str | int] = {
-    "chainId": 1337,
-    "name": "Exchange",
-    "verifyingContract": _ZERO_ADDRESS,
-    "version": "1",
-}
-_EXCHANGE_MESSAGE_TYPES = {
-    "Agent": [
-        {"name": "source", "type": "string"},
-        {"name": "connectionId", "type": "bytes32"},
-    ]
-}
+# EIP-712 hashes dynamic strings into 32-byte ABI words; the zero address is
+# also one all-zero ABI word. Only the Agent connection id varies per action.
+_EXCHANGE_DOMAIN_HASH = keccak(
+    keccak(
+        b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+    )
+    + keccak(b"Exchange")
+    + keccak(b"1")
+    + (1337).to_bytes(32, "big")
+    + bytes(32)
+)
+_EXCHANGE_AGENT_TYPE_HASH = keccak(b"Agent(string source,bytes32 connectionId)")
+_EXCHANGE_SOURCE_HASH = {"a": keccak(b"a"), "b": keccak(b"b")}
 _USER_DOMAIN: dict[str, str | int] = {
     "name": "HyperliquidSignTransaction",
     "version": "1",
@@ -91,6 +95,21 @@ _SEND_ASSET_SPEC = _spec(
         {"name": "token", "type": "string"},
         {"name": "amount", "type": "string"},
         {"name": "fromSubAccount", "type": "string"},
+        {"name": "nonce", "type": "uint64"},
+    ],
+)
+_SEND_TO_EVM_WITH_DATA_SPEC = _spec(
+    "HyperliquidTransaction:SendToEvmWithData",
+    [
+        {"name": "hyperliquidChain", "type": "string"},
+        {"name": "token", "type": "string"},
+        {"name": "amount", "type": "string"},
+        {"name": "sourceDex", "type": "string"},
+        {"name": "destinationRecipient", "type": "string"},
+        {"name": "addressEncoding", "type": "string"},
+        {"name": "destinationChainId", "type": "uint32"},
+        {"name": "gasLimit", "type": "uint64"},
+        {"name": "data", "type": "bytes"},
         {"name": "nonce", "type": "uint64"},
     ],
 )
@@ -197,12 +216,14 @@ def sign_exchange_action(
     expires_after: int | None = None,
 ) -> Signature:
     connection_id = hash_action(action, vault_address, nonce, expires_after)
-    signable = encode_typed_data(
-        domain_data=_EXCHANGE_DOMAIN,
-        message_types=_EXCHANGE_MESSAGE_TYPES,
-        message_data={"source": signature_source, "connectionId": connection_id},
+    agent_hash = keccak(
+        _EXCHANGE_AGENT_TYPE_HASH
+        + _EXCHANGE_SOURCE_HASH[signature_source]
+        + connection_id
     )
-    return _signature(account, signable)
+    message_hash = keccak(b"\x19\x01" + _EXCHANGE_DOMAIN_HASH + agent_hash)
+    signed = account.unsafe_sign_hash(cast("Hash32", message_hash))
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
 
 
 def _sign_user_action(
@@ -219,59 +240,3 @@ def _sign_user_action(
         message_data=wire_action,
     )
     return wire_action, _signature(account, signable)
-
-
-def _round_float(value: float, decimals: int) -> float:
-    return round(float(f"{float(value):.8g}"), decimals)
-
-
-def _round_price(value: float, decimals: int) -> float | int:
-    rounded = _round_float(value, decimals)
-    if abs(rounded - round(rounded)) < 1e-12:
-        return int(round(rounded))
-    if rounded >= 100_000:
-        return int(rounded)
-    return round(float(f"{rounded:.5g}"), decimals)
-
-
-def _wire_float(value: float | int) -> str:
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError("wire number must be finite")
-    rounded = f"{number:.8f}"
-    if abs(float(rounded) - number) >= 1e-12:
-        raise ValueError("wire number exceeds eight decimal places")
-    return rounded.rstrip("0").rstrip(".") or "0"
-
-
-def encode_order(
-    order: LimitOrder | TriggerOrder, *, asset: int, size_decimals: int
-) -> EncodedOrder:
-    price_decimals = (
-        8 if SPOT_ASSET_OFFSET <= asset < PERP_DEX_ASSET_OFFSET else 6
-    ) - size_decimals
-    price = _round_price(order.price, price_decimals)
-    size = _round_float(order.size, size_decimals)
-    if price <= 0 or size <= 0:
-        raise ValueError("order value is below market precision")
-    encoded: EncodedOrder = {
-        "a": asset,
-        "b": order.side is Side.BUY,
-        "p": _wire_float(price),
-        "s": _wire_float(size),
-        "r": order.reduce_only,
-        "t": (
-            {"limit": {"tif": order.time_in_force.value}}
-            if isinstance(order, LimitOrder)
-            else {
-                "trigger": {
-                    "isMarket": order.is_market,
-                    "triggerPx": _wire_float(order.trigger_price),
-                    "tpsl": order.trigger_kind.value,
-                }
-            }
-        ),
-    }
-    if order.client_order_id is not None:
-        encoded["c"] = str(order.client_order_id)
-    return encoded

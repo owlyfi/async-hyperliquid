@@ -5,12 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-## [1.0.0rc1] - 2026-07-29
+## [1.0.0rc1] - 2026-08-04
 
 ### Added
 
+- Restore the expanded root `place_order` workflow, typed `place_orders`, its
+  exact `batch_place_orders` alias, and full-position batch close workflows.
+- Complete the documented Exchange action surface, including agent transfers,
+  Core-to-EVM data transfers, HIP-3 liquidator transfers, outcome actions,
+  AQAv2 authorization, risk-free-rate voting, noop, and reward claims.
+- Add testnet-only live fixtures that validate master/API-wallet roles without
+  exposing keys, plus mechanical deterministic/live endpoint coverage gates.
 - Add credential-free `InfoClient` with exact constructor-time routing for
   official, self-hosted, and third-party Info endpoints.
 - Add immutable typed command dataclasses and exact `TypedDict` wire-response
@@ -23,9 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add deterministic lifecycle, finite timeout budgets, cancellation-safe atomic
   metadata snapshots, and explicit `IndeterminateActionError` reconciliation
   semantics.
+- Add exact official-SDK Exchange payload vectors, a secret-safe `.env.local`
+  signing oracle, and a parity-gated three-provider benchmark under
+  `benchmarks/` with a reproducible operations manual and local comparison
+  results.
 
 ### Changed
 
+- Replace the duplicate order dataclass hierarchy with one
+  `PlaceOrderRequest`/`ModifyOrderRequest` `TypedDict` vocabulary using
+  `is_buy`, `cloid`, singular order option names, and `Builder`.
+- Rename public DEX sequence parameters to `dexs`; keep `perp_dexes()` only as
+  the name of the official `perpDexs` Info request.
+- Move position-closing orchestration from `ExchangeClient` to
+  `AsyncHyperliquid`, where one position read produces one signed batch order.
+- Keep every Info-dependent signed workflow on `AsyncHyperliquid`; the concrete
+  `ExchangeClient` now owns only resolved action construction, nonce/signing,
+  vault targeting, and submission.
+- Require `PlaceOrderRequest.is_market` explicitly and route matching singular
+  order/cancel methods through their canonical batch implementations.
+- Make test collection exclude signed Exchange and retained mainnet Info cases
+  unless their explicit opt-in markers are selected.
 - Replace the dynamic facade with an explicit resource owner whose concrete
   `.info` and `.exchange` clients share one HTTP transport.
 - Require valid account and signing credentials for `AsyncHyperliquid`; use
@@ -40,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep `coincurve` as a runtime dependency after an isolated end-to-end
   benchmark showed approximately 94% lower signing latency than the native
   fallback.
+- Precompute the immutable Exchange EIP-712 domain and agent type hashes so L1
+  signing avoids rebuilding the same typed-data schema on every request.
+- Match the official SDK request envelope exactly by retaining nullable
+  `vaultAddress` and `expiresAfter` fields, including when they are unset.
+- Pin CoinCurve in the benchmark dependency group and reject CCXT benchmark
+  runs unless its direct CoinCurve secp256k1 signer passes a preflight check.
 
 ### Removed
 

@@ -9,6 +9,7 @@ from async_hyperliquid.types.info import (
     ActiveAssetLeverage,
     AgentUserRole,
     AllPerpMetas,
+    EvmContract,
     GasAuction,
     L2Book,
     OpenOrder,
@@ -20,6 +21,7 @@ from async_hyperliquid.types.info import (
     ReferrerState,
     SpotMeta,
     SpotMetaAndContexts,
+    SpotToken,
     TokenReferralEntry,
     SubAccountUserRole,
     UnknownOrderStatus,
@@ -54,6 +56,16 @@ def test_meta_context_pairs_are_exact_two_tuples() -> None:
     assert get_args(SpotMetaAndContexts)[0] is SpotMeta
 
 
+def test_spot_token_uses_the_evm_contract_object_shape() -> None:
+    contract_type = get_type_hints(SpotToken)["evmContract"]
+
+    assert EvmContract in get_args(contract_type)
+    assert get_type_hints(EvmContract) == {
+        "address": str,
+        "evm_extra_wei_decimals": int,
+    }
+
+
 def test_all_perp_metas_is_a_list_of_meta_objects() -> None:
     assert get_args(AllPerpMetas)[0] is PerpMeta
 
@@ -63,7 +75,12 @@ def test_encoded_cloid_is_a_raw_string() -> None:
 
 
 def test_action_envelope_has_a_discriminated_action_union() -> None:
-    assert get_type_hints(ActionEnvelope)["action"] == ExchangeAction
+    hints = get_type_hints(ActionEnvelope)
+
+    assert hints["action"] == ExchangeAction
+    assert set(get_args(hints["vaultAddress"])) == {str, type(None)}
+    assert set(get_args(hints["expiresAfter"])) == {int, type(None)}
+    assert ActionEnvelope.__required_keys__ == frozenset(hints)
 
 
 def test_referral_includes_token_reward_state() -> None:

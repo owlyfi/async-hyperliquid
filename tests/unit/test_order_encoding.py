@@ -5,22 +5,22 @@ from hyperliquid.utils.signing import action_hash as sdk_action_hash
 from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
 import pytest
 
+from async_hyperliquid._encoding import encode_order
 from async_hyperliquid._signing import (
     _USD_SEND_SPEC,
     _sign_user_action,
-    encode_order,
     hash_action,
     sign_exchange_action,
 )
 from async_hyperliquid.types import (
     Cloid,
     JsonObject,
-    LimitOrder,
     Network,
-    Side,
+    PlaceOrderRequest,
     TimeInForce,
     TriggerKind,
-    TriggerOrder,
+    limit_order_type,
+    trigger_order_type,
 )
 
 
@@ -91,6 +91,41 @@ def test_hashes_and_signatures_match_the_official_sdk_oracle() -> None:
     ) == sdk_sign_l1_action(wallet, ORDER_ACTION, None, NONCE, None, False)
 
 
+@pytest.mark.parametrize("network", [Network.MAINNET, Network.TESTNET])
+@pytest.mark.parametrize(
+    ("vault_address", "expires_after"),
+    [
+        (None, None),
+        (None, NONCE + 1_000),
+        ("0x2222222222222222222222222222222222222222", None),
+        ("0x2222222222222222222222222222222222222222", NONCE + 1_000),
+    ],
+)
+def test_exchange_signature_matrix_matches_official_sdk(
+    network: Network, vault_address: str | None, expires_after: int | None
+) -> None:
+    wallet = Account.from_key("0x" + "11" * 32)
+
+    actual = sign_exchange_action(
+        wallet,
+        ORDER_ACTION,
+        vault_address,
+        NONCE,
+        network.signature_source,
+        expires_after,
+    )
+    expected = sdk_sign_l1_action(
+        wallet,
+        ORDER_ACTION,
+        vault_address,
+        NONCE,
+        expires_after,
+        network is Network.MAINNET,
+    )
+
+    assert actual == expected
+
+
 def test_user_signed_action_matches_0_5_1_without_mutating_input() -> None:
     wallet = Account.from_key("0x" + "11" * 32)
     action: JsonObject = {
@@ -118,16 +153,19 @@ def test_user_signed_action_matches_0_5_1_without_mutating_input() -> None:
     }
 
 
-def test_limit_order_encoding_is_exact_and_does_not_mutate_command() -> None:
+def test_limit_order_encoding_is_exact_and_does_not_mutate_request() -> None:
     cloid = Cloid("0x" + "12" * 16)
-    order = LimitOrder(
-        "BTC",
-        Side.BUY,
-        0.010_000_000_01,
-        100_000.4,
-        TimeInForce.ALO,
-        client_order_id=cloid,
-    )
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": 0.010_000_000_01,
+        "px": 100_000.4,
+        "is_market": False,
+        "ro": False,
+        "order_type": limit_order_type(TimeInForce.ALO),
+        "cloid": cloid,
+    }
+    original = deepcopy(order)
 
     encoded = encode_order(order, asset=0, size_decimals=5)
 
@@ -140,35 +178,55 @@ def test_limit_order_encoding_is_exact_and_does_not_mutate_command() -> None:
         "t": {"limit": {"tif": "Alo"}},
         "c": str(cloid),
     }
-    assert order.size == 0.010_000_000_01
-    assert order.price == 100_000.4
+    assert order == original
+
+
+def test_missing_order_type_defaults_to_ioc_limit() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": 0.01,
+        "px": 99_000.0,
+        "is_market": False,
+    }
+
+    assert encode_order(order, asset=0, size_decimals=5)["t"] == {
+        "limit": {"tif": "Ioc"}
+    }
 
 
 @pytest.mark.parametrize(
     "order",
     [
-        LimitOrder("BTC", Side.BUY, 0.000_001, 100_000),
-        LimitOrder("BTC", Side.BUY, 0.01, 0.01),
+        {
+            "coin": "BTC",
+            "is_buy": True,
+            "sz": 0.000_001,
+            "px": 100_000.0,
+            "is_market": False,
+        },
+        {"coin": "BTC", "is_buy": True, "sz": 0.01, "px": 0.01, "is_market": False},
     ],
 )
 def test_order_encoding_rejects_values_below_market_precision(
-    order: LimitOrder,
+    order: PlaceOrderRequest,
 ) -> None:
     with pytest.raises(ValueError, match="market precision"):
         encode_order(order, asset=0, size_decimals=5)
 
 
 def test_trigger_order_encoding_preserves_trigger_contract() -> None:
-    order = TriggerOrder(
-        "xyz:NVDA",
-        Side.SELL,
-        0.1254,
-        177.064,
-        180.125,
-        TriggerKind.STOP_LOSS,
-        is_market=True,
-        reduce_only=True,
-    )
+    order: PlaceOrderRequest = {
+        "coin": "xyz:NVDA",
+        "is_buy": False,
+        "sz": 0.1254,
+        "px": 177.064,
+        "is_market": False,
+        "ro": True,
+        "order_type": trigger_order_type(
+            is_market=True, trigger_px="180.125", tpsl=TriggerKind.STOP_LOSS
+        ),
+    }
 
     assert encode_order(order, asset=110_002, size_decimals=3) == {
         "a": 110_002,

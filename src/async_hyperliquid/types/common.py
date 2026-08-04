@@ -29,11 +29,6 @@ class Network(StrEnum):
         return "a" if self is Network.MAINNET else "b"
 
 
-class Side(StrEnum):
-    BUY = "B"
-    SELL = "A"
-
-
 class TimeInForce(StrEnum):
     ALO = "Alo"
     IOC = "Ioc"

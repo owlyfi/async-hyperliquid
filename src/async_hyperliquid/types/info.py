@@ -660,6 +660,11 @@ class ActiveAssetData(TypedDict):
     markPx: str
 
 
+class EvmContract(TypedDict):
+    address: str
+    evm_extra_wei_decimals: int
+
+
 class SpotToken(TypedDict):
     name: str
     index: int
@@ -667,8 +672,9 @@ class SpotToken(TypedDict):
     szDecimals: int
     weiDecimals: int
     tokenId: str
-    evmContract: str | None
+    evmContract: EvmContract | None
     fullName: str | None
+    deployerTradingFeeShare: NotRequired[str]
 
 
 class SpotPair(TypedDict):
@@ -684,10 +690,14 @@ class SpotMeta(TypedDict):
 
 
 class SpotAssetContext(TypedDict):
+    coin: str
+    circulatingSupply: str
+    dayBaseVlm: str
     dayNtlVlm: str
     markPx: str
     midPx: str | None
     prevDayPx: str
+    totalSupply: str
 
 
 SpotMetaAndContexts: TypeAlias = tuple[SpotMeta, list[SpotAssetContext]]

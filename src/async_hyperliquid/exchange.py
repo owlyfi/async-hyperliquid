@@ -9,12 +9,14 @@ from typing import Literal, cast, overload
 from eth_account.signers.local import LocalAccount
 from eth_utils import is_address, to_normalized_address
 
+from ._encoding import _wire_float
 from ._http import _HttpTransport, _validate_endpoint_url
 from ._signing import (
     _APPROVE_AGENT_SPEC,
     _APPROVE_BUILDER_FEE_SPEC,
     _CONVERT_TO_MULTI_SIG_USER_SPEC,
     _SEND_ASSET_SPEC,
+    _SEND_TO_EVM_WITH_DATA_SPEC,
     _SPOT_SEND_SPEC,
     _STAKING_TRANSFER_SPEC,
     _STAKING_WITHDRAW_SPEC,
@@ -25,51 +27,49 @@ from ._signing import (
     _USER_SET_ABSTRACTION_SPEC,
     _WITHDRAW_SPEC,
     _UserSigningSpec,
-    _round_float,
     _sign_user_action,
-    _wire_float,
-    encode_order,
     sign_exchange_action,
 )
 from .errors import HttpError, IndeterminateActionError, ProtocolError
-from .info import InfoClient
 from .types import (
     AgentAbstraction,
-    BuilderFee,
-    CancelByCloid,
-    CancelOrder,
+    Builder,
     JsonObject,
     JsonValue,
-    LimitOrder,
-    MarketOrder,
-    ModifyOrder,
     Network,
     OrderGrouping,
-    Side,
-    TimeInForce,
-    TriggerOrder,
     UserAbstraction,
 )
 from .types.exchange import (
     ActionEnvelope,
     ActionResponse,
     AgentEnableDexAbstractionAction,
+    AgentSendAssetAction,
     AgentSetAbstractionAction,
     ApproveAgentAction,
+    AuthorizeAqav2RoleAction,
+    BatchModifyAction,
     CancelAction,
     CancelByCloidAction,
     CancelOrderResponse,
     CancelTwapResponse,
+    ClaimRewardsAction,
     CreateSubAccountAction,
     DefaultActionResponse,
-    EncodedBuilderFee,
+    EncodedBuilder,
     EncodedCancel,
     EncodedCancelByCloid,
     EncodedModify,
+    EncodedOrder,
     EncodedTwapOrder,
     EvmUserModifyAction,
     ExchangeAction,
+    Hip3LiquidatorTransferAction,
+    MergeOutcomeAction,
+    MergeQuestionAction,
     ModifyAction,
+    NegateOutcomeAction,
+    NoopAction,
     OrderAction,
     PlaceOrderResponse,
     PlaceTwapResponse,
@@ -77,10 +77,12 @@ from .types.exchange import (
     ScheduleCancelAction,
     SetReferrerAction,
     Signature,
+    SplitOutcomeAction,
     TwapCancelAction,
     TwapOrderAction,
     UpdateIsolatedMarginAction,
     UpdateLeverageAction,
+    ValidatorL1StreamAction,
     VaultTransferAction,
 )
 
@@ -132,6 +134,12 @@ def _exact_signed_units(amount: float, decimals: int) -> int:
     if scaled != integral:
         raise ValueError("amount exceeds USD precision")
     return int(integral)
+
+
+def _positive_wire_amount(amount: float) -> str:
+    if not math.isfinite(amount) or amount <= 0:
+        raise ValueError("amount must be finite and greater than zero")
+    return _wire_float(amount)
 
 
 def _is_error_status(value: JsonValue) -> bool:
@@ -239,35 +247,29 @@ class ExchangeClient:
         "_account",
         "_account_address",
         "_exchange_url",
-        "_info",
         "_last_nonce",
         "_network",
-        "_perp_dexes",
         "_transport",
         "_vault_address",
     )
 
     _transport: _HttpTransport
-    _info: InfoClient
     _account: LocalAccount
     _account_address: str
     _vault_address: str | None
     _network: Network
-    _perp_dexes: tuple[str, ...]
     _exchange_url: str
     _last_nonce: int
 
     def __init__(
         self,
         transport: _HttpTransport,
-        info: InfoClient,
         account: LocalAccount,
         *,
         account_address: str,
         vault_address: str | None,
         network: Network,
         exchange_url: str | None = None,
-        perp_dexes: tuple[str, ...] = ("",),
     ) -> None:
         if not is_address(account_address):
             raise ValueError("account_address must be a 20-byte hex address")
@@ -275,14 +277,12 @@ class ExchangeClient:
             raise ValueError("vault_address must be a 20-byte hex address")
 
         self._transport = transport
-        self._info = info
         self._account = account
         self._account_address = to_normalized_address(account_address)
         self._vault_address = (
             None if vault_address is None else to_normalized_address(vault_address)
         )
         self._network = network
-        self._perp_dexes = perp_dexes
         self._exchange_url = _validate_endpoint_url(
             network.exchange_url if exchange_url is None else exchange_url
         )
@@ -292,61 +292,56 @@ class ExchangeClient:
     def exchange_url(self) -> str:
         return self._exchange_url
 
+    @property
+    def execution_address(self) -> str:
+        return self._vault_address or self._account_address
+
     def _next_nonce(self) -> int:
         self._last_nonce = max(time_ns() // 1_000_000, self._last_nonce + 1)
         return self._last_nonce
 
-    async def _encode_orders(
+    async def _submit_orders(
         self,
-        orders: Sequence[LimitOrder | TriggerOrder],
+        orders: Sequence[EncodedOrder],
         *,
         grouping: OrderGrouping = OrderGrouping.NA,
-        builder_fee: BuilderFee | None = None,
-    ) -> OrderAction:
-        commands = tuple(orders)
-        if not commands:
+        builder: Builder | None = None,
+        expires_after: int | None = None,
+    ) -> PlaceOrderResponse:
+        encoded = list(orders)
+        if not encoded:
             raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
-            tuple(order.coin for order in commands)
-        )
-        encoded = [
-            encode_order(order, asset=asset, size_decimals=size_decimals)
-            for order, (asset, size_decimals) in zip(commands, market_info, strict=True)
-        ]
         action: OrderAction = {
             "type": "order",
             "orders": encoded,
             "grouping": grouping.value,
         }
-        if builder_fee is not None:
-            action["builder"] = EncodedBuilderFee(
-                b=builder_fee.address.lower(), f=builder_fee.fee_tenths_bps
+        if builder is not None:
+            action["builder"] = EncodedBuilder(
+                b=builder.address.lower(), f=builder.fee_tenths_bps
             )
-        return action
+        return await self._submit_action(action, "order", expires_after=expires_after)
 
-    async def _encode_market_orders(
-        self, orders: Sequence[MarketOrder], *, builder_fee: BuilderFee | None = None
-    ) -> OrderAction:
-        commands = tuple(orders)
-        if not commands:
+    async def _submit_cancels(
+        self, cancels: Sequence[EncodedCancel], *, expires_after: int | None = None
+    ) -> CancelOrderResponse:
+        encoded = list(cancels)
+        if not encoded:
             raise ValueError("orders must not be empty")
-        mids = await self._info._mid_prices(tuple(order.coin for order in commands))
-        limits = tuple(
-            LimitOrder(
-                coin=order.coin,
-                side=order.side,
-                size=order.size,
-                price=mid
-                * (
-                    1 + order.slippage if order.side is Side.BUY else 1 - order.slippage
-                ),
-                time_in_force=TimeInForce.IOC,
-                reduce_only=order.reduce_only,
-                client_order_id=order.client_order_id,
-            )
-            for order, mid in zip(commands, mids, strict=True)
-        )
-        return await self._encode_orders(limits, builder_fee=builder_fee)
+        action = CancelAction(type="cancel", cancels=encoded)
+        return await self._submit_action(action, "cancel", expires_after=expires_after)
+
+    async def _submit_cloid_cancels(
+        self,
+        cancels: Sequence[EncodedCancelByCloid],
+        *,
+        expires_after: int | None = None,
+    ) -> CancelOrderResponse:
+        encoded = list(cancels)
+        if not encoded:
+            raise ValueError("orders must not be empty")
+        action = CancelByCloidAction(type="cancelByCloid", cancels=encoded)
+        return await self._submit_action(action, "cancel", expires_after=expires_after)
 
     async def _post_envelope(
         self,
@@ -362,12 +357,10 @@ class ExchangeClient:
             "action": action,
             "nonce": nonce,
             "signature": signature,
+            "vaultAddress": vault_address,
+            "expiresAfter": expires_after,
         }
         action_type = cast(JsonObject, action)["type"]
-        if vault_address is not None:
-            envelope["vaultAddress"] = vault_address
-        if expires_after is not None:
-            envelope["expiresAfter"] = expires_after
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -387,10 +380,11 @@ class ExchangeClient:
     @overload
     async def _submit_action(
         self,
-        action: OrderAction | ModifyAction,
+        action: OrderAction | ModifyAction | BatchModifyAction,
         expected_type: Literal["order"],
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> PlaceOrderResponse: ...
 
     @overload
@@ -400,6 +394,7 @@ class ExchangeClient:
         expected_type: Literal["cancel"],
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> CancelOrderResponse: ...
 
     @overload
@@ -409,6 +404,7 @@ class ExchangeClient:
         expected_type: Literal["twapOrder"],
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> PlaceTwapResponse: ...
 
     @overload
@@ -418,6 +414,7 @@ class ExchangeClient:
         expected_type: Literal["twapCancel"],
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> CancelTwapResponse: ...
 
     @overload
@@ -427,6 +424,7 @@ class ExchangeClient:
         expected_type: Literal["default"],
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> DefaultActionResponse: ...
 
     async def _submit_action(
@@ -435,8 +433,10 @@ class ExchangeClient:
         expected_type: _ResponseType,
         *,
         expires_after: int | None = None,
+        nonce: int | None = None,
     ) -> ActionResponse:
-        nonce = self._next_nonce()
+        if nonce is None:
+            nonce = self._next_nonce()
         action_type = cast(str, cast(JsonObject, action)["type"])
         vault_address = (
             None if action_type in _ROOT_SCOPED_ACTIONS else self._vault_address
@@ -478,96 +478,19 @@ class ExchangeClient:
             ),
         )
 
-    async def place_limit_order(
-        self,
-        order: LimitOrder,
-        *,
-        builder_fee: BuilderFee | None = None,
-        expires_after: int | None = None,
+    async def _submit_modify(
+        self, modify: EncodedModify, *, expires_after: int | None = None
     ) -> PlaceOrderResponse:
-        action = await self._encode_orders((order,), builder_fee=builder_fee)
+        action = ModifyAction(type="modify", oid=modify["oid"], order=modify["order"])
         return await self._submit_action(action, "order", expires_after=expires_after)
 
-    async def place_orders(
-        self,
-        orders: Sequence[LimitOrder | TriggerOrder],
-        *,
-        grouping: OrderGrouping = OrderGrouping.NA,
-        builder_fee: BuilderFee | None = None,
-        expires_after: int | None = None,
+    async def _submit_modifies(
+        self, modifies: Sequence[EncodedModify], *, expires_after: int | None = None
     ) -> PlaceOrderResponse:
-        action = await self._encode_orders(
-            orders, grouping=grouping, builder_fee=builder_fee
-        )
-        return await self._submit_action(action, "order", expires_after=expires_after)
-
-    async def place_market_order(
-        self,
-        order: MarketOrder,
-        *,
-        builder_fee: BuilderFee | None = None,
-        expires_after: int | None = None,
-    ) -> PlaceOrderResponse:
-        action = await self._encode_market_orders((order,), builder_fee=builder_fee)
-        return await self._submit_action(action, "order", expires_after=expires_after)
-
-    async def cancel_orders(
-        self, orders: Sequence[CancelOrder], *, expires_after: int | None = None
-    ) -> CancelOrderResponse:
-        commands = tuple(orders)
-        if not commands:
+        encoded = list(modifies)
+        if not encoded:
             raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
-            tuple(order.coin for order in commands)
-        )
-        cancels = [
-            EncodedCancel(a=asset, o=order.order_id)
-            for order, (asset, _) in zip(commands, market_info, strict=True)
-        ]
-        action = CancelAction(type="cancel", cancels=cancels)
-        return await self._submit_action(action, "cancel", expires_after=expires_after)
-
-    async def cancel_orders_by_cloid(
-        self, orders: Sequence[CancelByCloid], *, expires_after: int | None = None
-    ) -> CancelOrderResponse:
-        commands = tuple(orders)
-        if not commands:
-            raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
-            tuple(order.coin for order in commands)
-        )
-        cancels = [
-            EncodedCancelByCloid(asset=asset, cloid=str(order.client_order_id))
-            for order, (asset, _) in zip(commands, market_info, strict=True)
-        ]
-        action = CancelByCloidAction(type="cancelByCloid", cancels=cancels)
-        return await self._submit_action(action, "cancel", expires_after=expires_after)
-
-    async def modify_orders(
-        self, orders: Sequence[ModifyOrder], *, expires_after: int | None = None
-    ) -> PlaceOrderResponse:
-        commands = tuple(orders)
-        if not commands:
-            raise ValueError("orders must not be empty")
-        market_info = await self._info._market_infos(
-            tuple(command.order.coin for command in commands)
-        )
-        modifies = [
-            EncodedModify(
-                oid=(
-                    command.order_id
-                    if isinstance(command.order_id, int)
-                    else str(command.order_id)
-                ),
-                order=encode_order(
-                    command.order, asset=asset, size_decimals=size_decimals
-                ),
-            )
-            for command, (asset, size_decimals) in zip(
-                commands, market_info, strict=True
-            )
-        ]
-        action = ModifyAction(type="batchModify", modifies=modifies)
+        action = BatchModifyAction(type="batchModify", modifies=encoded)
         return await self._submit_action(action, "order", expires_after=expires_after)
 
     async def schedule_cancel(
@@ -580,121 +503,45 @@ class ExchangeClient:
             action["time"] = cancel_at
         return await self._submit_action(action, "default", expires_after=expires_after)
 
-    async def update_leverage(
+    async def _update_leverage(
         self,
-        coin: str,
+        asset: int,
         leverage: int,
         *,
         is_cross: bool = True,
         expires_after: int | None = None,
     ) -> DefaultActionResponse:
-        if leverage <= 0:
-            raise ValueError("leverage must be greater than zero")
         action = UpdateLeverageAction(
-            type="updateLeverage",
-            asset=await self._info.asset_id(coin),
-            isCross=is_cross,
-            leverage=leverage,
+            type="updateLeverage", asset=asset, isCross=is_cross, leverage=leverage
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
-    async def update_isolated_margin(
-        self, coin: str, amount: float, *, expires_after: int | None = None
+    async def _update_isolated_margin(
+        self, asset: int, amount: float, *, expires_after: int | None = None
     ) -> DefaultActionResponse:
         action = UpdateIsolatedMarginAction(
             type="updateIsolatedMargin",
-            asset=await self._info.asset_id(coin),
+            asset=asset,
             isBuy=True,
             ntli=_exact_signed_units(amount, _USD_DECIMALS),
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
-    async def place_twap(
-        self,
-        coin: str,
-        side: Side,
-        size: float,
-        minutes: int,
-        *,
-        reduce_only: bool = False,
-        randomize: bool = False,
-        expires_after: int | None = None,
+    async def _submit_twap(
+        self, twap: EncodedTwapOrder, *, expires_after: int | None = None
     ) -> PlaceTwapResponse:
-        if minutes <= 0:
-            raise ValueError("minutes must be greater than zero")
-        if not math.isfinite(size) or size <= 0:
-            raise ValueError("size must be finite and greater than zero")
-        asset, size_decimals = await self._info._market_info(coin)
-        rounded_size = _round_float(size, size_decimals)
-        if rounded_size == 0:
-            raise ValueError("size is below market precision")
-        encoded = EncodedTwapOrder(
-            a=asset,
-            b=side is Side.BUY,
-            s=_wire_float(rounded_size),
-            r=reduce_only,
-            m=minutes,
-            t=randomize,
-        )
-        action = TwapOrderAction(type="twapOrder", twap=encoded)
+        action = TwapOrderAction(type="twapOrder", twap=twap)
         return await self._submit_action(
             action, "twapOrder", expires_after=expires_after
         )
 
-    async def cancel_twap(
-        self, coin: str, twap_id: int, *, expires_after: int | None = None
+    async def _submit_twap_cancel(
+        self, asset: int, twap_id: int, *, expires_after: int | None = None
     ) -> CancelTwapResponse:
-        if twap_id < 0:
-            raise ValueError("twap_id must not be negative")
-        action = TwapCancelAction(
-            type="twapCancel", a=await self._info.asset_id(coin), t=twap_id
-        )
+        action = TwapCancelAction(type="twapCancel", a=asset, t=twap_id)
         return await self._submit_action(
             action, "twapCancel", expires_after=expires_after
         )
-
-    async def close_positions(
-        self,
-        coins: Sequence[str] | None = None,
-        *,
-        perp_dexes: tuple[str, ...] | None = None,
-        slippage: float = 0.05,
-        builder_fee: BuilderFee | None = None,
-        expires_after: int | None = None,
-    ) -> PlaceOrderResponse | None:
-        requested = None if coins is None else frozenset(coins)
-        if requested is not None and not requested:
-            return None
-        positions = await self._info.positions(
-            self._vault_address or self._account_address,
-            perp_dexes=self._perp_dexes if perp_dexes is None else perp_dexes,
-        )
-        orders: list[MarketOrder] = []
-        for position in positions:
-            coin = position.get("coin")
-            raw_size = position.get("szi")
-            if not isinstance(coin, str) or not isinstance(raw_size, str):
-                raise ProtocolError("position contains malformed coin or size")
-            try:
-                size = float(raw_size)
-            except ValueError:
-                raise ProtocolError("position contains an invalid size") from None
-            if not math.isfinite(size):
-                raise ProtocolError("position contains an invalid size")
-            if size and (requested is None or coin in requested):
-                orders.append(
-                    MarketOrder(
-                        coin=coin,
-                        side=Side.BUY if size < 0 else Side.SELL,
-                        size=abs(size),
-                        slippage=slippage,
-                        reduce_only=True,
-                    )
-                )
-        if not orders:
-            return None
-        action = await self._encode_market_orders(orders, builder_fee=builder_fee)
-        return await self._submit_action(action, "order", expires_after=expires_after)
 
     async def set_referrer_code(
         self, code: str, *, expires_after: int | None = None
@@ -724,6 +571,22 @@ class ExchangeClient:
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
+    async def hip3_liquidator_transfer(
+        self,
+        dex: str,
+        amount: float,
+        *,
+        is_deposit: bool = True,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        notional = _exact_signed_units(amount, _USD_DECIMALS)
+        if notional <= 0 or notional % 1_000_000_000:
+            raise ValueError("amount must be a positive multiple of 1000 quote tokens")
+        action = Hip3LiquidatorTransferAction(
+            type="hip3LiquidatorTransfer", dex=dex, ntl=notional, isDeposit=is_deposit
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
     async def reserve_request_weight(
         self, weight: int, *, expires_after: int | None = None
     ) -> DefaultActionResponse:
@@ -731,6 +594,19 @@ class ExchangeClient:
             raise ValueError("weight must not be negative")
         action = ReserveRequestWeightAction(type="reserveRequestWeight", weight=weight)
         return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def noop(
+        self, nonce: int | None = None, *, expires_after: int | None = None
+    ) -> DefaultActionResponse:
+        if nonce is None:
+            nonce = self._next_nonce()
+        elif nonce < 0:
+            raise ValueError("nonce must not be negative")
+        else:
+            self._last_nonce = max(self._last_nonce, nonce)
+        return await self._submit_action(
+            NoopAction(type="noop"), "default", expires_after=expires_after, nonce=nonce
+        )
 
     async def use_big_blocks(
         self, enabled: bool, *, expires_after: int | None = None
@@ -750,16 +626,15 @@ class ExchangeClient:
         }
         return await self._submit_user_action(action, _USD_SEND_SPEC, nonce)
 
-    async def spot_transfer(
-        self, coin: str, amount: float, destination: str
+    async def _spot_transfer(
+        self, token: str, wei_decimals: int, amount: float, destination: str
     ) -> DefaultActionResponse:
-        token = await self._info.spot_token_metadata(coin)
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "spotSend",
             "destination": destination,
-            "token": f"{token['name']}:{token['tokenId']}",
-            "amount": _format_token_amount(amount, token["weiDecimals"]),
+            "token": token,
+            "amount": _format_token_amount(amount, wei_decimals),
             "time": nonce,
         }
         return await self._submit_user_action(action, _SPOT_SEND_SPEC, nonce)
@@ -791,21 +666,21 @@ class ExchangeClient:
         }
         return await self._submit_user_action(action, _USD_CLASS_TRANSFER_SPEC, nonce)
 
-    async def send_asset(
+    async def _send_asset(
         self,
-        coin: str,
+        token: str,
+        wei_decimals: int,
         amount: float,
         destination: str,
         *,
         source_dex: str,
         destination_dex: str,
     ) -> DefaultActionResponse:
-        token = await self._info.spot_token_metadata(coin)
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "sendAsset",
-            "token": f"{token['name']}:{token['tokenId']}",
-            "amount": _format_token_amount(amount, token["weiDecimals"]),
+            "token": token,
+            "amount": _format_token_amount(amount, wei_decimals),
             "destination": destination,
             "sourceDex": source_dex,
             "destinationDex": destination_dex,
@@ -813,6 +688,62 @@ class ExchangeClient:
             "nonce": nonce,
         }
         return await self._submit_user_action(action, _SEND_ASSET_SPEC, nonce)
+
+    async def _agent_send_asset(
+        self,
+        token: str,
+        wei_decimals: int,
+        amount: float,
+        destination: str,
+        *,
+        source_dex: str,
+        destination_dex: str,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        nonce = self._next_nonce()
+        action = AgentSendAssetAction(
+            type="agentSendAsset",
+            destination=destination,
+            sourceDex=source_dex,
+            destinationDex=destination_dex,
+            token=token,
+            amount=_format_token_amount(amount, wei_decimals),
+            fromSubAccount=self._vault_address or "",
+            nonce=nonce,
+        )
+        return await self._submit_action(
+            action, "default", expires_after=expires_after, nonce=nonce
+        )
+
+    async def _send_to_evm_with_data(
+        self,
+        token: str,
+        wei_decimals: int,
+        amount: float,
+        destination_recipient: str,
+        *,
+        source_dex: str,
+        address_encoding: Literal["hex", "base58"],
+        destination_chain_id: int,
+        gas_limit: int,
+        data: str,
+    ) -> DefaultActionResponse:
+        nonce = self._next_nonce()
+        action: JsonObject = {
+            "type": "sendToEvmWithData",
+            "token": token,
+            "amount": _format_token_amount(amount, wei_decimals),
+            "sourceDex": source_dex,
+            "destinationRecipient": destination_recipient,
+            "addressEncoding": address_encoding,
+            "destinationChainId": destination_chain_id,
+            "gasLimit": gas_limit,
+            "data": data,
+            "nonce": nonce,
+        }
+        return await self._submit_user_action(
+            action, _SEND_TO_EVM_WITH_DATA_SPEC, nonce
+        )
 
     async def staking_deposit(self, amount: float) -> DefaultActionResponse:
         nonce = self._next_nonce()
@@ -936,3 +867,103 @@ class ExchangeClient:
             type="agentSetAbstraction", abstraction=abstraction.value
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def split_outcome(
+        self, outcome: int, amount: float, *, expires_after: int | None = None
+    ) -> DefaultActionResponse:
+        if outcome < 0:
+            raise ValueError("outcome must not be negative")
+        action = SplitOutcomeAction(
+            type="userOutcome",
+            splitOutcome={"outcome": outcome, "amount": _positive_wire_amount(amount)},
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def merge_outcome(
+        self,
+        outcome: int,
+        amount: float | None = None,
+        *,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        if outcome < 0:
+            raise ValueError("outcome must not be negative")
+        action = MergeOutcomeAction(
+            type="userOutcome",
+            mergeOutcome={
+                "outcome": outcome,
+                "amount": None if amount is None else _positive_wire_amount(amount),
+            },
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def merge_question(
+        self,
+        question: int,
+        amount: float | None = None,
+        *,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        if question < 0:
+            raise ValueError("question must not be negative")
+        action = MergeQuestionAction(
+            type="userOutcome",
+            mergeQuestion={
+                "question": question,
+                "amount": None if amount is None else _positive_wire_amount(amount),
+            },
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def negate_outcome(
+        self,
+        question: int,
+        outcome: int,
+        amount: float,
+        *,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        if question < 0 or outcome < 0:
+            raise ValueError("question and outcome must not be negative")
+        action = NegateOutcomeAction(
+            type="userOutcome",
+            negateOutcome={
+                "question": question,
+                "outcome": outcome,
+                "amount": _positive_wire_amount(amount),
+            },
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def vote_risk_free_rate(
+        self, rate: float, *, expires_after: int | None = None
+    ) -> DefaultActionResponse:
+        if not math.isfinite(rate) or rate < 0:
+            raise ValueError("rate must be finite and non-negative")
+        action = ValidatorL1StreamAction(
+            type="validatorL1Stream", riskFreeRate=_wire_float(rate)
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def authorize_aqav2_role(
+        self,
+        token: int,
+        role: Literal["technical", "treasury"],
+        *,
+        expires_after: int | None = None,
+    ) -> DefaultActionResponse:
+        if token < 0:
+            raise ValueError("token must not be negative")
+        action = AuthorizeAqav2RoleAction(
+            type="authorizeAqav2Role", token=token, role=role
+        )
+        return await self._submit_action(action, "default", expires_after=expires_after)
+
+    async def claim_rewards(
+        self, *, expires_after: int | None = None
+    ) -> DefaultActionResponse:
+        return await self._submit_action(
+            ClaimRewardsAction(type="claimRewards"),
+            "default",
+            expires_after=expires_after,
+        )

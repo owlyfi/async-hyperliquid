@@ -7,7 +7,7 @@ import pytest
 
 from async_hyperliquid import AsyncHyperliquid, InfoClient
 from async_hyperliquid.exchange import ExchangeClient
-from async_hyperliquid.types import Network
+from async_hyperliquid.types import Network, PlaceOrderRequest
 
 
 ADDRESS = "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD"
@@ -26,7 +26,7 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
         "exchange_url",
         "session",
         "timeout",
-        "perp_dexes",
+        "dexs",
     )
     assert parameters["account_address"].kind is Parameter.POSITIONAL_OR_KEYWORD
     assert parameters["signing_key"].kind is Parameter.POSITIONAL_OR_KEYWORD
@@ -34,7 +34,7 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
     assert parameters["vault_address"].default is None
     assert parameters["network"].kind is Parameter.KEYWORD_ONLY
     assert parameters["network"].default is Network.MAINNET
-    assert parameters["perp_dexes"].default == ("",)
+    assert parameters["dexs"].default == ("",)
 
     client = AsyncHyperliquid(ADDRESS, SIGNING_KEY)
 
@@ -42,7 +42,71 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
     assert client.exchange._account_address == ADDRESS.lower()
     assert not hasattr(type(client), "__getattr__")
     assert not hasattr(client, "all_mids")
-    assert not hasattr(client, "place_limit_order")
+    assert hasattr(client, "place_limit_order")
+    assert hasattr(client, "place_order")
+    assert hasattr(client, "close_positions")
+
+
+def test_order_and_close_workflows_have_one_clear_owner() -> None:
+    assert AsyncHyperliquid.batch_place_orders is AsyncHyperliquid.place_orders
+    assert tuple(signature(AsyncHyperliquid.place_orders).parameters) == (
+        "self",
+        "orders",
+        "grouping",
+        "builder",
+        "expires_after",
+    )
+    assert tuple(signature(AsyncHyperliquid.close_positions).parameters) == (
+        "self",
+        "coins",
+        "dexs",
+        "builder",
+        "expires_after",
+    )
+    info_dependent_actions = (
+        "place_limit_order",
+        "place_trigger_order",
+        "place_market_order",
+        "place_orders",
+        "place_market_orders",
+        "cancel_order",
+        "cancel_orders",
+        "cancel_by_cloid",
+        "cancel_orders_by_cloid",
+        "modify_order",
+        "modify_orders",
+        "place_twap",
+        "cancel_twap",
+        "update_leverage",
+        "update_isolated_margin",
+        "spot_transfer",
+        "send_asset",
+        "agent_send_asset",
+        "send_to_evm_with_data",
+    )
+    assert all(hasattr(AsyncHyperliquid, method) for method in info_dependent_actions)
+    assert all(not hasattr(ExchangeClient, method) for method in info_dependent_actions)
+    assert not hasattr(ExchangeClient, "close_positions")
+
+
+def test_exchange_constructor_has_no_info_dependency() -> None:
+    assert tuple(signature(ExchangeClient).parameters) == (
+        "transport",
+        "account",
+        "account_address",
+        "vault_address",
+        "network",
+        "exchange_url",
+    )
+    client = AsyncHyperliquid(ADDRESS, SIGNING_KEY)
+
+    assert not hasattr(client.exchange, "_info")
+    assert client.exchange.execution_address == ADDRESS.lower()
+
+
+def test_place_order_request_requires_an_explicit_market_mode() -> None:
+    assert "is_market" in PlaceOrderRequest.__required_keys__
+    assert "is_market" not in PlaceOrderRequest.__optional_keys__
 
 
 def test_root_normalizes_vault_execution_target() -> None:
@@ -109,13 +173,13 @@ def test_network_and_endpoint_matrix_is_independent(
         network=network,
         info_url=info_url,
         exchange_url=exchange_url,
-        perp_dexes=("", "xyz"),
+        dexs=("", "xyz"),
     )
 
     assert client.info.info_url == (info_url or network.info_url)
     assert client.exchange.exchange_url == (exchange_url or network.exchange_url)
     assert client.exchange._network is network
-    assert client.exchange._perp_dexes == ("", "xyz")
+    assert client._dexs == ("", "xyz")
     assert client.info._transport is client._transport
     assert client.exchange._transport is client._transport
 

@@ -15,7 +15,7 @@ class _MetadataSnapshot:
     size_decimals_by_asset: dict[int, int]
     spot_token_by_coin: dict[str, SpotToken]
     perp_context_by_coin: dict[str, tuple[str, int]]
-    spot_context_by_coin: dict[str, int]
+    spot_market_coins: frozenset[str]
     perp_dex_names: tuple[str, ...]
 
 
@@ -62,6 +62,16 @@ def _require_optional_str(value: JsonValue, field: str) -> str | None:
     return value
 
 
+def _require_optional_evm_contract(value: JsonValue, field: str) -> None:
+    if value is None:
+        return
+    contract = _require_object(value, field)
+    _require_str(contract.get("address"), f"{field}.address")
+    _require_int(
+        contract.get("evm_extra_wei_decimals"), f"{field}.evm_extra_wei_decimals"
+    )
+
+
 def _dex_offsets(dex_names: tuple[str, ...]) -> dict[str, int]:
     if not dex_names or dex_names[0] != "":
         raise ProtocolError("perpDexs must start with the base dex")
@@ -91,7 +101,7 @@ def _build_metadata_snapshot(
     size_decimals_by_asset: dict[int, int] = {}
     spot_token_by_coin: dict[str, SpotToken] = {}
     perp_context_by_coin: dict[str, tuple[str, int]] = {}
-    spot_context_by_coin: dict[str, int] = {}
+    spot_market_coins: set[str] = set()
 
     seen_perp_dexes: set[str] = set()
     for meta in all_perp_metas:
@@ -150,14 +160,17 @@ def _build_metadata_snapshot(
                 raise ProtocolError(
                     f"metadata field spotMeta.tokens[].{field} is required"
                 )
-            _require_optional_str(token[field], f"spotMeta.tokens[].{field}")
+        _require_optional_evm_contract(
+            token["evmContract"], "spotMeta.tokens[].evmContract"
+        )
+        _require_optional_str(token["fullName"], "spotMeta.tokens[].fullName")
         if index in tokens_by_index:
             raise ProtocolError("spotMeta contains duplicate token indexes")
         tokens_by_index[index] = cast(SpotToken, token)
 
     pair_objects = _require_list(spot_object.get("universe"), "spotMeta.universe")
     spot_pair_indexes: set[int] = set()
-    for context_index, pair_value in enumerate(pair_objects):
+    for pair_value in pair_objects:
         pair = _require_object(pair_value, "spotMeta.universe[]")
         coin = _require_str(pair.get("name"), "spotMeta.universe[].name")
         pair_index = _require_int(pair.get("index"), "spotMeta.universe[].index")
@@ -187,7 +200,7 @@ def _build_metadata_snapshot(
         size_decimals_by_asset[asset_id] = base["szDecimals"]
         spot_token_by_coin[coin] = base
         spot_token_by_coin.setdefault(quote_name, quote)
-        spot_context_by_coin[coin] = context_index
+        spot_market_coins.add(coin)
 
     return _MetadataSnapshot(
         coin_by_alias=coin_by_alias,
@@ -196,6 +209,6 @@ def _build_metadata_snapshot(
         size_decimals_by_asset=size_decimals_by_asset,
         spot_token_by_coin=spot_token_by_coin,
         perp_context_by_coin=perp_context_by_coin,
-        spot_context_by_coin=spot_context_by_coin,
+        spot_market_coins=frozenset(spot_market_coins),
         perp_dex_names=dex_names,
     )

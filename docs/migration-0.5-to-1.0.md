@@ -4,8 +4,9 @@ Version 1 is a deliberate API break. It removes the dynamic facade and replaces
 implicit state with two explicit clients:
 
 - use `InfoClient` for every credential-free read;
-- use `AsyncHyperliquid` when signed Exchange actions are required, then call
-  `.info` or `.exchange` directly.
+- use `AsyncHyperliquid` when signed Exchange actions are required; call root
+  trading workflows when Info resolution is needed and `.exchange` only for
+  Info-independent actions.
 
 There is no runtime compatibility wrapper. Migrate call sites mechanically and
 pin existing consumers to `<1` until their migration is reviewed.
@@ -24,7 +25,12 @@ After:
 
 ```python
 from async_hyperliquid import AsyncHyperliquid, InfoClient
-from async_hyperliquid.types import Network, TimeInForce
+from async_hyperliquid.types import (
+    Network,
+    PlaceOrderRequest,
+    TimeInForce,
+    limit_order_type,
+)
 ```
 
 The package root exports exactly `AsyncHyperliquid`, `InfoClient`, and
@@ -57,7 +63,7 @@ client = AsyncHyperliquid(
     signing_key=api_key,
     vault_address=vault,
     network=Network.MAINNET,
-    perp_dexes=("", "xyz"),
+    dexs=("", "xyz"),
 )
 ```
 
@@ -68,7 +74,7 @@ client = AsyncHyperliquid(
 | `is_mainnet=True` | `network=Network.MAINNET` |
 | `is_mainnet=False` | `network=Network.TESTNET` |
 | mutable `base_url` | immutable constructor-time `info_url` and/or `exchange_url` |
-| `perp_dexs: list[str]` | `perp_dexes: tuple[str, ...]` |
+| `perp_dexs: list[str]` | `dexs: tuple[str, ...]` |
 | `connector` | construct an `aiohttp.ClientSession` with that connector and pass `session=` |
 | `enable_evm`, `evm_rpc_url`, `private_key` | use `hl-web3` directly |
 | client-wide `vault` | immutable constructor-time `vault_address` |
@@ -82,6 +88,11 @@ carried through execution-scoped L1 signing/envelopes and position lookup, and
 through the protocol-specific subaccount fields used by USD class and asset
 transfers. Root-scoped administration actions still sign as the main account.
 Omitting it targets the main account everywhere.
+
+For the integration-role convention, `HL_ADDR`/`HL_PK` identify the master
+account, `HL_AK`/`HL_SK` identify the API wallet's public/private key pair, and
+`HL_SUB` is the subaccount. Use `HL_ADDR` or `HL_SUB` for Info portfolio
+queries. `HL_AK` proves the signer role but has no master/subaccount portfolio.
 
 ## Read-only clients no longer need fake credentials
 
@@ -100,7 +111,7 @@ Every account-specific Info method accepts the queried address explicitly. An
 
 ## Flat facade methods
 
-`AsyncHyperliquid` is now only the lifecycle owner. It has no `__getattr__` and
+`AsyncHyperliquid` is the lifecycle and cross-client orchestration owner. It has no `__getattr__` and
 does not forward endpoint calls.
 
 Common read mappings:
@@ -141,7 +152,7 @@ Raw `InfoAPI.get_*` methods use the same direct naming rule:
 | `get_spot_meta_ctx` | `spot_meta_and_contexts` |
 | `get_spot_clearinghouse_state` | `spot_account_state` |
 
-## Typed commands replace request dictionaries
+## One typed order-request vocabulary
 
 Before:
 
@@ -155,42 +166,66 @@ await client.place_order(
 )
 ```
 
-After:
+After, the compatibility root call remains expanded:
 
 ```python
-await client.exchange.place_limit_order(
-    LimitOrder(
-        coin="BTC",
-        side=Side.BUY,
-        size=0.001,
-        price=50_000,
-        time_in_force=TimeInForce.GTC,
-    )
+await client.place_order(
+    coin="BTC",
+    is_buy=True,
+    sz=0.001,
+    px=50_000,
+    is_market=False,
+    order_type=limit_order_type(TimeInForce.GTC),
 )
 ```
 
-Commands are frozen, slotted dataclasses and are never mutated during
-encoding.
+Direct and batch root workflows use the same JSON-shaped `TypedDict` request:
+
+```python
+order: PlaceOrderRequest = {
+    "coin": "BTC",
+    "is_buy": True,
+    "sz": 0.001,
+    "px": 50_000,
+    "is_market": False,
+    "order_type": limit_order_type(TimeInForce.GTC),
+}
+await client.place_limit_order(order)
+await client.place_orders((order,))
+```
+
+`LimitOrderOption` and `TriggerOrderOption` are singular because each order has
+one option object. `TimeInForce` is nested under `limit.tif`; it is not an order
+type. Use `is_buy: bool` for commands and `cloid` everywhere. Builder
+attribution is passed separately as `builder=Builder(...)`.
 
 Common write mappings:
 
 | 0.5 | 1.0 |
 |---|---|
-| `place_order(...)`, `place_typed_order(...)` | `exchange.place_limit_order(LimitOrder(...))` or `exchange.place_market_order(MarketOrder(...))` |
-| `batch_place_orders(items)` | `exchange.place_orders(tuple_of_commands)` |
-| `cancel_order`, `batch_cancel_orders` | `exchange.cancel_orders(tuple_of_CancelOrder)` |
-| `cancel_by_cloid`, `batch_cancel_by_cloid` | `exchange.cancel_orders_by_cloid(tuple_of_CancelByCloid)` |
-| `modify_order`, `batch_modify_orders` | `exchange.modify_orders(tuple_of_ModifyOrder)` |
-| `close_position(coin)` | `exchange.close_positions((coin,))` |
-| `close_all_positions()` | `exchange.close_positions()` |
-| `close_dex_positions(dex)` | `exchange.close_positions(perp_dexes=(dex,))` |
+| `place_order(...)`, `place_typed_order(...)` | root `place_order(...)` or root `place_*_order(request)` |
+| `batch_place_orders(items)` | root `place_orders(requests)` / identical `batch_place_orders` alias |
+| `cancel_order`, `batch_cancel_orders` | root `cancel_order(...)` / `cancel_orders(...)` |
+| `cancel_by_cloid`, `batch_cancel_by_cloid` | root `cancel_orders_by_cloid(tuple_of_CancelByCloid)` |
+| `modify_order`, `batch_modify_orders` | root `modify_order(request)` / `modify_orders(requests)` |
+| `close_position(coin)` | root `close_position(coin)` |
+| `close_all_positions()` | root `close_all_positions()` |
+| `close_dex_positions(dex)` | root `close_all_positions(dexs=(dex,))` |
 | `initiate_withdrawal(amount)` | `exchange.withdraw(amount)` |
 | `use_big_block(enabled)` | `exchange.use_big_blocks(enabled)` |
 
-Action methods such as `usd_transfer`, `spot_transfer`, `vault_transfer`,
-`approve_agent`, `approve_builder_fee`, staking, delegation, abstraction, TWAP,
-leverage, and margin updates remain available on `.exchange` with explicit,
-typed parameter names.
+Info-independent actions such as `usd_transfer`, `vault_transfer`,
+`approve_agent`, `approve_builder_fee`, staking, delegation, and abstraction
+remain on `.exchange`. Coin-resolving token transfers, TWAP, leverage, and
+margin workflows live on the root client.
+
+Close workflows always read the current full position size and submit one
+reduce-only market batch. The removed `size` and `slippage` parameters are not
+replaced; use `place_order(..., ro=True)` for a partial reduction.
+
+Public request parameters use `dex`/`dexs`. The method
+`InfoClient.perp_dexes()` keeps its name only because it calls the official
+`perpDexs` Info endpoint.
 
 ## Endpoint routing
 
@@ -291,8 +326,9 @@ The later Copycat v1 migration should:
 3. pass all endpoints at construction and remove `info.base_url` mutation and
    session reassignment;
 4. construct its authenticated trading client with `network=Network.*`, pass
-   the existing vault or subaccount as `vault_address=`, and use `.info` /
-   `.exchange` explicitly;
+   the existing vault or subaccount as `vault_address=`, use `.info` for reads,
+   root methods for Info+Exchange workflows, and `.exchange` for direct
+   Info-independent actions;
 5. preserve local-first, official-Info fallback and supported-request
    whitelisting in Copycat, not in this library;
 6. add an Exchange override only if Copycat explicitly configures a compatible
@@ -300,6 +336,9 @@ The later Copycat v1 migration should:
 7. validate local Info success, official fallback, unsupported local request
    rejection, vault/subaccount signing and routing parity, testnet
    order/cancel, reinitialization, and deterministic session closure.
+8. rename public request arguments from `perp_dexs`/`perp_dexes` to `dexs`,
+   migrate direct and batch orders to `PlaceOrderRequest`, and remove size or
+   slippage arguments from root close workflows.
 
 Keep the dependency guard, v1 API migration, and unrelated bot changes in
 separate Copycat commits.

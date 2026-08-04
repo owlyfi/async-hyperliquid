@@ -25,6 +25,7 @@ BASE_CONTEXT: JsonObject = {
 }
 HIP3_CONTEXT: JsonObject = {**BASE_CONTEXT, "markPx": "200", "midPx": "201"}
 SPOT_CONTEXT: JsonObject = {
+    "coin": "@0",
     "dayNtlVlm": "1",
     "markPx": "2",
     "midPx": "2.1",
@@ -93,7 +94,7 @@ class MetadataTransport:
         self.all_perp_metas = deepcopy(ALL_PERP_METAS)
         self.spot_meta = deepcopy(SPOT_META)
         self.perp_context = deepcopy(BASE_CONTEXT)
-        self.spot_context = deepcopy(SPOT_CONTEXT)
+        self.spot_contexts = [deepcopy(SPOT_CONTEXT)]
         self.all_mids_dexes: list[str] = []
 
     async def post_json(self, url: str, payload: JsonObject) -> JsonValue:
@@ -120,7 +121,7 @@ class MetadataTransport:
                 return [deepcopy(HIP3_PERP_META), [deepcopy(HIP3_CONTEXT)]]
             return [deepcopy(BASE_PERP_META), [deepcopy(self.perp_context)]]
         if request_type == "spotMetaAndAssetCtxs":
-            return [deepcopy(SPOT_META), [deepcopy(self.spot_context)]]
+            return [deepcopy(SPOT_META), deepcopy(self.spot_contexts)]
         if request_type == "allMids":
             self.all_mids_dexes.append(cast(str, payload["dex"]))
             return {"BTC": "100", "xyz:NVDA": "201", "@0": "2.1"}
@@ -210,6 +211,20 @@ async def test_spot_token_metadata_returns_an_isolated_snapshot() -> None:
     assert await info.token_id("@0") == "0x01"
 
 
+async def test_spot_token_accepts_the_documented_evm_contract_shape() -> None:
+    transport = MetadataTransport()
+    token = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[0])
+    token["evmContract"] = {"address": ADDRESS, "evm_extra_wei_decimals": -2}
+    info = build_info(transport)
+
+    await info.refresh_metadata()
+
+    assert (await info.spot_token_metadata("USDC"))["evmContract"] == {
+        "address": ADDRESS,
+        "evm_extra_wei_decimals": -2,
+    }
+
+
 @pytest.mark.parametrize(
     "field", ["isCanonical", "weiDecimals", "evmContract", "fullName"]
 )
@@ -259,12 +274,20 @@ async def test_price_and_account_helpers_use_info_only() -> None:
     assert await info.mark_price("PURR/USDC") == 2.0
     assert await info.mid_price("BTC") == 100.0
     assert await info.mid_price("xyz:NVDA") == 201.0
-    state = await info.account_state(ADDRESS, perp_dexes=("", "xyz"))
-    positions = await info.positions(ADDRESS, perp_dexes=("", "xyz"))
+    state = await info.account_state(ADDRESS, dexs=("", "xyz"))
+    positions = await info.positions(ADDRESS, dexs=("", "xyz"))
 
     assert set(state["dexs"]) == {"xyz"}
     assert state["spot"] == {"balances": []}
     assert [position["coin"] for position in positions] == ["BTC", "BTC"]
+
+
+async def test_spot_mark_price_matches_context_by_coin_not_list_position() -> None:
+    transport = MetadataTransport()
+    transport.spot_contexts.insert(0, {**SPOT_CONTEXT, "coin": "#10", "markPx": "999"})
+    info = build_info(transport)
+
+    assert await info.mark_price("PURR/USDC") == 2.0
 
 
 async def test_mid_prices_fetch_once_per_distinct_dex() -> None:
@@ -296,7 +319,7 @@ async def test_public_fanout_preserves_the_underlying_request_error(
 
     method = getattr(info, method_name)
     with pytest.raises(ProtocolError, match="clearinghouseState failed"):
-        await method(ADDRESS, perp_dexes=("", "xyz"))
+        await method(ADDRESS, dexs=("", "xyz"))
 
 
 async def test_metadata_fanout_preserves_a_library_error_when_multiple_calls_fail() -> (

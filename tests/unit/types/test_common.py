@@ -1,6 +1,6 @@
 import pytest
 
-from async_hyperliquid.types import CandleInterval, Cloid, Network, Side
+from async_hyperliquid.types import CandleInterval, Cloid, Network
 
 
 @pytest.mark.parametrize(
@@ -26,11 +26,6 @@ def test_network_owns_endpoints_and_signing_source(
     assert network.info_url == info_url
     assert network.exchange_url == exchange_url
     assert network.signature_source == signature_source
-
-
-def test_side_is_already_wire_ready() -> None:
-    assert Side.BUY == "B"
-    assert Side.SELL == "A"
 
 
 def test_candle_intervals_keep_two_and_four_hours_distinct() -> None:
