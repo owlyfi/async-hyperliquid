@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._encoding import _round_float, _wire_float, encode_order
+from ._encoding import _round_size, _wire_float, encode_order
 from ._http import _HttpTransport
 from ._metadata import _MarketInfo
+from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE
 from .errors import ProtocolError
 from .info import InfoClient
 from .types import (
@@ -44,6 +45,15 @@ if TYPE_CHECKING:
 
 def _coin_dex(coin: str) -> str:
     return coin.partition(":")[0] if ":" in coin else ""
+
+
+def _market_limit_price(
+    mid: float, *, is_buy: bool, slippage: float, is_outcome: bool
+) -> float:
+    price = mid * (1 + slippage if is_buy else 1 - slippage)
+    if not is_outcome:
+        return price
+    return min(max(price, OUTCOME_MIN_PRICE), OUTCOME_MAX_PRICE)
 
 
 class AsyncHyperliquid:
@@ -115,6 +125,7 @@ class AsyncHyperliquid:
                 asset=market.asset,
                 size_decimals=market.size_decimals,
                 is_spot=market.is_spot,
+                is_outcome=market.coin.startswith("#"),
             )
             for order, market in zip(orders, markets, strict=True)
         )
@@ -127,7 +138,7 @@ class AsyncHyperliquid:
         )
         mids = await self._info._mid_prices(markets)
         limits: list[PlaceOrderRequest] = []
-        for order, mid in zip(orders, mids, strict=True):
+        for order, market, mid in zip(orders, markets, mids, strict=True):
             slippage = order.get("slippage", 0.05)
             if not math.isfinite(slippage) or not 0 <= slippage < 1:
                 raise ValueError("slippage must be finite and in [0, 1)")
@@ -135,7 +146,12 @@ class AsyncHyperliquid:
                 "coin": order["coin"],
                 "is_buy": order["is_buy"],
                 "sz": order["sz"],
-                "px": mid * (1 + slippage if order["is_buy"] else 1 - slippage),
+                "px": _market_limit_price(
+                    mid,
+                    is_buy=order["is_buy"],
+                    slippage=slippage,
+                    is_outcome=market.coin.startswith("#"),
+                ),
                 "is_market": False,
                 "ro": order.get("ro", False),
                 "order_type": limit_order_type(TimeInForce.IOC),
@@ -150,6 +166,7 @@ class AsyncHyperliquid:
                 asset=market.asset,
                 size_decimals=market.size_decimals,
                 is_spot=market.is_spot,
+                is_outcome=market.coin.startswith("#"),
             )
             for order, market in zip(limits, markets, strict=True)
         )
@@ -333,6 +350,7 @@ class AsyncHyperliquid:
                 asset=market.asset,
                 size_decimals=market.size_decimals,
                 is_spot=market.is_spot,
+                is_outcome=market.coin.startswith("#"),
             ),
         )
 
@@ -408,7 +426,7 @@ class AsyncHyperliquid:
         if not math.isfinite(size) or size <= 0:
             raise ValueError("size must be finite and greater than zero")
         market = await self._info._market_info(coin)
-        rounded_size = _round_float(size, market.size_decimals)
+        rounded_size = _round_size(size, market.size_decimals)
         if rounded_size == 0:
             raise ValueError("size is below market precision")
         twap = EncodedTwapOrder(

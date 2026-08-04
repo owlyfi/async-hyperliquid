@@ -5,7 +5,7 @@ from hyperliquid.utils.signing import action_hash as sdk_action_hash
 from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
 import pytest
 
-from async_hyperliquid._encoding import encode_order
+from async_hyperliquid._encoding import _round_price, _round_size, encode_order
 from async_hyperliquid._signing import (
     _USD_SEND_SPEC,
     _sign_user_action,
@@ -39,6 +39,92 @@ ORDER_ACTION: JsonObject = {
     ],
     "grouping": "na",
 }
+
+
+@pytest.mark.parametrize(
+    ("value", "max_decimals", "expected"),
+    [
+        (10_001.0, 1, 10_001),
+        (0.002001, 6, 0.002001),
+        (123_456.0, 1, 123_456),
+        (123_456.6, 1, 123_460),
+        (1_234.56, 6, 1_234.6),
+        (0.0012345, 6, 0.001234),
+        (0.012345, 5, 0.01235),
+        (0.0001234, 8, 0.0001234),
+        (0.0001234, 5, 0.00012),
+    ],
+)
+def test_round_price_obeys_tick_size(
+    value: float, max_decimals: int, expected: float | int
+) -> None:
+    assert _round_price(value, max_decimals) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "size_decimals", "expected"),
+    [
+        (1.001, 3, 1.001),
+        (1.0001, 3, 1.0),
+        (1.23456, 3, 1.235),
+        (100_000_001.0, 0, 100_000_001),
+    ],
+)
+def test_round_size_obeys_lot_size(
+    value: float, size_decimals: int, expected: float | int
+) -> None:
+    assert _round_size(value, size_decimals) == expected
+
+
+def _outcome_order(px: float, sz: float = 1.0) -> PlaceOrderRequest:
+    return {
+        "coin": "#10",
+        "is_buy": True,
+        "sz": sz,
+        "px": px,
+        "is_market": False,
+        "order_type": limit_order_type(TimeInForce.GTC),
+    }
+
+
+@pytest.mark.parametrize(
+    ("px", "expected"),
+    [(0.00001, "0.00001"), (0.4, "0.4"), (0.400014, "0.40001"), (0.99999, "0.99999")],
+)
+def test_encode_outcome_uses_fixed_price_tick(px: float, expected: str) -> None:
+    encoded = encode_order(
+        _outcome_order(px),
+        asset=100_000_010,
+        size_decimals=0,
+        is_spot=True,
+        is_outcome=True,
+    )
+
+    assert encoded["p"] == expected
+
+
+@pytest.mark.parametrize("px", [0.000009, 1.0])
+def test_encode_outcome_rejects_price_outside_binary_domain(px: float) -> None:
+    with pytest.raises(ValueError, match="outcome price"):
+        encode_order(
+            _outcome_order(px),
+            asset=100_000_010,
+            size_decimals=0,
+            is_spot=True,
+            is_outcome=True,
+        )
+
+
+def test_encode_outcome_does_not_gate_minimum_notional() -> None:
+    encoded = encode_order(
+        _outcome_order(0.4, sz=1.0),
+        asset=100_000_010,
+        size_decimals=0,
+        is_spot=True,
+        is_outcome=True,
+    )
+
+    assert float(encoded["p"]) * float(encoded["s"]) == 0.4
 
 
 def test_hash_action_matches_the_0_5_1_wheel_vectors() -> None:
@@ -167,7 +253,9 @@ def test_limit_order_encoding_is_exact_and_does_not_mutate_request() -> None:
     }
     original = deepcopy(order)
 
-    encoded = encode_order(order, asset=0, size_decimals=5, is_spot=False)
+    encoded = encode_order(
+        order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
+    )
 
     assert encoded == {
         "a": 0,
@@ -190,9 +278,9 @@ def test_missing_order_type_defaults_to_ioc_limit() -> None:
         "is_market": False,
     }
 
-    assert encode_order(order, asset=0, size_decimals=5, is_spot=False)["t"] == {
-        "limit": {"tif": "Ioc"}
-    }
+    assert encode_order(
+        order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
+    )["t"] == {"limit": {"tif": "Ioc"}}
 
 
 @pytest.mark.parametrize(
@@ -212,7 +300,7 @@ def test_order_encoding_rejects_values_below_market_precision(
     order: PlaceOrderRequest,
 ) -> None:
     with pytest.raises(ValueError, match="market precision"):
-        encode_order(order, asset=0, size_decimals=5, is_spot=False)
+        encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
 
 
 def test_trigger_order_encoding_preserves_trigger_contract() -> None:
@@ -228,7 +316,9 @@ def test_trigger_order_encoding_preserves_trigger_contract() -> None:
         ),
     }
 
-    assert encode_order(order, asset=110_002, size_decimals=3, is_spot=False) == {
+    assert encode_order(
+        order, asset=110_002, size_decimals=3, is_spot=False, is_outcome=False
+    ) == {
         "a": 110_002,
         "b": False,
         "p": "177.06",

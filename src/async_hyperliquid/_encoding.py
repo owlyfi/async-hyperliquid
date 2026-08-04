@@ -1,6 +1,7 @@
 import math
 from typing import cast
 
+from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE, OUTCOME_PRICE_DECIMALS
 from .types import TimeInForce
 from .types.exchange import (
     EncodedOrder,
@@ -11,17 +12,17 @@ from .types.exchange import (
 )
 
 
-def _round_float(value: float, decimals: int) -> float:
-    return round(float(f"{float(value):.8g}"), decimals)
+def _round_size(value: float, size_decimals: int) -> float | int:
+    rounded = round(float(value), size_decimals)
+    return int(rounded) if rounded.is_integer() else rounded
 
 
-def _round_price(value: float, decimals: int) -> float | int:
-    rounded = _round_float(value, decimals)
-    if abs(rounded - round(rounded)) < 1e-12:
-        return int(round(rounded))
-    if rounded >= 100_000:
-        return int(rounded)
-    return round(float(f"{rounded:.5g}"), decimals)
+def _round_price(value: float, max_decimals: int) -> float | int:
+    number = float(value)
+    if number.is_integer():
+        return int(number)
+    rounded = round(float(f"{number:.5g}"), max_decimals)
+    return int(rounded) if rounded.is_integer() else rounded
 
 
 def _wire_float(value: float | int) -> str:
@@ -40,10 +41,16 @@ def encode_order(
     asset: int,
     size_decimals: int,
     is_spot: bool,
+    is_outcome: bool,
 ) -> EncodedOrder:
-    price_decimals = (8 if is_spot else 6) - size_decimals
-    price = _round_price(order["px"], price_decimals)
-    size = _round_float(order["sz"], size_decimals)
+    max_decimals = (8 if is_spot else 6) - size_decimals
+    raw_price = float(order["px"])
+    if is_outcome and not OUTCOME_MIN_PRICE <= raw_price <= OUTCOME_MAX_PRICE:
+        raise ValueError("outcome price must be between 0.00001 and 0.99999 USDC")
+    price = _round_price(
+        raw_price, OUTCOME_PRICE_DECIMALS if is_outcome else max_decimals
+    )
+    size = _round_size(order["sz"], size_decimals)
     if price <= 0 or size <= 0:
         raise ValueError("order value is below market precision")
 

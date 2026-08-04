@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid.client import _market_limit_price
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import (
     Builder,
@@ -30,6 +31,23 @@ RESPONSE = cast(
         "response": {"type": "order", "data": {"statuses": [{"resting": {"oid": 7}}]}},
     },
 )
+
+
+@pytest.mark.parametrize(
+    ("mid", "is_buy", "expected"),
+    [
+        (0.99999, True, 0.99999),
+        (0.00001, False, 0.00001),
+        (0.4, True, 0.42),
+        (0.4, False, 0.38),
+    ],
+)
+def test_outcome_market_limit_price_stays_in_domain(
+    mid: float, is_buy: bool, expected: float
+) -> None:
+    assert _market_limit_price(
+        mid, is_buy=is_buy, slippage=0.05, is_outcome=True
+    ) == pytest.approx(expected)
 
 
 def test_root_place_order_keeps_the_expanded_compatibility_signature() -> None:
