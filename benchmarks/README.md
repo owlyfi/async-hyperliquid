@@ -1,4 +1,6 @@
-# Signing benchmark
+# Benchmarks
+
+## Signing benchmark
 
 This benchmark compares Hyperliquid signing and order-payload construction in
 three real Python implementations:
@@ -25,7 +27,7 @@ Before timing a provider, the runner requires its action hash, one-order
 signature, ten-order signature, and payload action/signature to match the
 committed vectors. A mismatch stops the run instead of publishing incomparable
 timings. Exact full-envelope parity between async-hyperliquid and the official
-SDK is covered separately by `tests/oracle/test_signing_payload_parity.py`.
+SDK is covered separately by `tests/oracle/test_signing.py`.
 
 ## Locked environment
 
@@ -181,7 +183,7 @@ including locally configured master/API-wallet and subaccount combinations
 when `.env.local` is available:
 
 ```bash
-uv run --frozen pytest -q tests/oracle/test_signing_payload_parity.py
+uv run --frozen pytest -q tests/oracle/test_signing.py
 ```
 
 This test constructs payloads locally and does not submit Exchange requests.
@@ -199,5 +201,21 @@ the benchmark as one contract:
    commit identifier;
 5. reject all timing data if a parity gate fails.
 
-Benchmarks belong in `benchmarks/`. General maintenance utilities belong
-in `scripts/`; production client code belongs in `src/async_hyperliquid/`.
+## Client hot-path benchmark
+
+`benchmarks/hotpath.py` compares two built wheels with alternating AB/BA rounds.
+It covers order preparation and signing without metadata or HTTP latency:
+
+```bash
+uv run python benchmarks/hotpath.py \
+  --baseline-wheel /path/to/base.whl \
+  --candidate-wheel dist/async_hyperliquid-1.0.0rc1-py3-none-any.whl \
+  --baseline-api v1
+```
+
+Both wheels run in isolated extraction directories. The probe inspects the
+private encoding signature once before timing so pre- and post-market-context
+RC1 wheels remain comparable without putting reflection inside the hot loop.
+
+Benchmarks belong in `benchmarks/`; production client code belongs in
+`src/async_hyperliquid/`.

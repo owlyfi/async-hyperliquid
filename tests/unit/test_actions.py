@@ -6,7 +6,7 @@ from eth_account import Account
 import pytest
 
 import async_hyperliquid.exchange as exchange_module
-from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._internal.http import _HttpTransport
 from async_hyperliquid.errors import HttpError, IndeterminateActionError, ProtocolError
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import JsonObject, JsonValue, Network

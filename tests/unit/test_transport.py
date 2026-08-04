@@ -9,7 +9,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 from aiohttp.test_utils import TestServer
 import pytest
 
-from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._internal.http import _HttpTransport
 from async_hyperliquid.errors import HttpError, HyperliquidError, ProtocolError
 from async_hyperliquid.types import JsonObject, JsonValue
 
@@ -127,7 +127,7 @@ async def test_non_success_status_is_sanitized_without_decoding_body(
     async def reject(request: web.Request) -> web.Response:
         return web.json_response({"error": "response-body-secret"}, status=429)
 
-    caplog.set_level(logging.DEBUG, logger="async_hyperliquid._http")
+    caplog.set_level(logging.DEBUG, logger="async_hyperliquid._internal.http")
     payload: JsonObject = {"type": "order", "signature": "signature-secret"}
     async with serve(reject) as server:
         url = str(
@@ -160,7 +160,7 @@ async def test_invalid_json_success_raises_sanitized_protocol_error(
     async def invalid_json(request: web.Request) -> web.Response:
         return web.Response(text="response-body-secret")
 
-    caplog.set_level(logging.DEBUG, logger="async_hyperliquid._http")
+    caplog.set_level(logging.DEBUG, logger="async_hyperliquid._internal.http")
     async with serve(invalid_json) as server:
         url = str(
             server.make_url("/provider-path-secret/info").with_query(

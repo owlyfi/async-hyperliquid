@@ -1,1 +1,1 @@
-"""Live integration test support."""
+"""Integration test support."""

@@ -9,9 +9,9 @@ import pytest
 
 import async_hyperliquid.exchange as exchange_module
 from async_hyperliquid import AsyncHyperliquid
-from async_hyperliquid._http import _HttpTransport
-from async_hyperliquid._metadata import _MarketInfo
-from async_hyperliquid._signing import (
+from async_hyperliquid._internal.http import _HttpTransport
+from async_hyperliquid._internal.metadata import _MarketInfo
+from async_hyperliquid._internal.signing import (
     _APPROVE_AGENT_SPEC,
     _USD_SEND_SPEC,
     _sign_user_action,

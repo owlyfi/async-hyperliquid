@@ -140,22 +140,18 @@ async def _order_coins(client: AsyncHyperliquid) -> tuple[str, ...]:
     return tuple(coins)
 
 
-async def test_place_limit_order(api_hl: AsyncHyperliquid) -> None:
+async def test_place_limit_order(hl: AsyncHyperliquid) -> None:
     cancels: list[CancelOrder] = []
     try:
-        for coin in await _order_coins(api_hl):
-            response = await api_hl.place_limit_order(
-                await _limit_request(api_hl, coin)
-            )
+        for coin in await _order_coins(hl):
+            response = await hl.place_limit_order(await _limit_request(hl, coin))
             cancels.append(CancelOrder(coin, _resting_oid(response)))
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
-async def test_outcome_minimum_notional_is_exchange_owned(
-    api_hl: AsyncHyperliquid,
-) -> None:
-    mids = await api_hl.info.all_mids()
+async def test_outcome_minimum_notional_is_exchange_owned(hl: AsyncHyperliquid) -> None:
+    mids = await hl.info.all_mids()
     coin = next(
         (
             name
@@ -171,7 +167,7 @@ async def test_outcome_minimum_notional_is_exchange_owned(
     px = OUTCOME_MIN_PRICE if is_buy else OUTCOME_MAX_PRICE
     oid: int | None = None
     try:
-        response = await api_hl.place_limit_order(
+        response = await hl.place_limit_order(
             {
                 "coin": coin,
                 "is_buy": is_buy,
@@ -193,66 +189,64 @@ async def test_outcome_minimum_notional_is_exchange_owned(
         assert "minimum value" in error.lower()
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder(coin, oid),))
+            await _cancel(hl, (CancelOrder(coin, oid),))
 
 
-async def test_btc_integer_price_above_10000_is_preserved(
-    api_hl: AsyncHyperliquid,
-) -> None:
+async def test_btc_integer_price_above_10000_is_preserved(hl: AsyncHyperliquid) -> None:
     expected_px = Decimal("10001")
-    mid = await api_hl.info.mid_price("BTC")
+    mid = await hl.info.mid_price("BTC")
     if not mid * 0.2 <= float(expected_px) <= mid * 1.8:
         raise pytest.skip.Exception(
             "BTC 10001 is outside the Exchange 80% reference-price gate"
         )
-    await _assert_resting_price(api_hl, "BTC", expected_px)
+    await _assert_resting_price(hl, "BTC", expected_px)
 
 
-async def test_kpepe_six_decimal_price_is_preserved(api_hl: AsyncHyperliquid) -> None:
-    await _assert_resting_price(api_hl, "kPEPE", Decimal("0.002001"))
+async def test_kpepe_six_decimal_price_is_preserved(hl: AsyncHyperliquid) -> None:
+    await _assert_resting_price(hl, "kPEPE", Decimal("0.002001"))
 
 
-async def test_place_trigger_order(api_hl: AsyncHyperliquid) -> None:
+async def test_place_trigger_order(hl: AsyncHyperliquid) -> None:
     coin = "BTC"
-    mid = await api_hl.info.mid_price(coin)
-    order = await _limit_request(api_hl, coin, is_buy=False)
+    mid = await hl.info.mid_price(coin)
+    order = await _limit_request(hl, coin, is_buy=False)
     order["order_type"] = trigger_order_type(
         is_market=False, trigger_px=str(mid * 2), tpsl=TriggerKind.TAKE_PROFIT
     )
     oid: int | None = None
     try:
-        response = await api_hl.place_trigger_order(order)
+        response = await hl.place_trigger_order(order)
         oid = _resting_oid(response)
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder(coin, oid),))
+            await _cancel(hl, (CancelOrder(coin, oid),))
 
 
-async def test_place_market_order(api_hl: AsyncHyperliquid) -> None:
+async def test_place_market_order(hl: AsyncHyperliquid) -> None:
     try:
-        response = await api_hl.place_market_order(await _market_request(api_hl, "BTC"))
+        response = await hl.place_market_order(await _market_request(hl, "BTC"))
         assert response["status"] == "ok"
     finally:
-        await api_hl.close_position("BTC")
+        await hl.close_position("BTC")
 
 
-async def test_place_orders_market_batch(api_hl: AsyncHyperliquid) -> None:
-    orders = (await _market_request(api_hl, "BTC"),)
+async def test_place_orders_market_batch(hl: AsyncHyperliquid) -> None:
+    orders = (await _market_request(hl, "BTC"),)
     try:
-        response = await api_hl.place_orders(orders)
+        response = await hl.place_orders(orders)
         assert response["status"] == "ok"
     finally:
-        await api_hl.close_positions(("BTC",))
+        await hl.close_positions(("BTC",))
 
 
-async def test_place_orders(api_hl: AsyncHyperliquid) -> None:
+async def test_place_orders(hl: AsyncHyperliquid) -> None:
     orders = (
-        await _limit_request(api_hl, "BTC"),
-        await _limit_request(api_hl, "BTC", is_buy=False),
+        await _limit_request(hl, "BTC"),
+        await _limit_request(hl, "BTC", is_buy=False),
     )
     cancels: list[CancelOrder] = []
     try:
-        response = await api_hl.place_orders(orders)
+        response = await hl.place_orders(orders)
         assert response["status"] == "ok"
         for status in response["response"]["data"]["statuses"]:
             resting = cast(JsonObject, cast(JsonObject, status)["resting"])
@@ -260,75 +254,75 @@ async def test_place_orders(api_hl: AsyncHyperliquid) -> None:
             assert isinstance(oid, int)
             cancels.append(CancelOrder("BTC", oid))
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
-async def test_cancel_order(api_hl: AsyncHyperliquid) -> None:
-    response = await api_hl.place_limit_order(await _limit_request(api_hl, "BTC"))
+async def test_cancel_order(hl: AsyncHyperliquid) -> None:
+    response = await hl.place_limit_order(await _limit_request(hl, "BTC"))
     oid = _resting_oid(response)
     try:
-        cancelled = await api_hl.cancel_order(CancelOrder("BTC", oid))
+        cancelled = await hl.cancel_order(CancelOrder("BTC", oid))
         assert cancelled["status"] == "ok"
         oid = None
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
-async def test_cancel_orders(api_hl: AsyncHyperliquid) -> None:
+async def test_cancel_orders(hl: AsyncHyperliquid) -> None:
     cancels: list[CancelOrder] = []
     try:
         for _ in range(2):
-            placed = await api_hl.place_limit_order(await _limit_request(api_hl, "BTC"))
+            placed = await hl.place_limit_order(await _limit_request(hl, "BTC"))
             cancels.append(CancelOrder("BTC", _resting_oid(placed)))
-        response = await api_hl.cancel_orders(cancels)
+        response = await hl.cancel_orders(cancels)
         assert response["status"] == "ok"
         cancels.clear()
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
-async def test_cancel_by_cloid(api_hl: AsyncHyperliquid) -> None:
+async def test_cancel_by_cloid(hl: AsyncHyperliquid) -> None:
     cloid = Cloid.from_int(1)
-    order = await _limit_request(api_hl, "BTC")
+    order = await _limit_request(hl, "BTC")
     order["cloid"] = cloid
     oid: int | None = None
     try:
-        placed = await api_hl.place_limit_order(order)
+        placed = await hl.place_limit_order(order)
         oid = _resting_oid(placed)
-        response = await api_hl.cancel_by_cloid(CancelByCloid("BTC", cloid))
+        response = await hl.cancel_by_cloid(CancelByCloid("BTC", cloid))
         assert response["status"] == "ok"
         oid = None
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
-async def test_cancel_orders_by_cloid(api_hl: AsyncHyperliquid) -> None:
+async def test_cancel_orders_by_cloid(hl: AsyncHyperliquid) -> None:
     cloids = (Cloid.from_int(2), Cloid.from_int(3))
     cancels: list[CancelOrder] = []
     try:
         for cloid in cloids:
-            order = await _limit_request(api_hl, "BTC")
+            order = await _limit_request(hl, "BTC")
             order["cloid"] = cloid
-            placed = await api_hl.place_limit_order(order)
+            placed = await hl.place_limit_order(order)
             cancels.append(CancelOrder("BTC", _resting_oid(placed)))
-        response = await api_hl.cancel_orders_by_cloid(
+        response = await hl.cancel_orders_by_cloid(
             tuple(CancelByCloid("BTC", cloid) for cloid in cloids)
         )
         assert response["status"] == "ok"
         cancels.clear()
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
-async def test_modify_order(api_hl: AsyncHyperliquid) -> None:
+async def test_modify_order(hl: AsyncHyperliquid) -> None:
     cloid_seed = int(time() * 1_000_000)
     original_cloid = Cloid.from_int(cloid_seed)
     replacement_cloid = Cloid.from_int(cloid_seed + 1)
-    original_order = await _limit_request(api_hl, "BTC")
+    original_order = await _limit_request(hl, "BTC")
     original_order["cloid"] = original_cloid
-    original = await api_hl.place_limit_order(original_order)
+    original = await hl.place_limit_order(original_order)
     _resting_oid(original)
     modify: ModifyOrderRequest = {
         "oid": original_cloid,
@@ -340,10 +334,10 @@ async def test_modify_order(api_hl: AsyncHyperliquid) -> None:
         "cloid": replacement_cloid,
     }
     try:
-        response = await api_hl.modify_order(modify)
+        response = await hl.modify_order(modify)
         assert response["status"] == "ok"
     finally:
-        canceled = await api_hl.cancel_orders_by_cloid(
+        canceled = await hl.cancel_orders_by_cloid(
             (
                 CancelByCloid("BTC", original_cloid),
                 CancelByCloid("BTC", replacement_cloid),
@@ -352,9 +346,9 @@ async def test_modify_order(api_hl: AsyncHyperliquid) -> None:
         assert canceled["status"] == "ok"
 
 
-async def test_modify_orders(api_hl: AsyncHyperliquid) -> None:
-    original_order = await _limit_request(api_hl, "BTC")
-    original = await api_hl.place_limit_order(original_order)
+async def test_modify_orders(hl: AsyncHyperliquid) -> None:
+    original_order = await _limit_request(hl, "BTC")
+    original = await hl.place_limit_order(original_order)
     oid = _resting_oid(original)
     modify: ModifyOrderRequest = {
         "oid": oid,
@@ -366,15 +360,15 @@ async def test_modify_orders(api_hl: AsyncHyperliquid) -> None:
     }
     final_oid = oid
     try:
-        response = await api_hl.modify_orders((modify,))
+        response = await hl.modify_orders((modify,))
         final_oid = _resting_oid(response)
     finally:
-        await _cancel(api_hl, (CancelOrder("BTC", final_oid),))
+        await _cancel(hl, (CancelOrder("BTC", final_oid),))
 
 
-async def test_schedule_cancel(api_hl: AsyncHyperliquid) -> None:
+async def test_schedule_cancel(hl: AsyncHyperliquid) -> None:
     try:
-        response = await api_hl.exchange.schedule_cancel(int(time() * 1_000) + 10_000)
+        response = await hl.exchange.schedule_cancel(int(time() * 1_000) + 10_000)
         if response["status"] == "err":
             assert response["response"].startswith(
                 "Cannot set scheduled cancel time until enough volume traded."
@@ -382,32 +376,32 @@ async def test_schedule_cancel(api_hl: AsyncHyperliquid) -> None:
         else:
             assert response["response"]["type"] == "default"
     finally:
-        await api_hl.exchange.schedule_cancel()
+        await hl.exchange.schedule_cancel()
 
 
-async def test_update_leverage(api_hl: AsyncHyperliquid) -> None:
-    for coin in await _order_coins(api_hl):
+async def test_update_leverage(hl: AsyncHyperliquid) -> None:
+    for coin in await _order_coins(hl):
         if "/" not in coin and not coin.startswith("@"):
-            response = await api_hl.update_leverage(coin, 1, is_cross=False)
+            response = await hl.update_leverage(coin, 1, is_cross=False)
             assert response["status"] == "ok"
 
 
-async def test_update_isolated_margin(api_hl: AsyncHyperliquid) -> None:
+async def test_update_isolated_margin(hl: AsyncHyperliquid) -> None:
     try:
-        leverage = await api_hl.update_leverage("ETH", 1, is_cross=False)
+        leverage = await hl.update_leverage("ETH", 1, is_cross=False)
         assert leverage["status"] == "ok", leverage
-        await api_hl.place_market_order(await _market_request(api_hl, "ETH"))
-        response = await api_hl.update_isolated_margin("ETH", 1)
+        await hl.place_market_order(await _market_request(hl, "ETH"))
+        response = await hl.update_isolated_margin("ETH", 1)
         assert response["status"] == "ok", response
     finally:
-        await api_hl.close_position("ETH")
+        await hl.close_position("ETH")
 
 
-async def test_place_twap(api_hl: AsyncHyperliquid) -> None:
-    order = await _market_request(api_hl, "BTC", notional=120)
+async def test_place_twap(hl: AsyncHyperliquid) -> None:
+    order = await _market_request(hl, "BTC", notional=120)
     twap_id: int | None = None
     try:
-        response = await api_hl.place_twap("BTC", True, order["sz"], 5)
+        response = await hl.place_twap("BTC", True, order["sz"], 5)
         assert response["status"] == "ok"
         status = cast(JsonObject, response["response"]["data"]["status"])
         running = cast(JsonObject, status["running"])
@@ -417,38 +411,38 @@ async def test_place_twap(api_hl: AsyncHyperliquid) -> None:
     finally:
         try:
             if twap_id is not None:
-                await api_hl.cancel_twap("BTC", twap_id)
+                await hl.cancel_twap("BTC", twap_id)
         finally:
-            await api_hl.close_position("BTC")
+            await hl.close_position("BTC")
 
 
-async def test_cancel_twap(api_hl: AsyncHyperliquid) -> None:
-    order = await _market_request(api_hl, "BTC", notional=120)
+async def test_cancel_twap(hl: AsyncHyperliquid) -> None:
+    order = await _market_request(hl, "BTC", notional=120)
     twap_id: int | None = None
     try:
-        placed = await api_hl.place_twap("BTC", True, order["sz"], 5)
+        placed = await hl.place_twap("BTC", True, order["sz"], 5)
         assert placed["status"] == "ok"
         status = cast(JsonObject, placed["response"]["data"]["status"])
         running = cast(JsonObject, status["running"])
         value = running["twapId"]
         assert isinstance(value, int)
         twap_id = value
-        response = await api_hl.cancel_twap("BTC", twap_id)
+        response = await hl.cancel_twap("BTC", twap_id)
         assert response["status"] == "ok"
         twap_id = None
     finally:
         try:
             if twap_id is not None:
-                await api_hl.cancel_twap("BTC", twap_id)
+                await hl.cancel_twap("BTC", twap_id)
         finally:
-            await api_hl.close_position("BTC")
+            await hl.close_position("BTC")
 
 
-async def test_place_order(api_hl: AsyncHyperliquid) -> None:
-    order = await _limit_request(api_hl, "BTC")
+async def test_place_order(hl: AsyncHyperliquid) -> None:
+    order = await _limit_request(hl, "BTC")
     oid: int | None = None
     try:
-        response = await api_hl.place_order(
+        response = await hl.place_order(
             order["coin"],
             order["is_buy"],
             order["sz"],
@@ -459,25 +453,25 @@ async def test_place_order(api_hl: AsyncHyperliquid) -> None:
         oid = _resting_oid(response)
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
-async def test_batch_place_orders(api_hl: AsyncHyperliquid) -> None:
-    order = await _limit_request(api_hl, "BTC")
+async def test_batch_place_orders(hl: AsyncHyperliquid) -> None:
+    order = await _limit_request(hl, "BTC")
     oid: int | None = None
     try:
-        response = await api_hl.batch_place_orders((order,))
+        response = await hl.batch_place_orders((order,))
         oid = _resting_oid(response)
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
 async def test_normal_tpsl_accepts_parent_and_trigger_child(
-    api_hl: AsyncHyperliquid,
+    hl: AsyncHyperliquid,
 ) -> None:
-    mid = await api_hl.info.mid_price("BTC")
-    size_decimals = await api_hl.info.size_decimals("BTC")
+    mid = await hl.info.mid_price("BTC")
+    size_decimals = await hl.info.size_decimals("BTC")
     parent_px = float(f"{mid * 0.8:.5g}")
     stop_trigger_px = float(f"{mid * 0.7:.5g}")
     stop_limit_px = float(f"{stop_trigger_px * 0.9:.5g}")
@@ -503,19 +497,19 @@ async def test_normal_tpsl_accepts_parent_and_trigger_child(
     }
     cancels: list[CancelOrder] = []
     try:
-        response = await api_hl.place_orders(
+        response = await hl.place_orders(
             (parent, stop), grouping=OrderGrouping.NORMAL_TPSL
         )
         cancels = _grouped_order_cancels(response, 2)
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
 async def test_normal_tpsl_accepts_parent_take_profit_and_stop_loss(
-    api_hl: AsyncHyperliquid,
+    hl: AsyncHyperliquid,
 ) -> None:
-    mid = await api_hl.info.mid_price("BTC")
-    size_decimals = await api_hl.info.size_decimals("BTC")
+    mid = await hl.info.mid_price("BTC")
+    size_decimals = await hl.info.size_decimals("BTC")
     parent_px = float(f"{mid * 0.8:.5g}")
     take_trigger_px = float(f"{mid * 1.2:.5g}")
     take_limit_px = float(f"{take_trigger_px * 0.9:.5g}")
@@ -556,46 +550,44 @@ async def test_normal_tpsl_accepts_parent_take_profit_and_stop_loss(
     }
     cancels: list[CancelOrder] = []
     try:
-        response = await api_hl.place_orders(
+        response = await hl.place_orders(
             (parent, take_profit, stop_loss), grouping=OrderGrouping.NORMAL_TPSL
         )
         cancels = _grouped_order_cancels(response, 3)
     finally:
-        await _cancel(api_hl, cancels)
+        await _cancel(hl, cancels)
 
 
-async def test_place_orders_rejects_live_spot_and_perp_batch(
-    api_hl: AsyncHyperliquid,
-) -> None:
-    spot_meta = await api_hl.info.spot_meta()
+async def test_place_orders_rejects_spot_and_perp_batch(hl: AsyncHyperliquid) -> None:
+    spot_meta = await hl.info.spot_meta()
     assert spot_meta["universe"]
     spot_coin = spot_meta["universe"][0]["name"]
-    perp = await _limit_request(api_hl, "BTC")
-    spot = await _limit_request(api_hl, spot_coin)
+    perp = await _limit_request(hl, "BTC")
+    spot = await _limit_request(hl, spot_coin)
 
     with pytest.raises(
         ValueError, match="orders cannot mix spot and perpetual markets"
     ):
-        await api_hl.place_orders((perp, spot))
+        await hl.place_orders((perp, spot))
 
 
-async def test_root_place_orders(api_hl: AsyncHyperliquid) -> None:
-    order = await _limit_request(api_hl, "BTC")
+async def test_root_place_orders(hl: AsyncHyperliquid) -> None:
+    order = await _limit_request(hl, "BTC")
     oid: int | None = None
     try:
-        response = await api_hl.place_orders((order,))
+        response = await hl.place_orders((order,))
         oid = _resting_oid(response)
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
-async def test_place_order_with_builder(api_hl: AsyncHyperliquid) -> None:
-    order = await _limit_request(api_hl, "BTC")
+async def test_place_order_with_builder(hl: AsyncHyperliquid) -> None:
+    order = await _limit_request(hl, "BTC")
     builder = Builder("0x90c52b66db2da13853bbace7c556efb9e5172afd", 0)
     oid: int | None = None
     try:
-        response = await api_hl.place_order(
+        response = await hl.place_order(
             order["coin"],
             order["is_buy"],
             order["sz"],
@@ -607,21 +599,21 @@ async def test_place_order_with_builder(api_hl: AsyncHyperliquid) -> None:
         oid = _resting_oid(response)
     finally:
         if oid is not None:
-            await _cancel(api_hl, (CancelOrder("BTC", oid),))
+            await _cancel(hl, (CancelOrder("BTC", oid),))
 
 
-async def test_close_position(api_hl: AsyncHyperliquid) -> None:
-    await api_hl.place_market_order(await _market_request(api_hl, "BTC"))
-    response = await api_hl.close_position("BTC")
+async def test_close_position(hl: AsyncHyperliquid) -> None:
+    await hl.place_market_order(await _market_request(hl, "BTC"))
+    response = await hl.close_position("BTC")
     assert response is None or response["status"] == "ok"
 
 
-async def test_close_positions(api_hl: AsyncHyperliquid) -> None:
-    await api_hl.place_market_order(await _market_request(api_hl, "BTC"))
-    response = await api_hl.close_positions(("BTC",))
+async def test_close_positions(hl: AsyncHyperliquid) -> None:
+    await hl.place_market_order(await _market_request(hl, "BTC"))
+    response = await hl.close_positions(("BTC",))
     assert response is None or response["status"] == "ok"
 
 
-async def test_close_all_positions(api_hl: AsyncHyperliquid) -> None:
-    response = await api_hl.close_all_positions()
+async def test_close_all_positions(hl: AsyncHyperliquid) -> None:
+    response = await hl.close_all_positions()
     assert response is None or response["status"] == "ok"

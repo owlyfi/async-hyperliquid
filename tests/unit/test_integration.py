@@ -3,11 +3,11 @@ from collections.abc import Mapping
 import pytest
 
 from async_hyperliquid.types.info import UserRole
-from tests.integration.live_config import (
+from tests.integration.config import (
     require_env,
     require_testnet,
-    validate_live_credentials,
-    validate_live_roles,
+    validate_credentials,
+    validate_roles,
 )
 
 
@@ -18,7 +18,7 @@ API_ADDRESS = "0x1563915e194D8CfBA1943570603F7606A3115508"
 SUBACCOUNT_ADDRESS = "0x3333333333333333333333333333333333333333"
 
 
-def live_environ(**overrides: str) -> Mapping[str, str]:
+def integration_env(**overrides: str) -> Mapping[str, str]:
     values = {
         "HL_ADDR": MASTER_ADDRESS,
         "HL_PK": MASTER_KEY,
@@ -57,25 +57,25 @@ def test_testnet_configuration_is_accepted_case_insensitively() -> None:
         ({"HL_SUB": "not-an-address"}, "HL_SUB must be an Ethereum address"),
     ],
 )
-def test_live_credential_validation_reports_roles_without_secret_material(
+def test_credentials_report_roles_without_secret_material(
     overrides: dict[str, str], message: str
 ) -> None:
-    environ = live_environ(**overrides)
+    environ = integration_env(**overrides)
 
     with pytest.raises(pytest.UsageError, match=f"^{message}$") as error:
-        validate_live_credentials(environ)
+        validate_credentials(environ)
 
     rendered = str(error.value)
     assert MASTER_KEY not in rendered
     assert API_KEY not in rendered
 
 
-def test_live_credential_validation_accepts_master_api_and_subaccount_roles() -> None:
-    validate_live_credentials(live_environ())
+def test_credentials_accept_master_api_and_subaccount_roles() -> None:
+    validate_credentials(integration_env())
 
 
-def test_live_role_validation_accepts_owned_api_wallet_and_subaccount() -> None:
-    validate_live_roles(
+def test_roles_accept_owned_api_wallet_and_subaccount() -> None:
+    validate_roles(
         MASTER_ADDRESS,
         {"role": "agent", "data": {"user": MASTER_ADDRESS}},
         {"role": "subAccount", "data": {"master": MASTER_ADDRESS}},
@@ -107,8 +107,8 @@ def test_live_role_validation_accepts_owned_api_wallet_and_subaccount() -> None:
         ),
     ],
 )
-def test_live_role_validation_rejects_wrong_roles_or_owners(
+def test_roles_reject_wrong_roles_or_owners(
     api_wallet_role: UserRole, subaccount_role: UserRole, message: str
 ) -> None:
     with pytest.raises(pytest.UsageError, match=f"^{message}$"):
-        validate_live_roles(MASTER_ADDRESS, api_wallet_role, subaccount_role)
+        validate_roles(MASTER_ADDRESS, api_wallet_role, subaccount_role)

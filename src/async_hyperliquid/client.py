@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._encoding import _round_size, _wire_float, encode_order
-from ._http import _HttpTransport
-from ._metadata import _MarketInfo
+from ._internal.encoding import _round_size, _wire_float, encode_order
+from ._internal.http import _HttpTransport
+from ._internal.metadata import _MarketInfo
 from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE
 from .errors import ProtocolError
 from .info import InfoClient

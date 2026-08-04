@@ -277,8 +277,8 @@ def _validate_probe(
 def _async_hyperliquid_probes() -> dict[str, Callable[[], object]]:
     from eth_account import Account
 
-    from async_hyperliquid._encoding import encode_order
-    from async_hyperliquid._signing import hash_action, sign_exchange_action
+    from async_hyperliquid._internal.encoding import encode_order
+    from async_hyperliquid._internal.signing import hash_action, sign_exchange_action
     from async_hyperliquid.types import (
         JsonObject,
         PlaceOrderRequest,

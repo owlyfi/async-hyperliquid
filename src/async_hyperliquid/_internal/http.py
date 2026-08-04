@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from .errors import HttpError, ProtocolError
-from .types import JsonObject, JsonValue
+from ..errors import HttpError, ProtocolError
+from ..types import JsonObject, JsonValue
 
 
 _DEFAULT_TIMEOUT = ClientTimeout(total=15, connect=3, sock_read=10)

@@ -5,8 +5,26 @@ from typing import Literal, Self, cast, overload
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._http import _HttpTransport, _validate_endpoint_url
-from ._metadata import _MarketInfo, _MetadataSnapshot, _build_metadata, _market_info
+from ._internal.http import _HttpTransport, _validate_endpoint_url
+from ._internal.info import (
+    context_price as _context_price,
+    context_price_by_coin as _context_price_by_coin,
+    expect_bool as _expect_bool,
+    expect_int as _expect_int,
+    expect_list as _expect_list,
+    expect_object as _expect_object,
+    expect_optional_list as _expect_optional_list,
+    expect_optional_object as _expect_optional_object,
+    expect_pair as _expect_pair,
+    expect_string as _expect_string,
+    wait_for_tasks as _wait_for_tasks,
+)
+from ._internal.metadata import (
+    _MarketInfo,
+    _MetadataSnapshot,
+    _build_metadata,
+    _market_info,
+)
 from .errors import ProtocolError
 from .types import CandleInterval, JsonObject, JsonValue, Network
 from .types.info import (
@@ -52,69 +70,6 @@ from .types.info import (
     VaultDetails,
     VaultEquities,
 )
-
-
-def _expect_object(value: JsonValue, request_type: str) -> JsonObject:
-    if not isinstance(value, dict):
-        raise ProtocolError(f"{request_type} response must be an object")
-    return value
-
-
-def _expect_optional_object(value: JsonValue, request_type: str) -> JsonObject | None:
-    if value is None:
-        return None
-    return _expect_object(value, request_type)
-
-
-def _expect_list(value: JsonValue, request_type: str) -> list[JsonValue]:
-    if not isinstance(value, list):
-        raise ProtocolError(f"{request_type} response must be a list")
-    return value
-
-
-def _expect_optional_list(
-    value: JsonValue, request_type: str
-) -> list[JsonValue] | None:
-    if value is None:
-        return None
-    return _expect_list(value, request_type)
-
-
-def _expect_bool(value: JsonValue, request_type: str) -> bool:
-    if not isinstance(value, bool):
-        raise ProtocolError(f"{request_type} response must be a boolean")
-    return value
-
-
-def _expect_int(value: JsonValue, request_type: str) -> int:
-    if type(value) is not int:
-        raise ProtocolError(f"{request_type} response must be an integer")
-    return value
-
-
-def _expect_string(value: JsonValue, request_type: str) -> str:
-    if not isinstance(value, str):
-        raise ProtocolError(f"{request_type} response must be a string")
-    return value
-
-
-def _expect_pair(
-    value: JsonValue, request_type: str
-) -> tuple[JsonObject, list[JsonValue]]:
-    pair = _expect_list(value, request_type)
-    if len(pair) != 2:
-        raise ProtocolError(f"{request_type} response must contain two items")
-    return (_expect_object(pair[0], request_type), _expect_list(pair[1], request_type))
-
-
-async def _wait_for_tasks(tasks: Sequence[asyncio.Task[object]]) -> None:
-    try:
-        await asyncio.gather(*tasks)
-    except BaseException:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        raise
 
 
 class InfoClient:
@@ -664,35 +619,6 @@ class InfoClient:
                 )
                 positions.append(cast(Position, position))
         return positions
-
-
-def _context_price(
-    contexts: list[JsonValue], index: int, field: str, request_type: str
-) -> float:
-    if not 0 <= index < len(contexts):
-        raise ProtocolError(f"{request_type} is missing a market context")
-    context = _expect_object(contexts[index], request_type)
-    return _price_from_context(context, field, request_type)
-
-
-def _context_price_by_coin(
-    contexts: list[JsonValue], coin: str, field: str, request_type: str
-) -> float:
-    for value in contexts:
-        context = _expect_object(value, request_type)
-        if context.get("coin") == coin:
-            return _price_from_context(context, field, request_type)
-    raise ProtocolError(f"{request_type} is missing a market context for {coin}")
-
-
-def _price_from_context(context: JsonObject, field: str, request_type: str) -> float:
-    value = context.get(field)
-    if not isinstance(value, str):
-        raise ProtocolError(f"{request_type} contains a malformed price")
-    try:
-        return float(value)
-    except ValueError:
-        raise ProtocolError(f"{request_type} contains an invalid price") from None
 
 
 __all__ = ["InfoClient"]

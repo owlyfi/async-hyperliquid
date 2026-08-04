@@ -122,7 +122,7 @@ exception-draining behavior exactly.
 Run:
 
 ```bash
-uv run pytest -q tests/unit/test_action_failures.py tests/unit/test_exchange_client.py tests/unit/test_info_client.py tests/unit/test_metadata.py tests/unit/test_transport.py tests/oracle/test_signing_payload_parity.py
+uv run pytest -q tests/unit/test_actions.py tests/unit/test_exchange.py tests/unit/test_info.py tests/unit/test_metadata.py tests/unit/test_transport.py tests/oracle/test_signing.py
 ```
 
 Expected: PASS with no old private-module imports remaining.

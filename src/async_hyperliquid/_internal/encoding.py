@@ -1,9 +1,9 @@
 import math
 from typing import cast
 
-from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE, OUTCOME_PRICE_DECIMALS
-from .types import TimeInForce
-from .types.exchange import (
+from ..constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE, OUTCOME_PRICE_DECIMALS
+from ..types import TimeInForce
+from ..types.exchange import (
     EncodedOrder,
     EncodedOrderType,
     LimitOrderType,

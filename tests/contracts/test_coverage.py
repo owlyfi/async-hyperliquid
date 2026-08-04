@@ -41,23 +41,23 @@ def _test_names(paths: tuple[str, ...]) -> set[str]:
     }
 
 
-def test_info_public_coroutines_have_deterministic_and_live_coverage() -> None:
+def test_info_public_coroutines_have_unit_and_integration_coverage() -> None:
     methods = _public_coroutines(InfoClient)
     deterministic = _called_methods(
-        ("tests/unit/test_info_client.py", "tests/unit/test_metadata.py")
+        ("tests/unit/test_info.py", "tests/unit/test_metadata.py")
     )
-    live = _test_names(("tests/integration/test_info.py",))
+    integration = _test_names(("tests/integration/test_info.py",))
 
     assert methods <= deterministic
-    assert {f"test_{method}" for method in methods} <= live
+    assert {f"test_{method}" for method in methods} <= integration
 
 
-def test_exchange_public_coroutines_have_deterministic_and_live_coverage() -> None:
+def test_exchange_public_coroutines_have_unit_and_integration_coverage() -> None:
     methods = _public_coroutines(ExchangeClient)
     deterministic = _called_methods(
-        ("tests/unit/test_exchange_client.py", "tests/unit/test_action_failures.py")
+        ("tests/unit/test_exchange.py", "tests/unit/test_actions.py")
     )
-    live = _test_names(
+    integration = _test_names(
         (
             "tests/integration/exchange/test_orders.py",
             "tests/integration/exchange/test_actions.py",
@@ -65,19 +65,19 @@ def test_exchange_public_coroutines_have_deterministic_and_live_coverage() -> No
     )
 
     assert methods <= deterministic
-    assert {f"test_{method}" for method in methods} <= live
+    assert {f"test_{method}" for method in methods} <= integration
 
 
-def test_root_workflows_keep_deterministic_and_live_scenarios() -> None:
+def test_root_workflows_keep_unit_and_integration_scenarios() -> None:
     workflows = _public_coroutines(AsyncHyperliquid) - LIFECYCLE
     deterministic = _called_methods(
         (
-            "tests/unit/test_place_order.py",
-            "tests/unit/test_close_positions.py",
-            "tests/unit/test_exchange_client.py",
+            "tests/unit/test_orders.py",
+            "tests/unit/test_positions.py",
+            "tests/unit/test_exchange.py",
         )
     )
-    live = _called_methods(
+    integration = _called_methods(
         (
             "tests/integration/exchange/test_orders.py",
             "tests/integration/exchange/test_actions.py",
@@ -85,5 +85,5 @@ def test_root_workflows_keep_deterministic_and_live_scenarios() -> None:
     )
 
     assert workflows <= deterministic
-    assert workflows <= live
+    assert workflows <= integration
     assert AsyncHyperliquid.batch_place_orders is AsyncHyperliquid.place_orders

@@ -12,7 +12,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 import pytest
 
-from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._internal.http import _HttpTransport
 from async_hyperliquid.errors import ProtocolError
 from async_hyperliquid.info import InfoClient
 from async_hyperliquid.types import CandleInterval, JsonObject, JsonValue, Network
@@ -253,7 +253,7 @@ def test_public_info_client_has_no_signing_capability_or_dependency() -> None:
     source_root = Path(__file__).parents[2] / "src" / "async_hyperliquid"
     imported_modules: set[str] = set()
     annotation_violations: list[str] = []
-    for name in ("info.py", "_metadata.py"):
+    for name in ("info.py", "_internal/metadata.py"):
         tree = ast.parse((source_root / name).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id == "Any":
@@ -301,7 +301,7 @@ def test_root_info_import_does_not_load_the_signing_stack() -> None:
                 "loaded = sys.modules\n"
                 "signing = any(name == 'eth_account' or "
                 "name.startswith('eth_account.') for name in loaded)\n"
-                "signing |= 'async_hyperliquid._signing' in loaded\n"
+                "signing |= 'async_hyperliquid._internal.signing' in loaded\n"
                 "print(signing)\n"
             ),
         ],

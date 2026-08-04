@@ -4,8 +4,12 @@ from typing import cast
 
 import pytest
 
-from async_hyperliquid._http import _HttpTransport
-from async_hyperliquid._metadata import _MarketInfo, _build_metadata, _market_info
+from async_hyperliquid._internal.http import _HttpTransport
+from async_hyperliquid._internal.metadata import (
+    _MarketInfo,
+    _build_metadata,
+    _market_info,
+)
 from async_hyperliquid.errors import ProtocolError
 from async_hyperliquid.info import InfoClient
 from async_hyperliquid.types import JsonObject, JsonValue

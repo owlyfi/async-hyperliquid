@@ -125,6 +125,7 @@ print(json.dumps(results, sort_keys=True))
 
 CANDIDATE_WHEEL_PROBE = r"""
 import gc
+from importlib.util import find_spec
 from inspect import signature
 import json
 import os
@@ -132,9 +133,14 @@ from time import perf_counter_ns
 
 from eth_account import Account
 
-from async_hyperliquid._encoding import encode_order
-from async_hyperliquid._signing import sign_exchange_action
 from async_hyperliquid.types import Network, TimeInForce, limit_order_type
+
+if find_spec("async_hyperliquid._internal") is None:
+    from async_hyperliquid._encoding import encode_order
+    from async_hyperliquid._signing import sign_exchange_action
+else:
+    from async_hyperliquid._internal.encoding import encode_order
+    from async_hyperliquid._internal.signing import sign_exchange_action
 
 iterations = int(os.environ["BENCH_ITERATIONS"])
 account = Account.from_key("0x" + "11" * 32)

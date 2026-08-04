@@ -2,16 +2,23 @@ import json
 import logging
 import math
 from collections.abc import Sequence
-from decimal import ROUND_DOWN, Decimal
 from time import time_ns
 from typing import Literal, cast, overload
 
 from eth_account.signers.local import LocalAccount
 from eth_utils import is_address, to_normalized_address
 
-from ._encoding import _wire_float
-from ._http import _HttpTransport, _validate_endpoint_url
-from ._signing import (
+from ._internal.encoding import _wire_float
+from ._internal.exchange import (
+    ResponseType,
+    amount_in_units,
+    exact_signed_units,
+    expect_action_response,
+    format_token_amount,
+    positive_wire_amount,
+)
+from ._internal.http import _HttpTransport, _validate_endpoint_url
+from ._internal.signing import (
     _APPROVE_AGENT_SPEC,
     _APPROVE_BUILDER_FEE_SPEC,
     _CONVERT_TO_MULTI_SIG_USER_SPEC,
@@ -35,7 +42,6 @@ from .types import (
     AgentAbstraction,
     Builder,
     JsonObject,
-    JsonValue,
     Network,
     OrderGrouping,
     UserAbstraction,
@@ -93,7 +99,6 @@ __all__ = ["ExchangeClient"]
 
 _HYPE_DECIMALS = 8
 _USD_DECIMALS = 6
-_ResponseType = Literal["order", "cancel", "twapOrder", "twapCancel", "default"]
 _ROOT_SCOPED_ACTIONS = frozenset(
     {
         "createSubAccount",
@@ -104,142 +109,6 @@ _ROOT_SCOPED_ACTIONS = frozenset(
     }
 )
 _ACTION_SCOPED_TRANSFERS = frozenset({"sendAsset", "usdClassTransfer"})
-
-
-def _format_token_amount(amount: float, decimals: int) -> str:
-    units = _amount_in_units(amount, decimals)
-    factor = 10**decimals
-    whole, fraction = divmod(units, factor)
-    if not decimals:
-        return str(whole)
-    return f"{whole}.{fraction:0{decimals}d}".rstrip("0").rstrip(".")
-
-
-def _amount_in_units(amount: float, decimals: int) -> int:
-    if not math.isfinite(amount) or amount <= 0:
-        raise ValueError("amount must be finite and greater than zero")
-    units = int(
-        Decimal(str(amount)).scaleb(decimals).to_integral_value(rounding=ROUND_DOWN)
-    )
-    if units == 0:
-        raise ValueError("amount is below the token precision")
-    return units
-
-
-def _exact_signed_units(amount: float, decimals: int) -> int:
-    if not math.isfinite(amount):
-        raise ValueError("amount must be finite")
-    scaled = Decimal(str(amount)).scaleb(decimals)
-    integral = scaled.to_integral_value(rounding=ROUND_DOWN)
-    if scaled != integral:
-        raise ValueError("amount exceeds USD precision")
-    return int(integral)
-
-
-def _positive_wire_amount(amount: float) -> str:
-    if not math.isfinite(amount) or amount <= 0:
-        raise ValueError("amount must be finite and greater than zero")
-    return _wire_float(amount)
-
-
-def _is_error_status(value: JsonValue) -> bool:
-    return (
-        isinstance(value, dict) and "error" in value and isinstance(value["error"], str)
-    )
-
-
-def _is_order_status(value: JsonValue) -> bool:
-    if value in ("waitingForFill", "waitingForTrigger"):
-        return True
-    if not isinstance(value, dict):
-        return False
-    discriminators = tuple(
-        key for key in ("error", "resting", "filled") if key in value
-    )
-    if len(discriminators) != 1:
-        return False
-    if discriminators[0] == "error":
-        return _is_error_status(value)
-    if discriminators[0] == "resting":
-        resting = value["resting"]
-        return (
-            isinstance(resting, dict)
-            and "oid" in resting
-            and type(resting["oid"]) is int
-        )
-    if discriminators[0] == "filled":
-        filled = value["filled"]
-        return (
-            isinstance(filled, dict)
-            and all(key in filled for key in ("avgPx", "oid", "totalSz"))
-            and isinstance(filled["avgPx"], str)
-            and type(filled["oid"]) is int
-            and isinstance(filled["totalSz"], str)
-        )
-    return False
-
-
-def _is_twap_order_status(value: JsonValue) -> bool:
-    if not isinstance(value, dict):
-        return False
-    discriminators = tuple(key for key in ("error", "running") if key in value)
-    if len(discriminators) != 1:
-        return False
-    if discriminators[0] == "error":
-        return _is_error_status(value)
-    running = value["running"]
-    return (
-        isinstance(running, dict)
-        and "twapId" in running
-        and type(running["twapId"]) is int
-    )
-
-
-def _expect_action_response(
-    value: JsonValue, expected_type: _ResponseType
-) -> ActionResponse:
-    if not isinstance(value, dict):
-        raise ProtocolError("exchange response must be an object")
-
-    status = value.get("status")
-    response = value.get("response")
-    if status == "err":
-        if not isinstance(response, str):
-            raise ProtocolError("exchange error response must be a string")
-        return cast(ActionResponse, value)
-
-    if status != "ok" or not isinstance(response, dict):
-        raise ProtocolError("exchange response has an invalid status")
-    if response.get("type") != expected_type:
-        raise ProtocolError("exchange response has an unexpected type")
-
-    if expected_type == "default":
-        return cast(ActionResponse, value)
-
-    data = response.get("data")
-    if not isinstance(data, dict):
-        raise ProtocolError("exchange response has malformed data")
-
-    if expected_type in {"order", "cancel"}:
-        statuses = data.get("statuses")
-        if not isinstance(statuses, list) or not statuses:
-            raise ProtocolError("exchange response has malformed statuses")
-        if expected_type == "order":
-            valid = all(_is_order_status(status) for status in statuses)
-        else:
-            valid = all(
-                status == "success" or _is_error_status(status) for status in statuses
-            )
-    else:
-        twap_status = data.get("status")
-        valid = (
-            _is_twap_order_status(twap_status)
-            if expected_type == "twapOrder"
-            else twap_status == "success" or _is_error_status(twap_status)
-        )
-    if not valid:
-        raise ProtocolError("exchange response has a malformed acknowledgement")
-    return cast(ActionResponse, value)
 
 
 class ExchangeClient:
@@ -350,7 +219,7 @@ class ExchangeClient:
         action: ExchangeAction,
         signature: Signature,
         nonce: int,
-        expected_type: _ResponseType,
+        expected_type: ResponseType,
         *,
         vault_address: str | None,
         expires_after: int | None = None,
@@ -375,7 +244,7 @@ class ExchangeClient:
             value = await self._transport.post_json(
                 self._exchange_url, cast(JsonObject, envelope)
             )
-            return _expect_action_response(value, expected_type)
+            return expect_action_response(value, expected_type)
         except (TimeoutError, HttpError, ProtocolError):
             raise IndeterminateActionError(str(action_type), nonce) from None
 
@@ -432,7 +301,7 @@ class ExchangeClient:
     async def _submit_action(
         self,
         action: ExchangeAction,
-        expected_type: _ResponseType,
+        expected_type: ResponseType,
         *,
         expires_after: int | None = None,
         nonce: int | None = None,
@@ -525,7 +394,7 @@ class ExchangeClient:
             type="updateIsolatedMargin",
             asset=asset,
             isBuy=True,
-            ntli=_exact_signed_units(amount, _USD_DECIMALS),
+            ntli=exact_signed_units(amount, _USD_DECIMALS),
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
@@ -569,7 +438,7 @@ class ExchangeClient:
             type="vaultTransfer",
             vaultAddress=vault_address,
             isDeposit=is_deposit,
-            usd=_amount_in_units(amount, _USD_DECIMALS),
+            usd=amount_in_units(amount, _USD_DECIMALS),
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
@@ -581,7 +450,7 @@ class ExchangeClient:
         is_deposit: bool = True,
         expires_after: int | None = None,
     ) -> DefaultActionResponse:
-        notional = _exact_signed_units(amount, _USD_DECIMALS)
+        notional = exact_signed_units(amount, _USD_DECIMALS)
         if notional <= 0 or notional % 1_000_000_000:
             raise ValueError("amount must be a positive multiple of 1000 quote tokens")
         action = Hip3LiquidatorTransferAction(
@@ -622,7 +491,7 @@ class ExchangeClient:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "usdSend",
-            "amount": _format_token_amount(amount, 2),
+            "amount": format_token_amount(amount, 2),
             "destination": destination,
             "time": nonce,
         }
@@ -636,7 +505,7 @@ class ExchangeClient:
             "type": "spotSend",
             "destination": destination,
             "token": token,
-            "amount": _format_token_amount(amount, wei_decimals),
+            "amount": format_token_amount(amount, wei_decimals),
             "time": nonce,
         }
         return await self._submit_user_action(action, _SPOT_SEND_SPEC, nonce)
@@ -647,7 +516,7 @@ class ExchangeClient:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "withdraw3",
-            "amount": _format_token_amount(amount, 2),
+            "amount": format_token_amount(amount, 2),
             "time": nonce,
             "destination": destination or self._account_address,
         }
@@ -657,7 +526,7 @@ class ExchangeClient:
         self, amount: float, *, to_perp: bool = False
     ) -> DefaultActionResponse:
         nonce = self._next_nonce()
-        formatted_amount = _format_token_amount(amount, 2)
+        formatted_amount = format_token_amount(amount, 2)
         if self._vault_address is not None:
             formatted_amount += f" subaccount:{self._vault_address}"
         action: JsonObject = {
@@ -682,7 +551,7 @@ class ExchangeClient:
         action: JsonObject = {
             "type": "sendAsset",
             "token": token,
-            "amount": _format_token_amount(amount, wei_decimals),
+            "amount": format_token_amount(amount, wei_decimals),
             "destination": destination,
             "sourceDex": source_dex,
             "destinationDex": destination_dex,
@@ -709,7 +578,7 @@ class ExchangeClient:
             sourceDex=source_dex,
             destinationDex=destination_dex,
             token=token,
-            amount=_format_token_amount(amount, wei_decimals),
+            amount=format_token_amount(amount, wei_decimals),
             fromSubAccount=self._vault_address or "",
             nonce=nonce,
         )
@@ -734,7 +603,7 @@ class ExchangeClient:
         action: JsonObject = {
             "type": "sendToEvmWithData",
             "token": token,
-            "amount": _format_token_amount(amount, wei_decimals),
+            "amount": format_token_amount(amount, wei_decimals),
             "sourceDex": source_dex,
             "destinationRecipient": destination_recipient,
             "addressEncoding": address_encoding,
@@ -751,7 +620,7 @@ class ExchangeClient:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "cDeposit",
-            "wei": _amount_in_units(amount, _HYPE_DECIMALS),
+            "wei": amount_in_units(amount, _HYPE_DECIMALS),
             "nonce": nonce,
         }
         return await self._submit_user_action(action, _STAKING_TRANSFER_SPEC, nonce)
@@ -760,7 +629,7 @@ class ExchangeClient:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "cWithdraw",
-            "wei": _amount_in_units(amount, _HYPE_DECIMALS),
+            "wei": amount_in_units(amount, _HYPE_DECIMALS),
             "nonce": nonce,
         }
         return await self._submit_user_action(action, _STAKING_WITHDRAW_SPEC, nonce)
@@ -772,7 +641,7 @@ class ExchangeClient:
         action: JsonObject = {
             "type": "tokenDelegate",
             "validator": validator,
-            "wei": _amount_in_units(amount, _HYPE_DECIMALS),
+            "wei": amount_in_units(amount, _HYPE_DECIMALS),
             "isUndelegate": undelegate,
             "nonce": nonce,
         }
@@ -877,7 +746,7 @@ class ExchangeClient:
             raise ValueError("outcome must not be negative")
         action = SplitOutcomeAction(
             type="userOutcome",
-            splitOutcome={"outcome": outcome, "amount": _positive_wire_amount(amount)},
+            splitOutcome={"outcome": outcome, "amount": positive_wire_amount(amount)},
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
 
@@ -894,7 +763,7 @@ class ExchangeClient:
             type="userOutcome",
             mergeOutcome={
                 "outcome": outcome,
-                "amount": None if amount is None else _positive_wire_amount(amount),
+                "amount": None if amount is None else positive_wire_amount(amount),
             },
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
@@ -912,7 +781,7 @@ class ExchangeClient:
             type="userOutcome",
             mergeQuestion={
                 "question": question,
-                "amount": None if amount is None else _positive_wire_amount(amount),
+                "amount": None if amount is None else positive_wire_amount(amount),
             },
         )
         return await self._submit_action(action, "default", expires_after=expires_after)
@@ -932,7 +801,7 @@ class ExchangeClient:
             negateOutcome={
                 "question": question,
                 "outcome": outcome,
-                "amount": _positive_wire_amount(amount),
+                "amount": positive_wire_amount(amount),
             },
         )
         return await self._submit_action(action, "default", expires_after=expires_after)

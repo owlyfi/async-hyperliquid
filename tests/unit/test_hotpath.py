@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.client_hotpath_benchmark import (
+from benchmarks.hotpath import (
     BenchmarkCommand,
     BenchmarkFailure,
     CANDIDATE_WHEEL_PROBE,
@@ -114,9 +114,6 @@ def test_v1_probe_compares_pre_and_post_market_context_signatures(
     candidate = tmp_path / "candidate.whl"
     common = {
         "async_hyperliquid/__init__.py": "",
-        "async_hyperliquid/_signing.py": (
-            "def sign_exchange_action(*args):\n    return None\n"
-        ),
         "async_hyperliquid/types/__init__.py": """
 class _Mainnet:
     signature_source = "a"
@@ -138,6 +135,10 @@ def limit_order_type(tif):
         for name, source in common.items():
             archive.writestr(name, source)
         archive.writestr(
+            "async_hyperliquid/_signing.py",
+            "def sign_exchange_action(*args):\n    return None\n",
+        )
+        archive.writestr(
             "async_hyperliquid/_encoding.py",
             "def encode_order(order, *, asset, size_decimals):\n"
             "    return {'a': asset}\n",
@@ -145,8 +146,13 @@ def limit_order_type(tif):
     with zipfile.ZipFile(candidate, "w") as archive:
         for name, source in common.items():
             archive.writestr(name, source)
+        archive.writestr("async_hyperliquid/_internal/__init__.py", "")
         archive.writestr(
-            "async_hyperliquid/_encoding.py",
+            "async_hyperliquid/_internal/signing.py",
+            "def sign_exchange_action(*args):\n    return None\n",
+        )
+        archive.writestr(
+            "async_hyperliquid/_internal/encoding.py",
             "def encode_order(\n"
             "    order, *, asset, size_decimals, is_spot, is_outcome\n"
             "):\n"

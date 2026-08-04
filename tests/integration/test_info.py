@@ -9,14 +9,14 @@ import pytest_asyncio
 from async_hyperliquid import InfoClient
 from async_hyperliquid.errors import HttpError
 from async_hyperliquid.types import CandleInterval, Network
-from tests.integration.live_config import validate_live_roles
+from tests.integration.config import validate_roles
 
 
 pytestmark = [pytest.mark.info, pytest.mark.asyncio(loop_scope="session")]
 
 
 @dataclass(frozen=True, slots=True)
-class LiveMarkets:
+class Markets:
     perp: str
     spot: str
     token_id: str
@@ -24,7 +24,7 @@ class LiveMarkets:
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def markets(info: InfoClient) -> LiveMarkets:
+async def markets(info: InfoClient) -> Markets:
     await info.refresh_metadata()
     perp_meta = await info.perp_meta()
     spot_meta = await info.spot_meta()
@@ -34,7 +34,7 @@ async def markets(info: InfoClient) -> LiveMarkets:
     spot = spot_meta["universe"][0]
     base_token = spot["tokens"][0]
     token = next(token for token in spot_meta["tokens"] if token["index"] == base_token)
-    return LiveMarkets(
+    return Markets(
         perp=perp_meta["universe"][0]["name"],
         spot=spot["name"],
         token_id=token["tokenId"],
@@ -97,12 +97,12 @@ async def test_order_status(info: InfoClient, master_address: str) -> None:
     assert result["status"] in {"order", "unknownOid"}
 
 
-async def test_l2_book(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_l2_book(info: InfoClient, markets: Markets) -> None:
     book = await info.l2_book(markets.perp)
     assert len(book["levels"]) == 2
 
 
-async def test_candles(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_candles(info: InfoClient, markets: Markets) -> None:
     start = _start_time()
     candles = await info.candles(
         markets.perp, CandleInterval.FIFTEEN_MINUTES, start, start + 3_600_000
@@ -142,7 +142,7 @@ async def test_user_role(
     api_wallet_address: str,
     subaccount_address: str,
 ) -> None:
-    validate_live_roles(
+    validate_roles(
         master_address,
         await info.user_role(api_wallet_address),
         await info.user_role(subaccount_address),
@@ -239,7 +239,7 @@ async def test_non_funding_ledger_updates(
     assert isinstance(updates, list)
 
 
-async def test_funding_history(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_funding_history(info: InfoClient, markets: Markets) -> None:
     assert isinstance(await info.funding_history(markets.perp, _start_time()), list)
 
 
@@ -258,7 +258,7 @@ async def test_perp_deploy_auction_status(info: InfoClient) -> None:
 
 
 async def test_active_asset_data(
-    info: InfoClient, markets: LiveMarkets, master_address: str
+    info: InfoClient, markets: Markets, master_address: str
 ) -> None:
     result = await info.active_asset_data(master_address, markets.perp)
     assert isinstance(result, dict)
@@ -283,7 +283,7 @@ async def test_spot_deploy_state(info: InfoClient, master_address: str) -> None:
     assert isinstance(await info.spot_deploy_state(master_address), dict)
 
 
-async def test_token_details(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_token_details(info: InfoClient, markets: Markets) -> None:
     result = await info.token_details(markets.token_id)
     assert result is None or isinstance(result, dict)
 
@@ -296,41 +296,41 @@ async def test_refresh_metadata(info: InfoClient) -> None:
     assert await info.refresh_metadata() is None
 
 
-async def test_coin_name(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_coin_name(info: InfoClient, markets: Markets) -> None:
     assert await info.coin_name(markets.perp) == markets.perp
 
 
-async def test_coin_symbol(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_coin_symbol(info: InfoClient, markets: Markets) -> None:
     assert await info.coin_symbol(markets.perp)
 
 
-async def test_asset_id(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_asset_id(info: InfoClient, markets: Markets) -> None:
     assert await info.asset_id(markets.perp) >= 0
 
 
-async def test_size_decimals(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_size_decimals(info: InfoClient, markets: Markets) -> None:
     assert await info.size_decimals(markets.perp) >= 0
 
 
-async def test_spot_token_metadata(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_spot_token_metadata(info: InfoClient, markets: Markets) -> None:
     assert (await info.spot_token_metadata(markets.spot))["tokenId"]
 
 
-async def test_token_id(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_token_id(info: InfoClient, markets: Markets) -> None:
     assert await info.token_id(markets.spot) == markets.token_id
 
 
 @pytest.mark.parametrize("market", ["perp", "spot"])
-async def test_mark_price(info: InfoClient, markets: LiveMarkets, market: str) -> None:
+async def test_mark_price(info: InfoClient, markets: Markets, market: str) -> None:
     assert await info.mark_price(getattr(markets, market)) > 0
 
 
-async def test_mid_price(info: InfoClient, markets: LiveMarkets) -> None:
+async def test_mid_price(info: InfoClient, markets: Markets) -> None:
     assert await info.mid_price(markets.perp) > 0
 
 
 async def test_account_state(
-    info: InfoClient, markets: LiveMarkets, master_address: str
+    info: InfoClient, markets: Markets, master_address: str
 ) -> None:
     state = await info.account_state(master_address, dexs=markets.dexs[:2])
     assert {"perp", "spot", "dexs"} <= state.keys()

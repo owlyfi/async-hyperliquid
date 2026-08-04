@@ -5,8 +5,8 @@ from hyperliquid.utils.signing import action_hash as sdk_action_hash
 from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
 import pytest
 
-from async_hyperliquid._encoding import _round_price, _round_size, encode_order
-from async_hyperliquid._signing import (
+from async_hyperliquid._internal.encoding import _round_price, _round_size, encode_order
+from async_hyperliquid._internal.signing import (
     _USD_SEND_SPEC,
     _sign_user_action,
     hash_action,

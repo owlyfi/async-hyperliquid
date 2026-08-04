@@ -52,13 +52,13 @@ async def test_vault_transfer(master_hl: AsyncHyperliquid) -> None:
         )
 
 
-async def test_hip3_liquidator_transfer(api_hl: AsyncHyperliquid) -> None:
+async def test_hip3_liquidator_transfer(hl: AsyncHyperliquid) -> None:
     dex = _capability("HL_HIP3_LIQUIDATOR_DEX")
     try:
-        _assert_ok(await api_hl.exchange.hip3_liquidator_transfer(dex, 1_000))
+        _assert_ok(await hl.exchange.hip3_liquidator_transfer(dex, 1_000))
     finally:
         _assert_ok(
-            await api_hl.exchange.hip3_liquidator_transfer(dex, 1_000, is_deposit=False)
+            await hl.exchange.hip3_liquidator_transfer(dex, 1_000, is_deposit=False)
         )
 
 
@@ -67,8 +67,8 @@ async def test_reserve_request_weight(master_hl: AsyncHyperliquid) -> None:
     _assert_ok(await master_hl.exchange.reserve_request_weight(1))
 
 
-async def test_noop(api_hl: AsyncHyperliquid) -> None:
-    _assert_ok(await api_hl.exchange.noop())
+async def test_noop(hl: AsyncHyperliquid) -> None:
+    _assert_ok(await hl.exchange.noop())
 
 
 async def test_use_big_blocks(master_hl: AsyncHyperliquid) -> None:
@@ -109,11 +109,11 @@ async def test_send_asset(master_hl: AsyncHyperliquid, master_address: str) -> N
     )
 
 
-async def test_agent_send_asset(api_hl: AsyncHyperliquid, master_address: str) -> None:
+async def test_agent_send_asset(hl: AsyncHyperliquid, master_address: str) -> None:
     coin = _capability("HL_TEST_SPOT_COIN")
     amount = float(_capability("HL_TEST_SPOT_AMOUNT"))
     _assert_ok(
-        await api_hl.agent_send_asset(
+        await hl.agent_send_asset(
             coin, amount, master_address, source_dex="spot", destination_dex="spot"
         )
     )
@@ -208,14 +208,14 @@ async def test_user_set_abstraction(
     _assert_ok(await master_hl.exchange.user_set_abstraction(UserAbstraction(current)))
 
 
-async def test_agent_enable_dex_abstraction(api_hl: AsyncHyperliquid) -> None:
+async def test_agent_enable_dex_abstraction(hl: AsyncHyperliquid) -> None:
     _capability("RUN_AGENT_ABSTRACTION_TESTS")
-    _assert_ok(await api_hl.exchange.agent_enable_dex_abstraction())
+    _assert_ok(await hl.exchange.agent_enable_dex_abstraction())
 
 
-async def test_agent_set_abstraction(api_hl: AsyncHyperliquid) -> None:
+async def test_agent_set_abstraction(hl: AsyncHyperliquid) -> None:
     abstraction = AgentAbstraction(_capability("HL_AGENT_ABSTRACTION"))
-    _assert_ok(await api_hl.exchange.agent_set_abstraction(abstraction))
+    _assert_ok(await hl.exchange.agent_set_abstraction(abstraction))
 
 
 async def test_split_outcome(master_hl: AsyncHyperliquid) -> None:

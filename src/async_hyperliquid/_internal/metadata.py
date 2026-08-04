@@ -1,15 +1,15 @@
 from dataclasses import dataclass, field
 from typing import cast
 
-from .constants import (
+from ..constants import (
     OUTCOME_ASSET_OFFSET,
     PERP_DEX_ASSET_OFFSET,
     PERP_DEX_ASSET_STRIDE,
     SPOT_ASSET_OFFSET,
 )
-from .errors import ProtocolError
-from .types import JsonObject, JsonValue
-from .types.info import AllPerpMetas, SpotMeta, SpotToken
+from ..errors import ProtocolError
+from ..types import JsonObject, JsonValue
+from ..types.info import AllPerpMetas, SpotMeta, SpotToken
 
 
 @dataclass(frozen=True, slots=True)

@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Group private encoding, transport, metadata, signing, and protocol helpers
+  under `_internal/` while keeping public errors and protocol constants at the
+  package root; `exchange.py` and `info.py` now contain only client-owned
+  workflows and lifecycle state.
+- Move the wheel hot-path runner to `benchmarks/hotpath.py`, shorten test module
+  names using their domain directories, and use `hl` consistently for the
+  authenticated integration client.
+- Keep Info and Exchange integration cases visible to pytest and VS Code;
+  execution opt-ins now produce explicit skips instead of marker deselection.
 - Replace the duplicate order dataclass hierarchy with one
   `PlaceOrderRequest`/`ModifyOrderRequest` `TypedDict` vocabulary using
   `is_buy`, `cloid`, singular order option names, and `Builder`.

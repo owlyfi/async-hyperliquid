@@ -338,14 +338,20 @@ The package includes `py.typed`.
 
 ## Testing
 
-The default suite performs no live API calls:
+The default suite performs no network API calls. Integration cases remain
+visible to pytest and VS Code, but skip unless their explicit opt-in is set:
 
 ```bash
 uv run pytest -q tests/unit tests/contracts tests/oracle tests/public_api tests/package
-uv run ruff check src tests scripts benchmarks
+uv run ruff check src tests benchmarks
 uv run ty check src
-uv run ty check tests
-uv run ty check scripts
+uv run ty check tests/contracts
+uv run ty check tests/integration
+uv run ty check tests/oracle
+uv run ty check tests/package
+uv run ty check tests/public_api
+uv run ty check tests/typing
+uv run ty check tests/unit
 uv run ty check benchmarks
 ```
 
@@ -384,10 +390,19 @@ warmup, and CCXT's CoinCurve signer was verified before timing. The detailed
 manual contains the machine specification, per-operation median/MAD/p95,
 throughput, aggregation formula, and exact reproduction command.
 
-Read-only live tests require `RUN_LIVE_INFO_TESTS=true`. Signed integration is
-restricted to testnet and excluded by default. It additionally requires
-`RUN_LIVE_EXCHANGE_TESTS=true` and `IS_MAINNET=false`. Destructive cases require
+Read-only integration tests require `RUN_INFO_TESTS=true`. Signed integration
+is restricted to testnet and skipped by default. It requires
+`RUN_EXCHANGE_TESTS=true` and `IS_MAINNET=false`. Destructive cases require
 `RUN_DESTRUCTIVE_EXCHANGE_TESTS=true` as a second opt-in.
+
+```bash
+RUN_EXCHANGE_TESTS=true RUN_DESTRUCTIVE_EXCHANGE_TESTS=true \
+  uv run pytest -q tests/integration/exchange
+```
+
+Pytest and VS Code always collect these cases. The opt-ins control execution,
+so disabled integration appears as skipped rather than disappearing from the
+test explorer.
 
 The local `.env.local` roles are:
 

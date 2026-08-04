@@ -29,16 +29,23 @@ jobs:
         run: uv run ruff format --check
 
       - name: Lint
-        run: uv run ruff check src tests scripts
+        run: uv run ruff check src tests benchmarks
 
       - name: Type-check package
         run: uv run ty check src/async_hyperliquid
 
       - name: Type-check tests
-        run: uv run ty check tests
+        run: |
+          uv run ty check tests/contracts
+          uv run ty check tests/integration
+          uv run ty check tests/oracle
+          uv run ty check tests/package
+          uv run ty check tests/public_api
+          uv run ty check tests/typing
+          uv run ty check tests/unit
 
-      - name: Type-check scripts
-        run: uv run ty check scripts
+      - name: Type-check benchmarks
+        run: uv run ty check benchmarks
 
       - name: Run deterministic tests
         run: uv run pytest -q tests/unit tests/public_api tests/contracts tests/package

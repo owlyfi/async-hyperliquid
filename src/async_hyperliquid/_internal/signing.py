@@ -7,9 +7,9 @@ from eth_utils.conversions import to_hex
 from eth_utils.crypto import keccak
 import msgpack
 
-from .constants import SIGNATURE_CHAIN_ID
-from .types import JsonObject, Network
-from .types.exchange import Signature
+from ..constants import SIGNATURE_CHAIN_ID
+from ..types import JsonObject, Network
+from ..types.exchange import Signature
 
 
 if TYPE_CHECKING:

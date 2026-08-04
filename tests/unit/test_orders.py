@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from async_hyperliquid import AsyncHyperliquid, InfoClient
-from async_hyperliquid._metadata import _MarketInfo
+from async_hyperliquid._internal.metadata import _MarketInfo
 from async_hyperliquid.client import _market_limit_price
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import (

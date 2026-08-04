@@ -4,7 +4,7 @@ from typing import cast
 from aiohttp import ClientSession
 import pytest
 
-from async_hyperliquid._http import _HttpTransport
+from async_hyperliquid._internal.http import _HttpTransport
 
 
 def test_transport_constructor_creates_no_async_resource() -> None:

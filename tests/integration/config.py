@@ -35,7 +35,7 @@ def _validate_key_pair(
         raise pytest.UsageError(f"{private_key_name} does not match {address_name}")
 
 
-def validate_live_credentials(environ: Mapping[str, str]) -> None:
+def validate_credentials(environ: Mapping[str, str]) -> None:
     _validate_key_pair("HL_PK", "HL_ADDR", environ)
     _validate_key_pair("HL_SK", "HL_AK", environ)
     if not is_address(require_env("HL_SUB", environ)):
@@ -50,7 +50,7 @@ def _is_subaccount_role(role: UserRole) -> TypeGuard[SubAccountUserRole]:
     return role["role"] == "subAccount"
 
 
-def validate_live_roles(
+def validate_roles(
     master_address: str, api_wallet_role: UserRole, subaccount_role: UserRole
 ) -> None:
     if not _is_agent_role(api_wallet_role):
