@@ -199,6 +199,14 @@ one option object. `TimeInForce` is nested under `limit.tif`; it is not an order
 type. Use `is_buy: bool` for commands and `cloid` everywhere. Builder
 attribution is passed separately as `builder=Builder(...)`.
 
+`place_orders` now owns every batch placement path, including market orders;
+the provisional RC1 `place_market_orders` helper was removed. A batch may mix
+outer market and non-market requests within one venue, but cannot mix spot and
+perpetual markets. Builder fees are capped at `100` tenths of a basis point for
+perpetuals and `1000` for spot/outcome after metadata resolution. Outcome
+prices use a `0.00001` USDC tick in the `0.00001..0.99999` range. The Exchange,
+not the SDK, validates minimum order notional.
+
 Common write mappings:
 
 | 0.5 | 1.0 |

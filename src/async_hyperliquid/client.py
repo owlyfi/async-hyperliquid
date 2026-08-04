@@ -56,6 +56,92 @@ def _market_limit_price(
     return min(max(price, OUTCOME_MIN_PRICE), OUTCOME_MAX_PRICE)
 
 
+def _is_trigger_order(order: PlaceOrderRequest) -> bool:
+    order_type = order.get("order_type")
+    return order_type is not None and "trigger" in order_type
+
+
+def _validate_orders(
+    orders: tuple[PlaceOrderRequest, ...], grouping: OrderGrouping
+) -> None:
+    for order in orders:
+        if order["is_market"] and _is_trigger_order(order):
+            raise ValueError(
+                "outer is_market cannot be used with a trigger order; "
+                "use trigger.isMarket"
+            )
+        if order["is_market"]:
+            slippage = order.get("slippage", 0.05)
+            if not math.isfinite(slippage) or not 0 <= slippage < 1:
+                raise ValueError("slippage must be finite and in [0, 1)")
+
+    if grouping is not OrderGrouping.NORMAL_TPSL:
+        return
+    if len(orders) < 2:
+        raise ValueError("normalTpsl requires a parent and at least one trigger child")
+    if _is_trigger_order(orders[0]):
+        raise ValueError("normalTpsl first order must be a non-trigger parent")
+    if any(not _is_trigger_order(order) for order in orders[1:]):
+        raise ValueError("normalTpsl child orders must be trigger orders")
+
+
+_MAX_PERP_BUILDER_FEE_TENTHS_BPS = 100
+_MAX_SPOT_BUILDER_FEE_TENTHS_BPS = 1000
+
+
+def _validate_builder(builder: Builder | None, *, is_spot: bool) -> None:
+    if builder is None:
+        return
+    maximum = (
+        _MAX_SPOT_BUILDER_FEE_TENTHS_BPS
+        if is_spot
+        else _MAX_PERP_BUILDER_FEE_TENTHS_BPS
+    )
+    if builder.fee_tenths_bps > maximum:
+        venue = "spot" if is_spot else "perpetual"
+        raise ValueError(
+            f"builder fee_tenths_bps must be <= {maximum} for {venue} orders"
+        )
+
+
+def _market_limit_order(
+    order: PlaceOrderRequest, mid: float, *, is_outcome: bool
+) -> PlaceOrderRequest:
+    limit: PlaceOrderRequest = {
+        "coin": order["coin"],
+        "is_buy": order["is_buy"],
+        "sz": order["sz"],
+        "px": _market_limit_price(
+            mid,
+            is_buy=order["is_buy"],
+            slippage=order.get("slippage", 0.05),
+            is_outcome=is_outcome,
+        ),
+        "is_market": False,
+        "ro": order.get("ro", False),
+        "order_type": limit_order_type(TimeInForce.IOC),
+    }
+    cloid = order.get("cloid")
+    if cloid is not None:
+        limit["cloid"] = cloid
+    return limit
+
+
+def _encode_orders(
+    orders: Sequence[PlaceOrderRequest], markets: Sequence[_MarketInfo]
+) -> tuple[EncodedOrder, ...]:
+    return tuple(
+        encode_order(
+            order,
+            asset=market.asset,
+            size_decimals=market.size_decimals,
+            is_spot=market.is_spot,
+            is_outcome=market.coin.startswith("#"),
+        )
+        for order, market in zip(orders, markets, strict=True)
+    )
+
+
 class AsyncHyperliquid:
     """Resource owner plus intent-level order workflows."""
 
@@ -113,64 +199,6 @@ class AsyncHyperliquid:
     def exchange(self) -> ExchangeClient:
         return self._exchange
 
-    async def _encode_orders(
-        self, orders: Sequence[PlaceOrderRequest]
-    ) -> tuple[EncodedOrder, ...]:
-        markets = await self._info._market_infos(
-            tuple(order["coin"] for order in orders)
-        )
-        return tuple(
-            encode_order(
-                order,
-                asset=market.asset,
-                size_decimals=market.size_decimals,
-                is_spot=market.is_spot,
-                is_outcome=market.coin.startswith("#"),
-            )
-            for order, market in zip(orders, markets, strict=True)
-        )
-
-    async def _encode_market_orders(
-        self, orders: Sequence[PlaceOrderRequest]
-    ) -> tuple[EncodedOrder, ...]:
-        markets = await self._info._market_infos(
-            tuple(order["coin"] for order in orders)
-        )
-        mids = await self._info._mid_prices(markets)
-        limits: list[PlaceOrderRequest] = []
-        for order, market, mid in zip(orders, markets, mids, strict=True):
-            slippage = order.get("slippage", 0.05)
-            if not math.isfinite(slippage) or not 0 <= slippage < 1:
-                raise ValueError("slippage must be finite and in [0, 1)")
-            limit: PlaceOrderRequest = {
-                "coin": order["coin"],
-                "is_buy": order["is_buy"],
-                "sz": order["sz"],
-                "px": _market_limit_price(
-                    mid,
-                    is_buy=order["is_buy"],
-                    slippage=slippage,
-                    is_outcome=market.coin.startswith("#"),
-                ),
-                "is_market": False,
-                "ro": order.get("ro", False),
-                "order_type": limit_order_type(TimeInForce.IOC),
-            }
-            cloid = order.get("cloid")
-            if cloid is not None:
-                limit["cloid"] = cloid
-            limits.append(limit)
-        return tuple(
-            encode_order(
-                order,
-                asset=market.asset,
-                size_decimals=market.size_decimals,
-                is_spot=market.is_spot,
-                is_outcome=market.coin.startswith("#"),
-            )
-            for order, market in zip(limits, markets, strict=True)
-        )
-
     async def place_order(
         self,
         coin: str,
@@ -197,10 +225,6 @@ class AsyncHyperliquid:
             "cloid": cloid,
             "slippage": slippage,
         }
-        if is_market:
-            return await self.place_market_orders(
-                (order,), builder=builder, expires_after=expires_after
-            )
         return await self.place_orders(
             (order,), builder=builder, expires_after=expires_after
         )
@@ -225,6 +249,7 @@ class AsyncHyperliquid:
         self,
         order: PlaceOrderRequest,
         *,
+        grouping: OrderGrouping = OrderGrouping.NA,
         builder: Builder | None = None,
         expires_after: int | None = None,
     ) -> PlaceOrderResponse:
@@ -234,7 +259,7 @@ class AsyncHyperliquid:
         if order_type is None or "trigger" not in order_type:
             raise ValueError("place_trigger_order requires a trigger order_type")
         return await self.place_orders(
-            (order,), builder=builder, expires_after=expires_after
+            (order,), grouping=grouping, builder=builder, expires_after=expires_after
         )
 
     async def place_orders(
@@ -248,17 +273,30 @@ class AsyncHyperliquid:
         commands = tuple(orders)
         if not commands:
             raise ValueError("orders must not be empty")
-        market_flags = {order["is_market"] for order in commands}
-        if len(market_flags) != 1:
-            raise ValueError("orders must use the same is_market value")
-        if market_flags == {True}:
-            return await self.place_market_orders(
-                commands,
-                grouping=grouping,
-                builder=builder,
-                expires_after=expires_after,
+        _validate_orders(commands, grouping)
+
+        markets = await self._info._market_infos(
+            tuple(order["coin"] for order in commands)
+        )
+        venues = {market.is_spot for market in markets}
+        if len(venues) != 1:
+            raise ValueError("orders cannot mix spot and perpetual markets")
+        _validate_builder(builder, is_spot=markets[0].is_spot)
+
+        market_indexes = tuple(
+            index for index, order in enumerate(commands) if order["is_market"]
+        )
+        normalized = list(commands)
+        if market_indexes:
+            mids = await self._info._mid_prices(
+                tuple(markets[index] for index in market_indexes)
             )
-        encoded = await self._encode_orders(commands)
+            for index, mid in zip(market_indexes, mids, strict=True):
+                normalized[index] = _market_limit_order(
+                    commands[index], mid, is_outcome=markets[index].coin.startswith("#")
+                )
+
+        encoded = _encode_orders(normalized, markets)
         return await self._exchange._submit_orders(
             encoded, grouping=grouping, builder=builder, expires_after=expires_after
         )
@@ -274,26 +312,8 @@ class AsyncHyperliquid:
     ) -> PlaceOrderResponse:
         if not order["is_market"]:
             raise ValueError("place_market_order requires is_market=True")
-        return await self.place_market_orders(
+        return await self.place_orders(
             (order,), builder=builder, expires_after=expires_after
-        )
-
-    async def place_market_orders(
-        self,
-        orders: Sequence[PlaceOrderRequest],
-        *,
-        grouping: OrderGrouping = OrderGrouping.NA,
-        builder: Builder | None = None,
-        expires_after: int | None = None,
-    ) -> PlaceOrderResponse:
-        commands = tuple(orders)
-        if not commands:
-            raise ValueError("orders must not be empty")
-        if any(not order["is_market"] for order in commands):
-            raise ValueError("place_market_orders requires is_market=True")
-        encoded = await self._encode_market_orders(commands)
-        return await self._exchange._submit_orders(
-            encoded, grouping=grouping, builder=builder, expires_after=expires_after
         )
 
     async def cancel_order(
@@ -602,7 +622,7 @@ class AsyncHyperliquid:
             )
         if not orders:
             return None
-        return await self.place_market_orders(
+        return await self.place_orders(
             tuple(orders), builder=builder, expires_after=expires_after
         )
 

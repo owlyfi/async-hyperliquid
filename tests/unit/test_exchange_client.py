@@ -272,10 +272,7 @@ async def test_batch_orders_sign_and_post_once_without_mutating_commands(
     builder = Builder("0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD", 10)
 
     response = await client.place_orders(
-        orders,
-        grouping=OrderGrouping.NORMAL_TPSL,
-        builder=builder,
-        expires_after=NONCE + 1_000,
+        orders, grouping=OrderGrouping.NA, builder=builder, expires_after=NONCE + 1_000
     )
 
     assert response == load_exchange_response("order_resting")
@@ -285,7 +282,7 @@ async def test_batch_orders_sign_and_post_once_without_mutating_commands(
     url, envelope = transport.requests[0]
     assert url == Network.MAINNET.exchange_url
     action = cast(JsonObject, envelope["action"])
-    assert action["grouping"] == "normalTpsl"
+    assert action["grouping"] == "na"
     assert len(cast(list[JsonValue], action["orders"])) == 2
     assert action["builder"] == {
         "b": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
@@ -429,7 +426,7 @@ async def test_market_orders_use_one_batched_mid_price_lookup() -> None:
     client = build_client(RecordingTransport(load_exchange_response("order_filled")))
     info = cast(StubInfo, client._info)
 
-    await client._encode_market_orders(
+    await client.place_orders(
         (
             order_request("BTC", True, 0.01, 0, is_market=True),
             order_request("ETH", False, 0.1, 0, is_market=True),
@@ -512,7 +509,7 @@ async def test_public_market_batch_uses_one_mid_lookup_and_one_post() -> None:
     client = build_client(transport)
     info = cast(StubInfo, client._info)
 
-    await client.place_market_orders(
+    await client.place_orders(
         (
             order_request("BTC", True, 0.01, 0, is_market=True),
             order_request("ETH", False, 0.1, 0, is_market=True),

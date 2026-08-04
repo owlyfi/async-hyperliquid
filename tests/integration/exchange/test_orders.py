@@ -123,10 +123,10 @@ async def test_place_market_order(api_hl: AsyncHyperliquid) -> None:
         await api_hl.close_position("BTC")
 
 
-async def test_place_market_orders(api_hl: AsyncHyperliquid) -> None:
+async def test_place_orders_market_batch(api_hl: AsyncHyperliquid) -> None:
     orders = (await _market_request(api_hl, "BTC"),)
     try:
-        response = await api_hl.place_market_orders(orders)
+        response = await api_hl.place_orders(orders)
         assert response["status"] == "ok"
     finally:
         await api_hl.close_positions(("BTC",))

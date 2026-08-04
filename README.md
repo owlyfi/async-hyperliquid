@@ -172,6 +172,20 @@ adds `oid` to the same shared order fields.
 type, `cloid` is the only client-order-ID spelling, and order attribution uses
 `Builder`.
 
+`place_orders` is the only batch placement pipeline. It accepts market and
+non-market requests together when they resolve to the same venue, normalizes
+only the market subset in one batched mid-price phase (one `allMids` call per
+distinct DEX), and rejects a spot/perpetual mixture before signing. Use
+`place_market_order` for one market request and `place_orders` for a market
+batch.
+
+Builder fees are expressed in tenths of a basis point and are capped at `100`
+for perpetual batches and `1000` for spot or outcome batches. The venue is
+selected from resolved metadata; a spot buy with builder attribution is not
+rejected locally. Outcome order prices use the `0.00001` USDC tick and must be
+between `0.00001` and `0.99999` USDC. Minimum order notional is validated by
+the Exchange, not by this SDK.
+
 ### Root trading workflows
 
 `AsyncHyperliquid.place_order(...)` deliberately keeps the expanded 0.5 call

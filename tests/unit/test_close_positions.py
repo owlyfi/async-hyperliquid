@@ -63,9 +63,9 @@ async def test_selected_positions_use_one_read_and_one_order_batch(
             position("BTC", "0.02"),
         ]
     )
-    place_market_orders = AsyncMock(return_value=RESPONSE)
+    place_orders = AsyncMock(return_value=RESPONSE)
     monkeypatch.setattr(InfoClient, "positions", positions)
-    monkeypatch.setattr(AsyncHyperliquid, "place_market_orders", place_market_orders)
+    monkeypatch.setattr(AsyncHyperliquid, "place_orders", place_orders)
     client = AsyncHyperliquid(ADDRESS, KEY, vault_address=VAULT)
     builder = Builder(
         address="0x3333333333333333333333333333333333333333", fee_tenths_bps=10
@@ -77,7 +77,7 @@ async def test_selected_positions_use_one_read_and_one_order_batch(
 
     assert result is RESPONSE
     positions.assert_awaited_once_with(VAULT, dexs=("", "xyz"))
-    place_market_orders.assert_awaited_once_with(
+    place_orders.assert_awaited_once_with(
         (
             {
                 "coin": "BTC",
@@ -139,13 +139,13 @@ async def test_empty_or_flat_selection_does_not_submit_an_exchange_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     positions = AsyncMock(return_value=[position("BTC", "0")])
-    place_market_orders = AsyncMock(return_value=RESPONSE)
+    place_orders = AsyncMock(return_value=RESPONSE)
     monkeypatch.setattr(InfoClient, "positions", positions)
-    monkeypatch.setattr(AsyncHyperliquid, "place_market_orders", place_market_orders)
+    monkeypatch.setattr(AsyncHyperliquid, "place_orders", place_orders)
     client = AsyncHyperliquid(ADDRESS, KEY)
 
     assert await client.close_positions(()) is None
     positions.assert_not_awaited()
     assert await client.close_positions(("BTC",)) is None
     positions.assert_awaited_once_with(ADDRESS, dexs=("",))
-    place_market_orders.assert_not_awaited()
+    place_orders.assert_not_awaited()

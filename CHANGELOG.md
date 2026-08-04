@@ -56,6 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch order preparation performs one metadata snapshot lookup, one signature,
   and one HTTP POST.
 - Batch market and close orders fetch `allMids` once per distinct DEX.
+- Canonicalize all placement through `place_orders`, allow market and
+  non-market requests in one same-venue batch, and remove the provisional RC1
+  `place_market_orders` helper.
+- Resolve the venue before enforcing builder caps (`100` tenths of a basis
+  point for perpetuals and `1000` for spot/outcome), and leave minimum-order
+  notional validation to the Exchange.
+- Apply the documented outcome price domain and `0.00001` USDC tick without
+  adding an SDK-side minimum-notional gate.
 - Pin the development environment to Python 3.12 with uv and upgrade aiohttp to
   3.14.3, msgpack to 1.2.1, eth-account to 0.13.7, eth-utils to the
   resolver-compatible 5.3.1, and the development signing oracle to the official

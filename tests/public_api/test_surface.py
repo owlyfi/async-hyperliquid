@@ -68,7 +68,6 @@ def test_order_and_close_workflows_have_one_clear_owner() -> None:
         "place_trigger_order",
         "place_market_order",
         "place_orders",
-        "place_market_orders",
         "cancel_order",
         "cancel_orders",
         "cancel_by_cloid",
@@ -85,6 +84,7 @@ def test_order_and_close_workflows_have_one_clear_owner() -> None:
         "send_to_evm_with_data",
     )
     assert all(hasattr(AsyncHyperliquid, method) for method in info_dependent_actions)
+    assert not hasattr(AsyncHyperliquid, "place_market_orders")
     assert all(not hasattr(ExchangeClient, method) for method in info_dependent_actions)
     assert not hasattr(ExchangeClient, "close_positions")
 
