@@ -25,7 +25,9 @@ from async_hyperliquid.types import (
     Network,
     PlaceOrderRequest,
     TimeInForce,
+    TriggerKind,
     limit_order_type,
+    trigger_order_type,
 )
 from async_hyperliquid.types.exchange import OrderAction, Signature
 
@@ -347,6 +349,49 @@ async def test_native_order_builders_produce_the_same_final_payload(
         raise AssertionError(
             "native async-hyperliquid order payload differs from official SDK"
         )
+
+
+async def test_trigger_order_payload_matches_official_sdk_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = Account.from_key(TEST_KEY)
+    sdk_order: SdkOrderRequest = {
+        "coin": "ASSET-0",
+        "is_buy": False,
+        "sz": 0.01,
+        "limit_px": 10_001.0,
+        "order_type": {
+            "trigger": {"triggerPx": 200_000.0, "isMarket": False, "tpsl": "tp"}
+        },
+        "reduce_only": False,
+    }
+    async_order: PlaceOrderRequest = {
+        "coin": "ASSET-0",
+        "is_buy": False,
+        "sz": 0.01,
+        "px": 10_001.0,
+        "is_market": False,
+        "order_type": trigger_order_type(
+            is_market=False, trigger_px="200000.0", tpsl=TriggerKind.TAKE_PROFIT
+        ),
+    }
+
+    expected = _sdk_order_payload(
+        account,
+        [sdk_order],
+        vault_address=VAULT_ADDRESS,
+        expires_after=None,
+        monkeypatch=monkeypatch,
+    )
+    actual = await _async_order_payload(
+        account,
+        (async_order,),
+        vault_address=VAULT_ADDRESS,
+        expires_after=None,
+        monkeypatch=monkeypatch,
+    )
+
+    assert actual == expected
 
 
 def _local_value(name: str) -> str | None:

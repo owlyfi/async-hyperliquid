@@ -312,7 +312,7 @@ def test_trigger_order_encoding_preserves_trigger_contract() -> None:
         "is_market": False,
         "ro": True,
         "order_type": trigger_order_type(
-            is_market=True, trigger_px="180.125", tpsl=TriggerKind.STOP_LOSS
+            is_market=True, trigger_px="180.1250", tpsl=TriggerKind.STOP_LOSS
         ),
     }
 

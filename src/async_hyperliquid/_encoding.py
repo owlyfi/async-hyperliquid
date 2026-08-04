@@ -66,7 +66,7 @@ def encode_order(
         encoded_type = {
             "trigger": {
                 "isMarket": trigger["trigger"]["isMarket"],
-                "triggerPx": trigger["trigger"]["triggerPx"],
+                "triggerPx": _wire_float(float(trigger["trigger"]["triggerPx"])),
                 "tpsl": trigger["trigger"]["tpsl"],
             }
         }
