@@ -68,6 +68,7 @@ def test_exchange_fixture_freezes_all_order_and_cancel_status_shapes() -> None:
     assert set(responses) == {
         "cancel_error",
         "cancel_success",
+        "order_deferred",
         "order_error",
         "order_filled",
         "order_resting",

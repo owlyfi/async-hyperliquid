@@ -149,6 +149,8 @@ def _is_error_status(value: JsonValue) -> bool:
 
 
 def _is_order_status(value: JsonValue) -> bool:
+    if value in ("waitingForFill", "waitingForTrigger"):
+        return True
     if not isinstance(value, dict):
         return False
     discriminators = tuple(

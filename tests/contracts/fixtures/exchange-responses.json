@@ -36,6 +36,18 @@
     },
     "status": "ok"
   },
+  "order_deferred": {
+    "response": {
+      "data": {
+        "statuses": [
+          "waitingForFill",
+          "waitingForTrigger"
+        ]
+      },
+      "type": "order"
+    },
+    "status": "ok"
+  },
   "order_filled": {
     "response": {
       "data": {

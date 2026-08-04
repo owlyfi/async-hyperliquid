@@ -39,6 +39,27 @@ def _resting_oid(response: PlaceOrderResponse) -> int:
     return oid
 
 
+def _grouped_order_cancels(
+    response: PlaceOrderResponse, expected_count: int
+) -> list[CancelOrder]:
+    assert response["status"] == "ok"
+    statuses = response["response"]["data"]["statuses"]
+    assert len(statuses) == expected_count
+    cancels: list[CancelOrder] = []
+    for status in statuses:
+        if status in ("waitingForFill", "waitingForTrigger"):
+            continue
+        status_object = cast(JsonObject, status)
+        assert "error" not in status_object
+        resting = status_object.get("resting")
+        if resting is not None:
+            resting_object = cast(JsonObject, resting)
+            oid = resting_object["oid"]
+            assert isinstance(oid, int)
+            cancels.append(CancelOrder("BTC", oid))
+    return cancels
+
+
 async def _limit_request(
     client: AsyncHyperliquid, coin: str, *, is_buy: bool = True
 ) -> PlaceOrderRequest:
@@ -420,13 +441,117 @@ async def test_batch_place_orders(api_hl: AsyncHyperliquid) -> None:
     order = await _limit_request(api_hl, "BTC")
     oid: int | None = None
     try:
-        response = await api_hl.batch_place_orders(
-            (order,), grouping=OrderGrouping.NORMAL_TPSL
-        )
+        response = await api_hl.batch_place_orders((order,))
         oid = _resting_oid(response)
     finally:
         if oid is not None:
             await _cancel(api_hl, (CancelOrder("BTC", oid),))
+
+
+async def test_normal_tpsl_accepts_parent_and_trigger_child(
+    api_hl: AsyncHyperliquid,
+) -> None:
+    mid = await api_hl.info.mid_price("BTC")
+    size_decimals = await api_hl.info.size_decimals("BTC")
+    parent_px = float(f"{mid * 0.8:.5g}")
+    stop_trigger_px = float(f"{mid * 0.7:.5g}")
+    stop_limit_px = float(f"{stop_trigger_px * 0.9:.5g}")
+    size = round(20 / parent_px, size_decimals)
+    parent: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": size,
+        "px": parent_px,
+        "is_market": False,
+        "order_type": limit_order_type(TimeInForce.GTC),
+    }
+    stop: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": size,
+        "px": stop_limit_px,
+        "is_market": False,
+        "ro": True,
+        "order_type": trigger_order_type(
+            is_market=True, trigger_px=str(stop_trigger_px), tpsl=TriggerKind.STOP_LOSS
+        ),
+    }
+    cancels: list[CancelOrder] = []
+    try:
+        response = await api_hl.place_orders(
+            (parent, stop), grouping=OrderGrouping.NORMAL_TPSL
+        )
+        cancels = _grouped_order_cancels(response, 2)
+    finally:
+        await _cancel(api_hl, cancels)
+
+
+async def test_normal_tpsl_accepts_parent_take_profit_and_stop_loss(
+    api_hl: AsyncHyperliquid,
+) -> None:
+    mid = await api_hl.info.mid_price("BTC")
+    size_decimals = await api_hl.info.size_decimals("BTC")
+    parent_px = float(f"{mid * 0.8:.5g}")
+    take_trigger_px = float(f"{mid * 1.2:.5g}")
+    take_limit_px = float(f"{take_trigger_px * 0.9:.5g}")
+    stop_trigger_px = float(f"{mid * 0.7:.5g}")
+    stop_limit_px = float(f"{stop_trigger_px * 0.9:.5g}")
+    size = round(20 / parent_px, size_decimals)
+    parent: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": size,
+        "px": parent_px,
+        "is_market": False,
+        "order_type": limit_order_type(TimeInForce.GTC),
+    }
+    take_profit: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": size,
+        "px": take_limit_px,
+        "is_market": False,
+        "ro": True,
+        "order_type": trigger_order_type(
+            is_market=True,
+            trigger_px=str(take_trigger_px),
+            tpsl=TriggerKind.TAKE_PROFIT,
+        ),
+    }
+    stop_loss: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": size,
+        "px": stop_limit_px,
+        "is_market": False,
+        "ro": True,
+        "order_type": trigger_order_type(
+            is_market=True, trigger_px=str(stop_trigger_px), tpsl=TriggerKind.STOP_LOSS
+        ),
+    }
+    cancels: list[CancelOrder] = []
+    try:
+        response = await api_hl.place_orders(
+            (parent, take_profit, stop_loss), grouping=OrderGrouping.NORMAL_TPSL
+        )
+        cancels = _grouped_order_cancels(response, 3)
+    finally:
+        await _cancel(api_hl, cancels)
+
+
+async def test_place_orders_rejects_live_spot_and_perp_batch(
+    api_hl: AsyncHyperliquid,
+) -> None:
+    spot_meta = await api_hl.info.spot_meta()
+    assert spot_meta["universe"]
+    spot_coin = spot_meta["universe"][0]["name"]
+    perp = await _limit_request(api_hl, "BTC")
+    spot = await _limit_request(api_hl, spot_coin)
+
+    with pytest.raises(
+        ValueError, match="orders cannot mix spot and perpetual markets"
+    ):
+        await api_hl.place_orders((perp, spot))
 
 
 async def test_root_place_orders(api_hl: AsyncHyperliquid) -> None:
