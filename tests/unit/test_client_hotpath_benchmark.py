@@ -105,3 +105,66 @@ def test_v1_dependency_comparison_uses_independent_interpreters(tmp_path: Path) 
             baseline_python=missing_python,
             candidate_python=Path(sys.executable),
         )
+
+
+def test_v1_probe_compares_pre_and_post_market_context_signatures(
+    tmp_path: Path,
+) -> None:
+    baseline = tmp_path / "baseline.whl"
+    candidate = tmp_path / "candidate.whl"
+    common = {
+        "async_hyperliquid/__init__.py": "",
+        "async_hyperliquid/_signing.py": (
+            "def sign_exchange_action(*args):\n    return None\n"
+        ),
+        "async_hyperliquid/types/__init__.py": """
+class _Mainnet:
+    signature_source = "a"
+
+
+class Network:
+    MAINNET = _Mainnet()
+
+
+class TimeInForce:
+    GTC = "Gtc"
+
+
+def limit_order_type(tif):
+    return {"limit": {"tif": tif}}
+""",
+    }
+    with zipfile.ZipFile(baseline, "w") as archive:
+        for name, source in common.items():
+            archive.writestr(name, source)
+        archive.writestr(
+            "async_hyperliquid/_encoding.py",
+            "def encode_order(order, *, asset, size_decimals):\n"
+            "    return {'a': asset}\n",
+        )
+    with zipfile.ZipFile(candidate, "w") as archive:
+        for name, source in common.items():
+            archive.writestr(name, source)
+        archive.writestr(
+            "async_hyperliquid/_encoding.py",
+            "def encode_order(\n"
+            "    order, *, asset, size_decimals, is_spot, is_outcome\n"
+            "):\n"
+            "    return {'a': asset}\n",
+        )
+
+    report = compare_wheels(
+        baseline,
+        candidate,
+        rounds=1,
+        warmups=0,
+        iterations=1,
+        baseline_probe=CANDIDATE_WHEEL_PROBE,
+    )
+
+    assert set(report["results"]) == {
+        "prepare_batch_10",
+        "prepare_order",
+        "sign_batch_10",
+        "sign_order",
+    }

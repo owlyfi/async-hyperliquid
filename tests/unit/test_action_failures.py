@@ -298,7 +298,7 @@ async def test_success_acknowledgement_allows_additive_fields(
 
 
 @pytest.mark.parametrize("status", ["waitingForFill", "waitingForTrigger"])
-async def test_order_acknowledgement_accepts_deferred_status(status: str) -> None:
+async def test_order_acknowledgement_accepts_string_status(status: str) -> None:
     outcome: JsonValue = {
         "status": "ok",
         "response": {

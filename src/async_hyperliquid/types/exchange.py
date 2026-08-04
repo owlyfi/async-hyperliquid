@@ -512,10 +512,8 @@ class ErrorStatus(TypedDict):
     error: str
 
 
-DeferredOrderStatus: TypeAlias = Literal["waitingForFill", "waitingForTrigger"]
-OrderStatus: TypeAlias = (
-    RestingStatus | FilledStatus | ErrorStatus | DeferredOrderStatus
-)
+OrderStatusTag: TypeAlias = Literal["waitingForFill", "waitingForTrigger"]
+OrderStatus: TypeAlias = RestingStatus | FilledStatus | ErrorStatus | OrderStatusTag
 CancelStatus: TypeAlias = Literal["success"] | ErrorStatus
 
 

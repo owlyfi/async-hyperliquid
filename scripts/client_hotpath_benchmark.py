@@ -125,6 +125,7 @@ print(json.dumps(results, sort_keys=True))
 
 CANDIDATE_WHEEL_PROBE = r"""
 import gc
+from inspect import signature
 import json
 import os
 from time import perf_counter_ns
@@ -154,9 +155,22 @@ orders = tuple(
     }
     for index in range(10)
 )
-encoded_order = encode_order(
-    order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
-)
+
+if "is_spot" in signature(encode_order).parameters:
+    def prepare_order(order, asset):
+        return encode_order(
+            order,
+            asset=asset,
+            size_decimals=5,
+            is_spot=False,
+            is_outcome=False,
+        )
+else:
+    def prepare_order(order, asset):
+        return encode_order(order, asset=asset, size_decimals=5)
+
+
+encoded_order = prepare_order(order, 0)
 single_action = {
     "type": "order",
     "orders": [encoded_order],
@@ -165,13 +179,7 @@ single_action = {
 batch_action = {
     "type": "order",
     "orders": [
-        encode_order(
-            item,
-            asset=index,
-            size_decimals=5,
-            is_spot=False,
-            is_outcome=False,
-        )
+        prepare_order(item, index)
         for index, item in enumerate(orders)
     ],
     "grouping": "na",
@@ -195,22 +203,14 @@ def measure(fn, count):
 
 results = {
     "prepare_order": measure(
-        lambda: encode_order(
-            order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
-        ),
+        lambda: prepare_order(order, 0),
         iterations,
     ),
     "prepare_batch_10": measure(
         lambda: {
             "type": "order",
             "orders": [
-                encode_order(
-                    item,
-                    asset=index,
-                    size_decimals=5,
-                    is_spot=False,
-                    is_outcome=False,
-                )
+                prepare_order(item, index)
                 for index, item in enumerate(orders)
             ],
             "grouping": "na",

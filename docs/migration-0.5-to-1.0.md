@@ -222,6 +222,10 @@ Common write mappings:
 | `initiate_withdrawal(amount)` | `exchange.withdraw(amount)` |
 | `use_big_block(enabled)` | `exchange.use_big_blocks(enabled)` |
 
+`modify_order(request)` returns the Exchange's default acknowledgement.
+`modify_orders(requests)` returns per-order statuses because `batchModify`
+uses the order response envelope.
+
 Info-independent actions such as `usd_transfer`, `vault_transfer`,
 `approve_agent`, `approve_builder_fee`, staking, delegation, and abstraction
 remain on `.exchange`. Coin-resolving token transfers, TWAP, leverage, and

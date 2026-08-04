@@ -469,7 +469,9 @@ async def test_cancel_and_modify_commands_encode_without_alias_wrappers(
     modify_action = cast(JsonObject, transport.requests[-1][1]["action"])
     assert modify_action["type"] == "batchModify"
 
-    await client.modify_order(modify)
+    transport.response = {"status": "ok", "response": {"type": "default"}}
+    response = await client.modify_order(modify)
+    assert response == transport.response
     modify_action = cast(JsonObject, transport.requests[-1][1]["action"])
     assert modify_action["type"] == "modify"
     assert "modifies" not in modify_action

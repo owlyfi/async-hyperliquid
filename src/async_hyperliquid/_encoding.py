@@ -35,6 +35,20 @@ def _wire_float(value: float | int) -> str:
     return rounded.rstrip("0").rstrip(".") or "0"
 
 
+def _normalize_price(
+    value: float | str, *, max_decimals: int, is_outcome: bool
+) -> float | int:
+    price = float(value)
+    if is_outcome and not OUTCOME_MIN_PRICE <= price <= OUTCOME_MAX_PRICE:
+        raise ValueError("outcome price must be between 0.00001 and 0.99999 USDC")
+    rounded = _round_price(
+        price, OUTCOME_PRICE_DECIMALS if is_outcome else max_decimals
+    )
+    if rounded <= 0:
+        raise ValueError("order value is below market precision")
+    return rounded
+
+
 def encode_order(
     order: PlaceOrderRequest | ModifyOrderRequest,
     *,
@@ -44,14 +58,11 @@ def encode_order(
     is_outcome: bool,
 ) -> EncodedOrder:
     max_decimals = (8 if is_spot else 6) - size_decimals
-    raw_price = float(order["px"])
-    if is_outcome and not OUTCOME_MIN_PRICE <= raw_price <= OUTCOME_MAX_PRICE:
-        raise ValueError("outcome price must be between 0.00001 and 0.99999 USDC")
-    price = _round_price(
-        raw_price, OUTCOME_PRICE_DECIMALS if is_outcome else max_decimals
+    price = _normalize_price(
+        order["px"], max_decimals=max_decimals, is_outcome=is_outcome
     )
     size = _round_size(order["sz"], size_decimals)
-    if price <= 0 or size <= 0:
+    if size <= 0:
         raise ValueError("order value is below market precision")
 
     order_type = order.get("order_type")
@@ -63,10 +74,15 @@ def encode_order(
         encoded_type = {"limit": {"tif": limit["limit"]["tif"].value}}
     else:
         trigger = order_type
+        trigger_price = _normalize_price(
+            trigger["trigger"]["triggerPx"],
+            max_decimals=max_decimals,
+            is_outcome=is_outcome,
+        )
         encoded_type = {
             "trigger": {
                 "isMarket": trigger["trigger"]["isMarket"],
-                "triggerPx": _wire_float(float(trigger["trigger"]["triggerPx"])),
+                "triggerPx": _wire_float(trigger_price),
                 "tpsl": trigger["trigger"]["tpsl"],
             }
         }

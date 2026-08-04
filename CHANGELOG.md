@@ -106,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for orders, cancels, account queries, and protocol-specific transfers.
 - Reject malformed signed success acknowledgements, zero-sized TWAP wire
   values, and HTTP redirects before they can be treated as trusted outcomes.
+- Normalize outer and trigger prices with the same venue tick rules, preserve
+  their canonical wire formatting, and accept the Exchange's `waitingForFill`
+  and `waitingForTrigger` grouped-order acknowledgements.
+- Match the live modify contracts: singular `modify` returns the default
+  acknowledgement, while `batchModify` returns per-order statuses and a new
+  resting OID when applicable.
+- Preserve BTC integer prices above `10000`, six-decimal kPEPE prices, and the
+  protocol tick/lot rules without adding a client-side minimum-notional gate.
 - Isolate public metadata mappings from the internal snapshot and keep
   credential-free root imports free of the signing stack.
 

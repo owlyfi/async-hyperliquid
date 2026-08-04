@@ -376,7 +376,7 @@ class AsyncHyperliquid:
 
     async def modify_order(
         self, order: ModifyOrderRequest, *, expires_after: int | None = None
-    ) -> PlaceOrderResponse:
+    ) -> DefaultActionResponse:
         oid = order["oid"]
         if isinstance(oid, int) and oid < 0:
             raise ValueError("oid must not be negative")

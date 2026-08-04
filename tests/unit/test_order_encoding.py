@@ -324,5 +324,39 @@ def test_trigger_order_encoding_preserves_trigger_contract() -> None:
         "p": "177.06",
         "s": "0.125",
         "r": True,
-        "t": {"trigger": {"isMarket": True, "triggerPx": "180.125", "tpsl": "sl"}},
+        "t": {"trigger": {"isMarket": True, "triggerPx": "180.12", "tpsl": "sl"}},
     }
+
+
+def test_btc_trigger_price_obeys_tick_size() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": 0.01,
+        "px": 10_001.0,
+        "is_market": False,
+        "order_type": trigger_order_type(
+            is_market=True, trigger_px="180.125", tpsl=TriggerKind.STOP_LOSS
+        ),
+    }
+
+    encoded = encode_order(
+        order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
+    )
+
+    assert encoded["t"] == {
+        "trigger": {"isMarket": True, "triggerPx": "180.1", "tpsl": "sl"}
+    }
+
+
+@pytest.mark.parametrize("trigger_px", ["0.000009", "1"])
+def test_outcome_trigger_rejects_price_outside_binary_domain(trigger_px: str) -> None:
+    order = _outcome_order(0.4)
+    order["order_type"] = trigger_order_type(
+        is_market=True, trigger_px=trigger_px, tpsl=TriggerKind.STOP_LOSS
+    )
+
+    with pytest.raises(ValueError, match="outcome price"):
+        encode_order(
+            order, asset=100_000_010, size_decimals=0, is_spot=True, is_outcome=True
+        )

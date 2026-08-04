@@ -482,9 +482,9 @@ class ExchangeClient:
 
     async def _submit_modify(
         self, modify: EncodedModify, *, expires_after: int | None = None
-    ) -> PlaceOrderResponse:
+    ) -> DefaultActionResponse:
         action = ModifyAction(type="modify", oid=modify["oid"], order=modify["order"])
-        return await self._submit_action(action, "order", expires_after=expires_after)
+        return await self._submit_action(action, "default", expires_after=expires_after)
 
     async def _submit_modifies(
         self, modifies: Sequence[EncodedModify], *, expires_after: int | None = None

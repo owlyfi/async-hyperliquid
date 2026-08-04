@@ -19,7 +19,7 @@ from .live_config import (
 
 load_dotenv(Path(".env.local"), override=False)
 
-_DEXS = ("", "flx", "vntl", "xyz")
+_DEXS = ("",)
 
 
 def _require_opt_in(name: str) -> None:

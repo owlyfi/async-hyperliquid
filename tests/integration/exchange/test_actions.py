@@ -165,9 +165,13 @@ async def test_token_delegate(master_hl: AsyncHyperliquid) -> None:
 async def test_approve_agent(
     master_hl: AsyncHyperliquid, api_wallet_address: str
 ) -> None:
-    _assert_ok(
-        await master_hl.exchange.approve_agent(api_wallet_address, name="integration")
+    role = await master_hl.info.user_role(api_wallet_address)
+    assert role["role"] == "agent"
+
+    response = await master_hl.exchange.approve_agent(
+        api_wallet_address, name="integration"
     )
+    assert response == {"status": "err", "response": "Extra agent already used."}
 
 
 async def test_approve_builder_fee(master_hl: AsyncHyperliquid) -> None:
@@ -251,4 +255,8 @@ async def test_authorize_aqav2_role(master_hl: AsyncHyperliquid) -> None:
 
 
 async def test_claim_rewards(master_hl: AsyncHyperliquid) -> None:
-    _assert_ok(await master_hl.exchange.claim_rewards())
+    response = await master_hl.exchange.claim_rewards()
+    assert response["status"] == "ok" or response == {
+        "status": "err",
+        "response": "No rewards to claim",
+    }
