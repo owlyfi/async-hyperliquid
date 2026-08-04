@@ -1,7 +1,6 @@
 import asyncio
-from builtins import ExceptionGroup
-from types import TracebackType
 from collections.abc import Sequence
+from types import TracebackType
 from typing import Literal, Self, cast, overload
 
 from aiohttp import ClientSession, ClientTimeout
@@ -106,6 +105,16 @@ def _expect_pair(
     if len(pair) != 2:
         raise ProtocolError(f"{request_type} response must contain two items")
     return (_expect_object(pair[0], request_type), _expect_list(pair[1], request_type))
+
+
+async def _wait_for_tasks(tasks: Sequence[asyncio.Task[object]]) -> None:
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
 
 def _market_info_from_snapshot(
@@ -519,17 +528,12 @@ class InfoClient:
         return lock
 
     async def _load_metadata(self) -> _MetadataSnapshot:
-        try:
-            async with asyncio.TaskGroup() as group:
-                dex_names_task = group.create_task(self.perp_dex_names())
-                perp_metas_task = group.create_task(self.all_perp_metas())
-                spot_meta_task = group.create_task(self.spot_meta())
-        except ExceptionGroup as error:
-            if len(error.exceptions) == 1:
-                raise error.exceptions[0]
-            raise
+        dex_task = asyncio.create_task(self.perp_dex_names())
+        perp_task = asyncio.create_task(self.all_perp_metas())
+        spot_task = asyncio.create_task(self.spot_meta())
+        await _wait_for_tasks((dex_task, perp_task, spot_task))
         return _build_metadata_snapshot(
-            dex_names_task.result(), perp_metas_task.result(), spot_meta_task.result()
+            dex_task.result(), perp_task.result(), spot_task.result()
         )
 
     async def _ensure_metadata(self) -> _MetadataSnapshot:
@@ -596,7 +600,7 @@ class InfoClient:
         token = None if name is None else snapshot.spot_token_by_coin.get(name)
         if token is None:
             raise ValueError(f"unknown spot token: {coin}")
-        return token
+        return token.copy()
 
     async def token_id(self, coin: str) -> str:
         return (await self.spot_token_metadata(coin))["tokenId"]
@@ -626,33 +630,49 @@ class InfoClient:
             cast(list[JsonValue], contexts), context_index, "markPx", "metaAndAssetCtxs"
         )
 
-    async def mid_price(self, coin: str) -> float:
+    async def _mid_prices(self, coins: Sequence[str]) -> tuple[float, ...]:
+        commands = tuple(coins)
+        if not commands:
+            return ()
         snapshot = await self._ensure_metadata()
-        name = snapshot.coin_by_alias.get(coin)
-        if name is None:
-            raise ValueError(f"unknown coin: {coin}")
-        perp_context = snapshot.perp_context_by_coin.get(name)
-        dex = "" if perp_context is None else perp_context[0]
-        mids = await self.all_mids(dex)
-        price = mids.get(name)
-        if not isinstance(price, str):
-            raise ProtocolError("allMids is missing a string price")
-        try:
-            return float(price)
-        except ValueError:
-            raise ProtocolError("allMids contains an invalid price") from None
+        markets: list[tuple[str, str]] = []
+        for coin in commands:
+            name = snapshot.coin_by_alias.get(coin)
+            if name is None:
+                raise ValueError(f"unknown coin: {coin}")
+            perp_context = snapshot.perp_context_by_coin.get(name)
+            markets.append((name, "" if perp_context is None else perp_context[0]))
+
+        dexs = tuple(dict.fromkeys(dex for _, dex in markets))
+        tasks = {dex: asyncio.create_task(self.all_mids(dex)) for dex in dexs}
+        await _wait_for_tasks(tuple(tasks.values()))
+        mids_by_dex = {dex: task.result() for dex, task in tasks.items()}
+
+        prices: list[float] = []
+        for name, dex in markets:
+            price = mids_by_dex[dex].get(name)
+            if not isinstance(price, str):
+                raise ProtocolError("allMids is missing a string price")
+            try:
+                prices.append(float(price))
+            except ValueError:
+                raise ProtocolError("allMids contains an invalid price") from None
+        return tuple(prices)
+
+    async def mid_price(self, coin: str) -> float:
+        return (await self._mid_prices((coin,)))[0]
 
     async def account_state(
         self, account_address: str, *, perp_dexes: tuple[str, ...] = ("",)
     ) -> AccountState:
         additional_dexes = tuple(dict.fromkeys(dex for dex in perp_dexes if dex))
-        async with asyncio.TaskGroup() as group:
-            perp_task = group.create_task(self.perp_account_state(account_address))
-            spot_task = group.create_task(self.spot_account_state(account_address))
-            dex_tasks = {
-                dex: group.create_task(self.perp_account_state(account_address, dex))
-                for dex in additional_dexes
-            }
+        perp_task = asyncio.create_task(self.perp_account_state(account_address))
+        spot_task = asyncio.create_task(self.spot_account_state(account_address))
+        dex_tasks = {
+            dex: asyncio.create_task(self.perp_account_state(account_address, dex))
+            for dex in additional_dexes
+        }
+        await _wait_for_tasks((perp_task, spot_task, *dex_tasks.values()))
         return {
             "perp": perp_task.result(),
             "spot": spot_task.result(),
@@ -663,16 +683,21 @@ class InfoClient:
         self, account_address: str, *, perp_dexes: tuple[str, ...] = ("",)
     ) -> list[Position]:
         dexs = tuple(dict.fromkeys(perp_dexes))
-        async with asyncio.TaskGroup() as group:
-            tasks = [
-                group.create_task(self.perp_account_state(account_address, dex))
-                for dex in dexs
-            ]
+        tasks = tuple(
+            asyncio.create_task(self.perp_account_state(account_address, dex))
+            for dex in dexs
+        )
+        await _wait_for_tasks(tasks)
         positions: list[Position] = []
         for task in tasks:
-            positions.extend(
-                entry["position"] for entry in task.result()["assetPositions"]
-            )
+            state = task.result()
+            entries = _expect_list(state.get("assetPositions"), "assetPositions")
+            for value in entries:
+                entry = _expect_object(value, "assetPositions")
+                position = _expect_object(
+                    entry.get("position"), "assetPositions position"
+                )
+                positions.append(cast(Position, position))
         return positions
 
 

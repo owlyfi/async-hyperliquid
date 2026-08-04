@@ -60,13 +60,20 @@ class StubSession:
         self.timeout: ClientTimeout | None = None
         self.url: str | None = None
         self.payload: JsonObject | None = None
+        self.allow_redirects: bool | None = None
 
     def post(
-        self, url: str, *, json: JsonObject, timeout: ClientTimeout
+        self,
+        url: str,
+        *,
+        json: JsonObject,
+        timeout: ClientTimeout,
+        allow_redirects: bool,
     ) -> StubResponse:
         self.url = url
         self.payload = json
         self.timeout = timeout
+        self.allow_redirects = allow_redirects
         return self.response
 
 
@@ -84,6 +91,7 @@ async def test_post_json_decodes_once_and_applies_timeout_to_borrowed_session() 
     assert response.json_calls == 1
     assert session.url == "https://example.test/info"
     assert session.payload is payload
+    assert session.allow_redirects is False
     assert session.timeout is not None
     assert session.timeout.total == 15
     assert session.timeout.connect == 3
@@ -94,14 +102,23 @@ async def test_post_json_decodes_once_and_applies_timeout_to_borrowed_session() 
     "timeout",
     [
         ClientTimeout(total=None, connect=3, sock_read=10),
-        ClientTimeout(total=15, connect=None, sock_read=10),
-        ClientTimeout(total=15, connect=3, sock_read=None),
         ClientTimeout(total=float("inf"), connect=3, sock_read=10),
+        ClientTimeout(total=15, connect=0),
+        ClientTimeout(total=15, sock_connect=float("inf")),
+        ClientTimeout(total=15, sock_read=-1),
     ],
 )
 def test_transport_rejects_unbounded_timeouts(timeout: ClientTimeout) -> None:
     with pytest.raises(ValueError, match="finite"):
         _HttpTransport(timeout=timeout)
+
+
+def test_transport_accepts_a_finite_total_without_phase_budgets() -> None:
+    timeout = ClientTimeout(total=5)
+
+    transport = _HttpTransport(timeout=timeout)
+
+    assert transport._timeout is timeout
 
 
 async def test_non_success_status_is_sanitized_without_decoding_body(
@@ -176,6 +193,34 @@ async def test_invalid_url_is_wrapped_without_exposing_credentials() -> None:
         "signature-secret",
     ):
         assert secret not in rendered
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"type": "allMids"},
+        {"action": {"type": "order"}, "nonce": 1, "signature": {"r": "x"}},
+    ],
+)
+async def test_post_json_never_forwards_payloads_through_redirects(
+    payload: JsonObject,
+) -> None:
+    redirected_requests = 0
+
+    async def redirect(request: web.Request) -> web.Response:
+        nonlocal redirected_requests
+        if request.path == "/target":
+            redirected_requests += 1
+            return web.json_response({"ok": True})
+        return web.Response(status=307, headers={"Location": "/target"})
+
+    async with serve(redirect) as server:
+        async with _HttpTransport() as transport:
+            with pytest.raises(HttpError) as caught:
+                await transport.post_json(str(server.make_url("/source")), payload)
+
+    assert caught.value.status == 307
+    assert redirected_requests == 0
 
 
 async def test_total_timeout_is_enforced() -> None:

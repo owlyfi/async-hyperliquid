@@ -29,8 +29,11 @@ def _validate_endpoint_url(url: str) -> str:
 
 
 def _validate_timeout(timeout: ClientTimeout) -> None:
-    for value in (timeout.total, timeout.connect, timeout.sock_read):
-        if value is None or not math.isfinite(value) or value <= 0:
+    total = timeout.total
+    if total is None or not math.isfinite(total) or total <= 0:
+        raise ValueError("timeout budgets must be finite and greater than zero")
+    for value in (timeout.connect, timeout.sock_connect, timeout.sock_read):
+        if value is not None and (not math.isfinite(value) or value <= 0):
             raise ValueError("timeout budgets must be finite and greater than zero")
 
 
@@ -93,7 +96,7 @@ class _HttpTransport:
         started = monotonic() if _logger.isEnabledFor(logging.DEBUG) else None
         try:
             async with session.post(
-                url, json=payload, timeout=self._timeout
+                url, json=payload, timeout=self._timeout, allow_redirects=False
             ) as response:
                 if started is not None:
                     _logger.debug(

@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import inspect
 import json
 from pathlib import Path
+import subprocess
+import sys
 from typing import cast
 
 from aiohttp import web
@@ -286,3 +288,26 @@ def test_public_info_client_has_no_signing_capability_or_dependency() -> None:
         not module.startswith(("eth_account", "hl_web3")) for module in imported_modules
     )
     assert annotation_violations == []
+
+
+def test_root_info_import_does_not_load_the_signing_stack() -> None:
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "from async_hyperliquid import InfoClient\n"
+                "loaded = sys.modules\n"
+                "signing = any(name == 'eth_account' or "
+                "name.startswith('eth_account.') for name in loaded)\n"
+                "signing |= 'async_hyperliquid._signing' in loaded\n"
+                "print(signing)\n"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert probe.stdout.strip() == "False"

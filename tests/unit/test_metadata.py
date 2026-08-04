@@ -84,21 +84,29 @@ class MetadataTransport:
         self.counts: dict[str, int] = {}
         self.started = asyncio.Event()
         self.release = asyncio.Event()
+        self.cancelled_types: set[str] = set()
         self.block_type: str | None = None
         self.fail_type: str | None = None
+        self.fail_types: set[str] = set()
+        self.malformed_positions = False
         self.perp_dexes = deepcopy(PERP_DEXES)
         self.all_perp_metas = deepcopy(ALL_PERP_METAS)
         self.spot_meta = deepcopy(SPOT_META)
         self.perp_context = deepcopy(BASE_CONTEXT)
         self.spot_context = deepcopy(SPOT_CONTEXT)
+        self.all_mids_dexes: list[str] = []
 
     async def post_json(self, url: str, payload: JsonObject) -> JsonValue:
         request_type = cast(str, payload["type"])
         self.counts[request_type] = self.counts.get(request_type, 0) + 1
         if request_type == self.block_type:
             self.started.set()
-            await self.release.wait()
-        if request_type == self.fail_type:
+            try:
+                await self.release.wait()
+            except asyncio.CancelledError:
+                self.cancelled_types.add(request_type)
+                raise
+        if request_type == self.fail_type or request_type in self.fail_types:
             raise ProtocolError(f"{request_type} failed")
         if request_type == "perpDexs":
             return deepcopy(self.perp_dexes)
@@ -114,8 +122,11 @@ class MetadataTransport:
         if request_type == "spotMetaAndAssetCtxs":
             return [deepcopy(SPOT_META), [deepcopy(self.spot_context)]]
         if request_type == "allMids":
+            self.all_mids_dexes.append(cast(str, payload["dex"]))
             return {"BTC": "100", "xyz:NVDA": "201", "@0": "2.1"}
         if request_type == "clearinghouseState":
+            if self.malformed_positions:
+                return {"assetPositions": [{}]}
             return {
                 "assetPositions": [
                     {
@@ -184,6 +195,61 @@ async def test_metadata_builds_exact_asset_and_alias_lookups() -> None:
     assert await info.token_id("PURR/USDC") == "0x01"
 
 
+async def test_spot_token_metadata_returns_an_isolated_snapshot() -> None:
+    info = build_info(MetadataTransport())
+
+    token = await info.spot_token_metadata("@0")
+    token["name"] = "CORRUPTED"
+    token["tokenId"] = "0xdead"
+
+    fresh = await info.spot_token_metadata("@0")
+
+    assert fresh is not token
+    assert fresh["name"] == "PURR"
+    assert fresh["tokenId"] == "0x01"
+    assert await info.token_id("@0") == "0x01"
+
+
+@pytest.mark.parametrize(
+    "field", ["isCanonical", "weiDecimals", "evmContract", "fullName"]
+)
+async def test_spot_token_requires_every_published_field(field: str) -> None:
+    transport = MetadataTransport()
+    token = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[0])
+    del token[field]
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError, match=field):
+        await info.refresh_metadata()
+
+    assert info._metadata is None
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("index", -1),
+        ("isCanonical", "yes"),
+        ("szDecimals", -1),
+        ("weiDecimals", -1),
+        ("evmContract", 1),
+        ("fullName", 1),
+    ],
+)
+async def test_spot_token_rejects_invalid_published_field(
+    field: str, invalid: JsonValue
+) -> None:
+    transport = MetadataTransport()
+    token = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[0])
+    token[field] = invalid
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError, match=field):
+        await info.refresh_metadata()
+
+    assert info._metadata is None
+
+
 async def test_price_and_account_helpers_use_info_only() -> None:
     transport = MetadataTransport()
     info = build_info(transport)
@@ -199,6 +265,75 @@ async def test_price_and_account_helpers_use_info_only() -> None:
     assert set(state["dexs"]) == {"xyz"}
     assert state["spot"] == {"balances": []}
     assert [position["coin"] for position in positions] == ["BTC", "BTC"]
+
+
+async def test_mid_prices_fetch_once_per_distinct_dex() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+
+    prices = await info._mid_prices(("BTC", "BTC", "xyz:NVDA", "PURR/USDC"))
+
+    assert prices == (100.0, 100.0, 201.0, 2.1)
+    assert transport.all_mids_dexes == ["", "xyz"]
+
+
+async def test_mid_prices_preserve_the_underlying_request_error() -> None:
+    transport = MetadataTransport()
+    transport.fail_type = "allMids"
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError, match="allMids failed"):
+        await info._mid_prices(("BTC", "xyz:NVDA"))
+
+
+@pytest.mark.parametrize("method_name", ["account_state", "positions"])
+async def test_public_fanout_preserves_the_underlying_request_error(
+    method_name: str,
+) -> None:
+    transport = MetadataTransport()
+    transport.fail_type = "clearinghouseState"
+    info = build_info(transport)
+
+    method = getattr(info, method_name)
+    with pytest.raises(ProtocolError, match="clearinghouseState failed"):
+        await method(ADDRESS, perp_dexes=("", "xyz"))
+
+
+async def test_metadata_fanout_preserves_a_library_error_when_multiple_calls_fail() -> (
+    None
+):
+    transport = MetadataTransport()
+    transport.fail_types = {"perpDexs", "allPerpMetas"}
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError):
+        await info.refresh_metadata()
+
+
+async def test_failed_metadata_fanout_cancels_blocked_sibling() -> None:
+    transport = MetadataTransport()
+    transport.block_type = "allPerpMetas"
+    transport.fail_type = "perpDexs"
+    info = build_info(transport)
+
+    refresh = asyncio.create_task(info.refresh_metadata())
+    await transport.started.wait()
+    try:
+        with pytest.raises(ProtocolError, match="perpDexs failed"):
+            await refresh
+        await asyncio.sleep(0)
+        assert transport.cancelled_types == {"allPerpMetas"}
+    finally:
+        transport.release.set()
+
+
+async def test_positions_rejects_malformed_provider_entries() -> None:
+    transport = MetadataTransport()
+    transport.malformed_positions = True
+    info = build_info(transport)
+
+    with pytest.raises(ProtocolError, match="assetPositions"):
+        await info.positions(ADDRESS)
 
 
 async def test_twenty_cold_readers_share_one_metadata_fetch_set() -> None:

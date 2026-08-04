@@ -59,8 +59,8 @@ class MarketOrder:
 
     def __post_init__(self) -> None:
         _require_positive_finite("size", self.size)
-        if not math.isfinite(self.slippage) or not 0 <= self.slippage <= 1:
-            raise ValueError("slippage must be finite and between zero and one")
+        if not math.isfinite(self.slippage) or not 0 <= self.slippage < 1:
+            raise ValueError("slippage must be finite and in [0, 1)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,6 +445,45 @@ class CancelSuccess(TypedDict):
     response: CancelResponse
 
 
+class TwapRunningData(TypedDict):
+    twapId: int
+
+
+class TwapRunningStatus(TypedDict):
+    running: TwapRunningData
+
+
+TwapOrderStatus: TypeAlias = TwapRunningStatus | ErrorStatus
+
+
+class TwapOrderResponseData(TypedDict):
+    status: TwapOrderStatus
+
+
+class TwapOrderResponse(TypedDict):
+    type: Literal["twapOrder"]
+    data: TwapOrderResponseData
+
+
+class TwapOrderSuccess(TypedDict):
+    status: Literal["ok"]
+    response: TwapOrderResponse
+
+
+class TwapCancelResponseData(TypedDict):
+    status: CancelStatus
+
+
+class TwapCancelResponse(TypedDict):
+    type: Literal["twapCancel"]
+    data: TwapCancelResponseData
+
+
+class TwapCancelSuccess(TypedDict):
+    status: Literal["ok"]
+    response: TwapCancelResponse
+
+
 class DefaultResponse(TypedDict):
     type: Literal["default"]
 
@@ -461,6 +500,13 @@ class ExchangeError(TypedDict):
 
 PlaceOrderResponse: TypeAlias = PlaceOrderSuccess | ExchangeError
 CancelOrderResponse: TypeAlias = CancelSuccess | ExchangeError
+PlaceTwapResponse: TypeAlias = TwapOrderSuccess | ExchangeError
+CancelTwapResponse: TypeAlias = TwapCancelSuccess | ExchangeError
+DefaultActionResponse: TypeAlias = DefaultSuccess | ExchangeError
 ActionResponse: TypeAlias = (
-    PlaceOrderSuccess | CancelSuccess | DefaultSuccess | ExchangeError
+    PlaceOrderSuccess
+    | CancelSuccess
+    | TwapOrderSuccess
+    | TwapCancelSuccess
+    | DefaultActionResponse
 )

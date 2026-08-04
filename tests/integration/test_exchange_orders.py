@@ -18,9 +18,11 @@ async def test_testnet_limit_order_can_be_reconciled_and_cancelled(
     first = response["response"]["data"]["statuses"][0]
     assert "resting" in first, f"test order did not rest: {first}"
     resting = cast(RestingStatus, first)
+    order_id = resting["resting"]["oid"]
 
-    cancelled = await hl.exchange.cancel_orders(
-        (CancelOrder("BTC", resting["resting"]["oid"]),)
-    )
+    try:
+        assert order_id > 0
+    finally:
+        cancelled = await hl.exchange.cancel_orders((CancelOrder("BTC", order_id),))
 
     assert cancelled["status"] == "ok"

@@ -71,6 +71,11 @@ def test_market_order_rejects_invalid_slippage(slippage: float) -> None:
         MarketOrder(coin="ETH", side=Side.BUY, size=0.1, slippage=slippage)
 
 
+def test_sell_market_order_rejects_slippage_that_makes_a_zero_price() -> None:
+    with pytest.raises(ValueError, match="slippage"):
+        MarketOrder(coin="ETH", side=Side.SELL, size=0.1, slippage=1.0)
+
+
 def test_cancel_by_cloid_keeps_the_validated_string() -> None:
     cloid = Cloid("0x" + "12" * 16)
 

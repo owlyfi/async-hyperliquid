@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contracts, plus the `py.typed` marker.
 - Add independent `info_url` and `exchange_url` routing while keeping `Network`
   as the sole signing-domain selector.
+- Add an immutable `vault_address` execution target for vault and subaccount
+  signing, envelopes, account queries, and transfer-specific fields.
+- Add exact `twapOrder` and `twapCancel` response contracts and return types.
 - Add deterministic lifecycle, finite timeout budgets, cancellation-safe atomic
   metadata snapshots, and explicit `IndeterminateActionError` reconciliation
   semantics.
@@ -29,9 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InfoClient` for read-only access.
 - Batch order preparation performs one metadata snapshot lookup, one signature,
   and one HTTP POST.
-- Require Python 3.11+ and upgrade aiohttp to 3.14.3, msgpack to 1.2.1,
-  eth-account to 0.13.7, eth-utils to the resolver-compatible 5.3.1, and the
-  development signing oracle to the official Hyperliquid SDK 0.24.0.
+- Batch market and close orders fetch `allMids` once per distinct DEX.
+- Pin the development environment to Python 3.12 with uv and upgrade aiohttp to
+  3.14.3, msgpack to 1.2.1, eth-account to 0.13.7, eth-utils to the
+  resolver-compatible 5.3.1, and the development signing oracle to the official
+  Hyperliquid SDK 0.24.0.
 - Keep `coincurve` as a runtime dependency after an isolated end-to-end
   benchmark showed approximately 94% lower signing latency than the native
   fallback.
@@ -43,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove mutable `base_url` routing and URL-derived signing-network decisions.
 - Remove embedded EVM support and the `hl-web3` dependency; EVM users should
   construct `hl-web3` directly.
-- Remove Python 3.10 support.
+- Remove the broken legacy benchmark visualizer, its generated image, and its
+  unused plotting dependency group.
 
 ### Fixed
 
@@ -59,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before signing.
 - Reject malformed JSON and mismatched protocol response shapes at the
   transport/client boundary without leaking request signatures.
+- Keep root-scoped actions on the main account while preserving vault targets
+  for orders, cancels, account queries, and protocol-specific transfers.
+- Reject malformed signed success acknowledgements, zero-sized TWAP wire
+  values, and HTTP redirects before they can be treated as trusted outcomes.
+- Isolate public metadata mappings from the internal snapshot and keep
+  credential-free root imports free of the signing stack.
 
 ## [0.5.0] - 2026-04-20
 

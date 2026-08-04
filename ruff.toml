@@ -33,7 +33,7 @@ fix = true
 show-fixes = true
 line-length = 88
 indent-width = 4
-target-version = "py310"
+target-version = "py312"
 
 [lint.isort]
 case-sensitive = true

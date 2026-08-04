@@ -67,5 +67,49 @@
       "type": "order"
     },
     "status": "ok"
+  },
+  "twap_cancel_error": {
+    "response": {
+      "data": {
+        "status": {
+          "error": "TWAP was never placed, already canceled, or filled."
+        }
+      },
+      "type": "twapCancel"
+    },
+    "status": "ok"
+  },
+  "twap_cancel_success": {
+    "response": {
+      "data": {
+        "status": "success"
+      },
+      "type": "twapCancel"
+    },
+    "status": "ok"
+  },
+  "twap_order_error": {
+    "response": {
+      "data": {
+        "status": {
+          "error": "Invalid TWAP duration: 1 min(s)"
+        }
+      },
+      "type": "twapOrder"
+    },
+    "status": "ok"
+  },
+  "twap_order_running": {
+    "response": {
+      "data": {
+        "status": {
+          "running": {
+            "twapId": 77738308
+          }
+        }
+      },
+      "type": "twapOrder"
+    },
+    "status": "ok"
   }
 }

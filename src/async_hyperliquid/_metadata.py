@@ -43,6 +43,25 @@ def _require_int(value: JsonValue | None, field: str) -> int:
     return value
 
 
+def _require_non_negative_int(value: JsonValue | None, field: str) -> int:
+    number = _require_int(value, field)
+    if number < 0:
+        raise ProtocolError(f"metadata field {field} must be non-negative")
+    return number
+
+
+def _require_bool(value: JsonValue | None, field: str) -> bool:
+    if type(value) is not bool:
+        raise ProtocolError(f"metadata field {field} must be a boolean")
+    return value
+
+
+def _require_optional_str(value: JsonValue, field: str) -> str | None:
+    if value is not None and not isinstance(value, str):
+        raise ProtocolError(f"metadata field {field} must be a string or null")
+    return value
+
+
 def _dex_offsets(dex_names: tuple[str, ...]) -> dict[str, int]:
     if not dex_names or dex_names[0] != "":
         raise ProtocolError("perpDexs must start with the base dex")
@@ -116,10 +135,22 @@ def _build_metadata_snapshot(
     tokens_by_index: dict[int, SpotToken] = {}
     for token_value in token_objects:
         token = _require_object(token_value, "spotMeta.tokens[]")
-        index = _require_int(token.get("index"), "spotMeta.tokens[].index")
+        index = _require_non_negative_int(token.get("index"), "spotMeta.tokens[].index")
         _require_str(token.get("name"), "spotMeta.tokens[].name")
-        _require_int(token.get("szDecimals"), "spotMeta.tokens[].szDecimals")
+        _require_bool(token.get("isCanonical"), "spotMeta.tokens[].isCanonical")
+        _require_non_negative_int(
+            token.get("szDecimals"), "spotMeta.tokens[].szDecimals"
+        )
+        _require_non_negative_int(
+            token.get("weiDecimals"), "spotMeta.tokens[].weiDecimals"
+        )
         _require_str(token.get("tokenId"), "spotMeta.tokens[].tokenId")
+        for field in ("evmContract", "fullName"):
+            if field not in token:
+                raise ProtocolError(
+                    f"metadata field spotMeta.tokens[].{field} is required"
+                )
+            _require_optional_str(token[field], f"spotMeta.tokens[].{field}")
         if index in tokens_by_index:
             raise ProtocolError("spotMeta contains duplicate token indexes")
         tokens_by_index[index] = cast(SpotToken, token)

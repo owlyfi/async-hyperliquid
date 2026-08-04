@@ -71,6 +71,10 @@ def test_exchange_fixture_freezes_all_order_and_cancel_status_shapes() -> None:
         "order_error",
         "order_filled",
         "order_resting",
+        "twap_cancel_error",
+        "twap_cancel_success",
+        "twap_order_error",
+        "twap_order_running",
     }
 
 

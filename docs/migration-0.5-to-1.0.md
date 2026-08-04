@@ -55,6 +55,7 @@ After:
 client = AsyncHyperliquid(
     account_address=address,
     signing_key=api_key,
+    vault_address=vault,
     network=Network.MAINNET,
     perp_dexes=("", "xyz"),
 )
@@ -70,10 +71,17 @@ client = AsyncHyperliquid(
 | `perp_dexs: list[str]` | `perp_dexes: tuple[str, ...]` |
 | `connector` | construct an `aiohttp.ClientSession` with that connector and pass `session=` |
 | `enable_evm`, `evm_rpc_url`, `private_key` | use `hl-web3` directly |
-| client-wide `vault` / mutable `expires` | pass supported action-scoped arguments explicitly |
+| client-wide `vault` | immutable constructor-time `vault_address` |
+| mutable `expires` | pass `expires_after=` to each supported action |
 
 `Network` selects the signing domain and the official URL defaults. Neither
 custom URL can change the signing domain.
+
+`vault_address` is the immutable execution target for the client. It is
+carried through execution-scoped L1 signing/envelopes and position lookup, and
+through the protocol-specific subaccount fields used by USD class and asset
+transfers. Root-scoped administration actions still sign as the main account.
+Omitting it targets the main account everywhere.
 
 ## Read-only clients no longer need fake credentials
 
@@ -217,6 +225,20 @@ URLs are independent and exact:
 The application remains responsible for provider headers, fallback, health
 checks, and routing policy.
 
+A custom Exchange URL is a trusted execution boundary: the provider sees
+replayable signed envelopes and can delay, censor, or fabricate a well-shaped
+acknowledgement. A custom Info endpoint attached to `AsyncHyperliquid` is also
+trusted order-construction input because its metadata and prices determine the
+asset ids, precision, and limit prices used in signed actions. Reconcile signed
+outcomes through an independently trusted Info endpoint. `expires_after`
+applies only to L1 methods that expose it; it does not add expiry semantics to
+user-signed fund actions.
+
+Because `.info` and `.exchange` share the supplied session, never use
+session-wide authorization headers or cookies across different origins.
+Authenticate with host-scoped aiohttp middleware, or use separately owned
+clients and sessions.
+
 ## Lifecycle
 
 0.5 could create `ClientSession` during synchronous construction. Version 1
@@ -241,6 +263,12 @@ Reconcile the outcome through Info before submitting a replacement. Depending
 on the action, use `order_status`, `open_orders`, `user_fills`, account state,
 or the corresponding action-specific Info query.
 
+Nonce monotonicity is guaranteed only within one `ExchangeClient`. Keep exactly
+one live Exchange owner per API wallet private key. If several processes or
+services must share a key, the application must serialize submissions and
+coordinate the nonce stream; version 1 does not add a distributed nonce
+service.
+
 ## Embedded EVM removal
 
 The REST client no longer imports or initializes `hl-web3`. Existing EVM users
@@ -262,15 +290,16 @@ The later Copycat v1 migration should:
    proving no remaining call needs Exchange capability;
 3. pass all endpoints at construction and remove `info.base_url` mutation and
    session reassignment;
-4. construct its authenticated trading client with `network=Network.*` and use
-   `.info` / `.exchange` explicitly;
+4. construct its authenticated trading client with `network=Network.*`, pass
+   the existing vault or subaccount as `vault_address=`, and use `.info` /
+   `.exchange` explicitly;
 5. preserve local-first, official-Info fallback and supported-request
    whitelisting in Copycat, not in this library;
 6. add an Exchange override only if Copycat explicitly configures a compatible
    third-party Exchange provider;
 7. validate local Info success, official fallback, unsupported local request
-   rejection, signing parity, testnet order/cancel, reinitialization, and
-   deterministic session closure.
+   rejection, vault/subaccount signing and routing parity, testnet
+   order/cancel, reinitialization, and deterministic session closure.
 
 Keep the dependency guard, v1 API migration, and unrelated bot changes in
 separate Copycat commits.

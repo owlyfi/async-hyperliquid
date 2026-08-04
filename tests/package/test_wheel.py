@@ -13,10 +13,16 @@ WHEELS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.whl"))
 SDISTS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.tar.gz"))
 
 
-def test_project_requires_python_3_11_without_an_artificial_upper_bound() -> None:
+def test_project_uses_only_the_uv_python_pin() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    classifiers = pyproject["project"]["classifiers"]
 
-    assert pyproject["project"]["requires-python"] == ">=3.11"
+    assert "requires-python" not in pyproject["project"]
+    assert (ROOT / ".python-version").read_text().strip() == "3.12"
+    assert not any(
+        classifier.startswith("Programming Language :: Python :: 3.")
+        for classifier in classifiers
+    )
     assert "poetry" not in pyproject["tool"]
 
 
@@ -53,6 +59,12 @@ def test_built_wheel_contains_inline_typing_marker() -> None:
     assert len(WHEELS) == 1
     with zipfile.ZipFile(WHEELS[0]) as wheel:
         assert "async_hyperliquid/py.typed" in wheel.namelist()
+        metadata_path = next(
+            name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")
+        )
+        metadata = wheel.read(metadata_path).decode()
+
+    assert "\nRequires-Python:" not in metadata
 
 
 @pytest.mark.skipif(

@@ -1,13 +1,13 @@
-import asyncio
 import json
 import logging
 import math
 from collections.abc import Sequence
 from decimal import ROUND_DOWN, Decimal
 from time import time_ns
-from typing import Literal, Self, cast, overload
+from typing import Literal, cast, overload
 
 from eth_account.signers.local import LocalAccount
+from eth_utils import is_address, to_normalized_address
 
 from ._http import _HttpTransport, _validate_endpoint_url
 from ._signing import (
@@ -59,7 +59,9 @@ from .types.exchange import (
     CancelAction,
     CancelByCloidAction,
     CancelOrderResponse,
+    CancelTwapResponse,
     CreateSubAccountAction,
+    DefaultActionResponse,
     EncodedBuilderFee,
     EncodedCancel,
     EncodedCancelByCloid,
@@ -70,6 +72,7 @@ from .types.exchange import (
     ModifyAction,
     OrderAction,
     PlaceOrderResponse,
+    PlaceTwapResponse,
     ReserveRequestWeightAction,
     ScheduleCancelAction,
     SetReferrerAction,
@@ -88,7 +91,17 @@ __all__ = ["ExchangeClient"]
 
 _HYPE_DECIMALS = 8
 _USD_DECIMALS = 6
-_ResponseType = Literal["order", "cancel", "default"]
+_ResponseType = Literal["order", "cancel", "twapOrder", "twapCancel", "default"]
+_ROOT_SCOPED_ACTIONS = frozenset(
+    {
+        "createSubAccount",
+        "evmUserModify",
+        "reserveRequestWeight",
+        "setReferrer",
+        "vaultTransfer",
+    }
+)
+_ACTION_SCOPED_TRANSFERS = frozenset({"sendAsset", "usdClassTransfer"})
 
 
 def _format_token_amount(amount: float, decimals: int) -> str:
@@ -121,6 +134,57 @@ def _exact_signed_units(amount: float, decimals: int) -> int:
     return int(integral)
 
 
+def _is_error_status(value: JsonValue) -> bool:
+    return (
+        isinstance(value, dict) and "error" in value and isinstance(value["error"], str)
+    )
+
+
+def _is_order_status(value: JsonValue) -> bool:
+    if not isinstance(value, dict):
+        return False
+    discriminators = tuple(
+        key for key in ("error", "resting", "filled") if key in value
+    )
+    if len(discriminators) != 1:
+        return False
+    if discriminators[0] == "error":
+        return _is_error_status(value)
+    if discriminators[0] == "resting":
+        resting = value["resting"]
+        return (
+            isinstance(resting, dict)
+            and "oid" in resting
+            and type(resting["oid"]) is int
+        )
+    if discriminators[0] == "filled":
+        filled = value["filled"]
+        return (
+            isinstance(filled, dict)
+            and all(key in filled for key in ("avgPx", "oid", "totalSz"))
+            and isinstance(filled["avgPx"], str)
+            and type(filled["oid"]) is int
+            and isinstance(filled["totalSz"], str)
+        )
+    return False
+
+
+def _is_twap_order_status(value: JsonValue) -> bool:
+    if not isinstance(value, dict):
+        return False
+    discriminators = tuple(key for key in ("error", "running") if key in value)
+    if len(discriminators) != 1:
+        return False
+    if discriminators[0] == "error":
+        return _is_error_status(value)
+    running = value["running"]
+    return (
+        isinstance(running, dict)
+        and "twapId" in running
+        and type(running["twapId"]) is int
+    )
+
+
 def _expect_action_response(
     value: JsonValue, expected_type: _ResponseType
 ) -> ActionResponse:
@@ -138,6 +202,33 @@ def _expect_action_response(
         raise ProtocolError("exchange response has an invalid status")
     if response.get("type") != expected_type:
         raise ProtocolError("exchange response has an unexpected type")
+
+    if expected_type == "default":
+        return cast(ActionResponse, value)
+
+    data = response.get("data")
+    if not isinstance(data, dict):
+        raise ProtocolError("exchange response has malformed data")
+
+    if expected_type in {"order", "cancel"}:
+        statuses = data.get("statuses")
+        if not isinstance(statuses, list) or not statuses:
+            raise ProtocolError("exchange response has malformed statuses")
+        if expected_type == "order":
+            valid = all(_is_order_status(status) for status in statuses)
+        else:
+            valid = all(
+                status == "success" or _is_error_status(status) for status in statuses
+            )
+    else:
+        twap_status = data.get("status")
+        valid = (
+            _is_twap_order_status(twap_status)
+            if expected_type == "twapOrder"
+            else twap_status == "success" or _is_error_status(twap_status)
+        )
+    if not valid:
+        raise ProtocolError("exchange response has a malformed acknowledgement")
     return cast(ActionResponse, value)
 
 
@@ -153,44 +244,49 @@ class ExchangeClient:
         "_network",
         "_perp_dexes",
         "_transport",
+        "_vault_address",
     )
 
     _transport: _HttpTransport
     _info: InfoClient
     _account: LocalAccount
     _account_address: str
+    _vault_address: str | None
     _network: Network
     _perp_dexes: tuple[str, ...]
     _exchange_url: str
     _last_nonce: int
 
-    def __init__(self) -> None:
-        raise TypeError("ExchangeClient is created by AsyncHyperliquid")
-
-    @classmethod
-    def _from_transport(
-        cls,
+    def __init__(
+        self,
         transport: _HttpTransport,
         info: InfoClient,
         account: LocalAccount,
         *,
         account_address: str,
+        vault_address: str | None,
         network: Network,
         exchange_url: str | None = None,
         perp_dexes: tuple[str, ...] = ("",),
-    ) -> Self:
-        client = cls.__new__(cls)
-        client._transport = transport
-        client._info = info
-        client._account = account
-        client._account_address = account_address
-        client._network = network
-        client._perp_dexes = perp_dexes
-        client._exchange_url = _validate_endpoint_url(
+    ) -> None:
+        if not is_address(account_address):
+            raise ValueError("account_address must be a 20-byte hex address")
+        if vault_address is not None and not is_address(vault_address):
+            raise ValueError("vault_address must be a 20-byte hex address")
+
+        self._transport = transport
+        self._info = info
+        self._account = account
+        self._account_address = to_normalized_address(account_address)
+        self._vault_address = (
+            None if vault_address is None else to_normalized_address(vault_address)
+        )
+        self._network = network
+        self._perp_dexes = perp_dexes
+        self._exchange_url = _validate_endpoint_url(
             network.exchange_url if exchange_url is None else exchange_url
         )
-        client._last_nonce = 0
-        return client
+        self._last_nonce = 0
 
     @property
     def exchange_url(self) -> str:
@@ -234,9 +330,7 @@ class ExchangeClient:
         commands = tuple(orders)
         if not commands:
             raise ValueError("orders must not be empty")
-        mids = await asyncio.gather(
-            *(self._info.mid_price(order.coin) for order in commands)
-        )
+        mids = await self._info._mid_prices(tuple(order.coin for order in commands))
         limits = tuple(
             LimitOrder(
                 coin=order.coin,
@@ -261,6 +355,7 @@ class ExchangeClient:
         nonce: int,
         expected_type: _ResponseType,
         *,
+        vault_address: str | None,
         expires_after: int | None = None,
     ) -> ActionResponse:
         envelope: ActionEnvelope = {
@@ -268,10 +363,12 @@ class ExchangeClient:
             "nonce": nonce,
             "signature": signature,
         }
+        action_type = cast(JsonObject, action)["type"]
+        if vault_address is not None:
+            envelope["vaultAddress"] = vault_address
         if expires_after is not None:
             envelope["expiresAfter"] = expires_after
 
-        action_type = cast(JsonObject, action)["type"]
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "Submitting signed action type=%s nonce=%s expires=%s",
@@ -308,11 +405,29 @@ class ExchangeClient:
     @overload
     async def _submit_action(
         self,
+        action: TwapOrderAction,
+        expected_type: Literal["twapOrder"],
+        *,
+        expires_after: int | None = None,
+    ) -> PlaceTwapResponse: ...
+
+    @overload
+    async def _submit_action(
+        self,
+        action: TwapCancelAction,
+        expected_type: Literal["twapCancel"],
+        *,
+        expires_after: int | None = None,
+    ) -> CancelTwapResponse: ...
+
+    @overload
+    async def _submit_action(
+        self,
         action: ExchangeAction,
         expected_type: Literal["default"],
         *,
         expires_after: int | None = None,
-    ) -> ActionResponse: ...
+    ) -> DefaultActionResponse: ...
 
     async def _submit_action(
         self,
@@ -322,26 +437,45 @@ class ExchangeClient:
         expires_after: int | None = None,
     ) -> ActionResponse:
         nonce = self._next_nonce()
+        action_type = cast(str, cast(JsonObject, action)["type"])
+        vault_address = (
+            None if action_type in _ROOT_SCOPED_ACTIONS else self._vault_address
+        )
         signature = sign_exchange_action(
             self._account,
             cast(JsonObject, action),
-            None,
+            vault_address,
             nonce,
             self._network.signature_source,
             expires_after,
         )
         return await self._post_envelope(
-            action, signature, nonce, expected_type, expires_after=expires_after
+            action,
+            signature,
+            nonce,
+            expected_type,
+            vault_address=vault_address,
+            expires_after=expires_after,
         )
 
     async def _submit_user_action(
         self, action: JsonObject, spec: _UserSigningSpec, nonce: int
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         wire_action, signature = _sign_user_action(
             self._account, action, spec, self._network
         )
-        return await self._post_envelope(
-            cast(ExchangeAction, wire_action), signature, nonce, "default"
+        vault_address = (
+            None if action["type"] in _ACTION_SCOPED_TRANSFERS else self._vault_address
+        )
+        return cast(
+            DefaultActionResponse,
+            await self._post_envelope(
+                cast(ExchangeAction, wire_action),
+                signature,
+                nonce,
+                "default",
+                vault_address=vault_address,
+            ),
         )
 
     async def place_limit_order(
@@ -438,7 +572,7 @@ class ExchangeClient:
 
     async def schedule_cancel(
         self, cancel_at: int | None = None, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = ScheduleCancelAction(type="scheduleCancel")
         if cancel_at is not None:
             if cancel_at < 0:
@@ -453,7 +587,7 @@ class ExchangeClient:
         *,
         is_cross: bool = True,
         expires_after: int | None = None,
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         if leverage <= 0:
             raise ValueError("leverage must be greater than zero")
         action = UpdateLeverageAction(
@@ -466,7 +600,7 @@ class ExchangeClient:
 
     async def update_isolated_margin(
         self, coin: str, amount: float, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = UpdateIsolatedMarginAction(
             type="updateIsolatedMargin",
             asset=await self._info.asset_id(coin),
@@ -485,32 +619,39 @@ class ExchangeClient:
         reduce_only: bool = False,
         randomize: bool = False,
         expires_after: int | None = None,
-    ) -> ActionResponse:
+    ) -> PlaceTwapResponse:
         if minutes <= 0:
             raise ValueError("minutes must be greater than zero")
         if not math.isfinite(size) or size <= 0:
             raise ValueError("size must be finite and greater than zero")
         asset, size_decimals = await self._info._market_info(coin)
+        rounded_size = _round_float(size, size_decimals)
+        if rounded_size == 0:
+            raise ValueError("size is below market precision")
         encoded = EncodedTwapOrder(
             a=asset,
             b=side is Side.BUY,
-            s=_wire_float(_round_float(size, size_decimals)),
+            s=_wire_float(rounded_size),
             r=reduce_only,
             m=minutes,
             t=randomize,
         )
         action = TwapOrderAction(type="twapOrder", twap=encoded)
-        return await self._submit_action(action, "default", expires_after=expires_after)
+        return await self._submit_action(
+            action, "twapOrder", expires_after=expires_after
+        )
 
     async def cancel_twap(
         self, coin: str, twap_id: int, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> CancelTwapResponse:
         if twap_id < 0:
             raise ValueError("twap_id must not be negative")
         action = TwapCancelAction(
             type="twapCancel", a=await self._info.asset_id(coin), t=twap_id
         )
-        return await self._submit_action(action, "default", expires_after=expires_after)
+        return await self._submit_action(
+            action, "twapCancel", expires_after=expires_after
+        )
 
     async def close_positions(
         self,
@@ -525,7 +666,7 @@ class ExchangeClient:
         if requested is not None and not requested:
             return None
         positions = await self._info.positions(
-            self._account_address,
+            self._vault_address or self._account_address,
             perp_dexes=self._perp_dexes if perp_dexes is None else perp_dexes,
         )
         orders: list[MarketOrder] = []
@@ -557,13 +698,13 @@ class ExchangeClient:
 
     async def set_referrer_code(
         self, code: str, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = SetReferrerAction(type="setReferrer", code=code)
         return await self._submit_action(action, "default", expires_after=expires_after)
 
     async def create_sub_account(
         self, name: str, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = CreateSubAccountAction(type="createSubAccount", name=name)
         return await self._submit_action(action, "default", expires_after=expires_after)
 
@@ -574,7 +715,7 @@ class ExchangeClient:
         *,
         is_deposit: bool = True,
         expires_after: int | None = None,
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = VaultTransferAction(
             type="vaultTransfer",
             vaultAddress=vault_address,
@@ -585,7 +726,7 @@ class ExchangeClient:
 
     async def reserve_request_weight(
         self, weight: int, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         if weight < 0:
             raise ValueError("weight must not be negative")
         action = ReserveRequestWeightAction(type="reserveRequestWeight", weight=weight)
@@ -593,11 +734,13 @@ class ExchangeClient:
 
     async def use_big_blocks(
         self, enabled: bool, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = EvmUserModifyAction(type="evmUserModify", usingBigBlocks=enabled)
         return await self._submit_action(action, "default", expires_after=expires_after)
 
-    async def usd_transfer(self, amount: float, destination: str) -> ActionResponse:
+    async def usd_transfer(
+        self, amount: float, destination: str
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "usdSend",
@@ -609,7 +752,7 @@ class ExchangeClient:
 
     async def spot_transfer(
         self, coin: str, amount: float, destination: str
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         token = await self._info.spot_token_metadata(coin)
         nonce = self._next_nonce()
         action: JsonObject = {
@@ -623,7 +766,7 @@ class ExchangeClient:
 
     async def withdraw(
         self, amount: float, *, destination: str | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "withdraw3",
@@ -635,11 +778,14 @@ class ExchangeClient:
 
     async def usd_class_transfer(
         self, amount: float, *, to_perp: bool = False
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
+        formatted_amount = _format_token_amount(amount, 2)
+        if self._vault_address is not None:
+            formatted_amount += f" subaccount:{self._vault_address}"
         action: JsonObject = {
             "type": "usdClassTransfer",
-            "amount": _format_token_amount(amount, 2),
+            "amount": formatted_amount,
             "toPerp": to_perp,
             "nonce": nonce,
         }
@@ -653,8 +799,7 @@ class ExchangeClient:
         *,
         source_dex: str,
         destination_dex: str,
-        from_sub_account: str = "",
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         token = await self._info.spot_token_metadata(coin)
         nonce = self._next_nonce()
         action: JsonObject = {
@@ -664,12 +809,12 @@ class ExchangeClient:
             "destination": destination,
             "sourceDex": source_dex,
             "destinationDex": destination_dex,
-            "fromSubAccount": from_sub_account,
+            "fromSubAccount": self._vault_address or "",
             "nonce": nonce,
         }
         return await self._submit_user_action(action, _SEND_ASSET_SPEC, nonce)
 
-    async def staking_deposit(self, amount: float) -> ActionResponse:
+    async def staking_deposit(self, amount: float) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "cDeposit",
@@ -678,7 +823,7 @@ class ExchangeClient:
         }
         return await self._submit_user_action(action, _STAKING_TRANSFER_SPEC, nonce)
 
-    async def staking_withdraw(self, amount: float) -> ActionResponse:
+    async def staking_withdraw(self, amount: float) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "cWithdraw",
@@ -689,7 +834,7 @@ class ExchangeClient:
 
     async def token_delegate(
         self, validator: str, amount: float, *, undelegate: bool = False
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "tokenDelegate",
@@ -702,7 +847,7 @@ class ExchangeClient:
 
     async def approve_agent(
         self, agent_address: str, *, name: str | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
         signing_action: JsonObject = {
             "type": "approveAgent",
@@ -715,13 +860,20 @@ class ExchangeClient:
         )
         if name is None:
             wire_action.pop("agentName")
-        return await self._post_envelope(
-            cast(ApproveAgentAction, wire_action), signature, nonce, "default"
+        return cast(
+            DefaultActionResponse,
+            await self._post_envelope(
+                cast(ApproveAgentAction, wire_action),
+                signature,
+                nonce,
+                "default",
+                vault_address=self._vault_address,
+            ),
         )
 
     async def approve_builder_fee(
         self, builder_address: str, max_fee_rate: float
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         if not math.isfinite(max_fee_rate) or max_fee_rate < 0:
             raise ValueError("max_fee_rate must be finite and non-negative")
         nonce = self._next_nonce()
@@ -735,7 +887,7 @@ class ExchangeClient:
 
     async def convert_to_multi_sig_user(
         self, authorized_users: Sequence[str], threshold: int
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         users = sorted(authorized_users)
         if threshold <= 0 or threshold > len(users):
             raise ValueError("threshold must select at least one authorized user")
@@ -749,25 +901,23 @@ class ExchangeClient:
             action, _CONVERT_TO_MULTI_SIG_USER_SPEC, nonce
         )
 
-    async def user_dex_abstraction(
-        self, *, enabled: bool, user_address: str | None = None
-    ) -> ActionResponse:
+    async def user_dex_abstraction(self, *, enabled: bool) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "userDexAbstraction",
-            "user": (user_address or self._account_address).lower(),
+            "user": self._vault_address or self._account_address,
             "enabled": enabled,
             "nonce": nonce,
         }
         return await self._submit_user_action(action, _USER_DEX_ABSTRACTION_SPEC, nonce)
 
     async def user_set_abstraction(
-        self, abstraction: UserAbstraction, *, user_address: str | None = None
-    ) -> ActionResponse:
+        self, abstraction: UserAbstraction
+    ) -> DefaultActionResponse:
         nonce = self._next_nonce()
         action: JsonObject = {
             "type": "userSetAbstraction",
-            "user": (user_address or self._account_address).lower(),
+            "user": self._vault_address or self._account_address,
             "abstraction": abstraction.value,
             "nonce": nonce,
         }
@@ -775,13 +925,13 @@ class ExchangeClient:
 
     async def agent_enable_dex_abstraction(
         self, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = AgentEnableDexAbstractionAction(type="agentEnableDexAbstraction")
         return await self._submit_action(action, "default", expires_after=expires_after)
 
     async def agent_set_abstraction(
         self, abstraction: AgentAbstraction, *, expires_after: int | None = None
-    ) -> ActionResponse:
+    ) -> DefaultActionResponse:
         action = AgentSetAbstractionAction(
             type="agentSetAbstraction", abstraction=abstraction.value
         )

@@ -18,7 +18,8 @@ third-party endpoints. One private `_HttpTransport` owns or borrows the
 commands are frozen slotted dataclasses, and metadata is one atomically replaced
 snapshot.
 
-**Tech Stack:** Python 3.11-3.14, `aiohttp`, `msgpack`, `eth-account`,
+**Tech Stack:** Python 3.11+, with 3.12 pinned for development and CI coverage
+through 3.13, plus `aiohttp`, `msgpack`, `eth-account`,
 `eth-utils`, `uv`/`uv_build`, `pytest`, `ruff`, `ty`.
 
 ## Global Constraints
@@ -706,7 +707,8 @@ after the new topology is green. Mixing both makes failures impossible to
 attribute.
 
 - Set package version to `1.0.0rc1` during migration, then `1.0.0` at release.
-- Raise Python floor from 3.10 to 3.11 and test 3.11, 3.12, 3.13 and 3.14.
+- Raise Python floor from 3.10 to 3.11, pin development to 3.12, and test
+  3.11, 3.12 and 3.13.
 - Remove the `<4` Python cap; unsupported future Python versions should fail
   based on evidence, not prophecy.
 - Upgrade `uv_build` from `>=0.7.11,<0.8` to the current tested `0.11` range.
@@ -867,13 +869,13 @@ unbounded total.
 
 **Interfaces**
 
-- Produces: Python 3.11-3.14 package/test matrix and an inline-typed wheel.
+- Produces: Python 3.11-3.13 package/test matrix and an inline-typed wheel.
 - Does not change: runtime dependency versions or endpoint behavior.
 
 - [x] **Step 1:** Set `requires-python = ">=3.11"`, update classifiers, remove
   the stale Poetry block and move `uv_build` to the tested 0.11 range.
 - [x] **Step 2:** Add `py.typed` and a wheel-content assertion.
-- [x] **Step 3:** Add Python 3.11, 3.12, 3.13 and 3.14 CI jobs.
+- [x] **Step 3:** Add Python 3.11, 3.12 and 3.13 CI jobs.
 - [x] **Step 4:** Run `uv build --no-sources`, install the wheel in a clean
   environment and execute import/type smoke tests.
 - [x] **Step 5:** Commit:
@@ -1236,7 +1238,7 @@ No task merges with an open P0/P1 finding.
 - [x] Batch N means one signature and one POST.
 - [ ] Signing/encoding p50 and p95 regression is at most 5% on the fixed runner.
 - [x] README imports execute from the installed wheel.
-- [ ] Python 3.11-3.14 unit, type and package tests pass.
+- [ ] Python 3.11-3.13 unit, type and package tests pass.
 - [ ] Testnet integration suite passes.
 - [x] Migration and rollback documentation is complete.
 
@@ -1246,6 +1248,6 @@ RC-local evidence does not close the three remaining release gates:
   control itself produced signing p95 deltas above 5%; rerun the p95 gate on a
   controlled runner before stable release.
 - Python 3.11 clean wheel/sdist installs pass and local tests pass on 3.12; the
-  configured 3.11-3.14 CI matrix still needs to run on the committed branch.
+  configured 3.11-3.13 CI matrix still needs to run on the committed branch.
 - Signed testnet and independent-provider staging soaks require operator
   credentials/providers and remain intentionally unexecuted.

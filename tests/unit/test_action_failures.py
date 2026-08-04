@@ -1,6 +1,6 @@
 import asyncio
 from copy import deepcopy
-from typing import cast
+from typing import Literal, cast
 
 from eth_account import Account
 import pytest
@@ -10,7 +10,14 @@ from async_hyperliquid._http import _HttpTransport
 from async_hyperliquid.errors import HttpError, IndeterminateActionError, ProtocolError
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.info import InfoClient
-from async_hyperliquid.types import JsonObject, JsonValue, LimitOrder, Network, Side
+from async_hyperliquid.types import (
+    CancelOrder,
+    JsonObject,
+    JsonValue,
+    LimitOrder,
+    Network,
+    Side,
+)
 from async_hyperliquid.types.info import Position, SpotToken
 
 
@@ -57,11 +64,12 @@ class OutcomeTransport:
 
 
 def build_exchange(transport: OutcomeTransport) -> ExchangeClient:
-    return ExchangeClient._from_transport(
+    return ExchangeClient(
         cast(_HttpTransport, transport),
         cast(InfoClient, StubInfo()),
         Account.from_key("0x" + "11" * 32),
         account_address=ADDRESS,
+        vault_address=None,
         network=Network.MAINNET,
     )
 
@@ -116,6 +124,179 @@ async def test_trusted_exchange_error_is_returned() -> None:
     assert await client.place_limit_order(
         LimitOrder("BTC", Side.BUY, 0.01, 100_000)
     ) == {"status": "err", "response": "rejected"}
+
+
+@pytest.mark.parametrize(
+    ("action_kind", "outcome"),
+    [
+        ("order", {"status": "ok", "response": {"type": "order"}}),
+        (
+            "order",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "order",
+                    "data": {"statuses": [{"resting": {"oid": True}}]},
+                },
+            },
+        ),
+        (
+            "order",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "order",
+                    "data": {
+                        "statuses": [
+                            {"filled": {"avgPx": 100, "oid": 1, "totalSz": "0.01"}}
+                        ]
+                    },
+                },
+            },
+        ),
+        (
+            "cancel",
+            {"status": "ok", "response": {"type": "cancel", "data": {"statuses": [1]}}},
+        ),
+        (
+            "twapOrder",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "twapOrder",
+                    "data": {"status": {"running": {"twapId": "1"}}},
+                },
+            },
+        ),
+        (
+            "twapCancel",
+            {
+                "status": "ok",
+                "response": {"type": "twapCancel", "data": {"status": {"error": 1}}},
+            },
+        ),
+    ],
+)
+async def test_malformed_success_acknowledgement_is_indeterminate(
+    monkeypatch: pytest.MonkeyPatch,
+    action_kind: Literal["order", "cancel", "twapOrder", "twapCancel"],
+    outcome: JsonValue,
+) -> None:
+    transport = OutcomeTransport(outcome)
+    client = build_exchange(transport)
+    monkeypatch.setattr(exchange_module, "time_ns", lambda: NONCE * 1_000_000)
+
+    with pytest.raises(IndeterminateActionError):
+        if action_kind == "order":
+            await client.place_limit_order(LimitOrder("BTC", Side.BUY, 0.01, 100_000))
+        elif action_kind == "cancel":
+            await client.cancel_orders((CancelOrder("BTC", 1),))
+        elif action_kind == "twapOrder":
+            await client.place_twap("BTC", Side.BUY, 0.01, 5)
+        else:
+            await client.cancel_twap("BTC", 1)
+
+    assert transport.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("action_kind", "outcome"),
+    [
+        (
+            "order",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "order",
+                    "data": {
+                        "statuses": [
+                            {
+                                "resting": {"oid": 1, "serverMeta": "v2"},
+                                "serverMeta": "v2",
+                            }
+                        ]
+                    },
+                },
+            },
+        ),
+        (
+            "order",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "order",
+                    "data": {
+                        "statuses": [
+                            {
+                                "filled": {
+                                    "avgPx": "100",
+                                    "oid": 1,
+                                    "totalSz": "0.01",
+                                    "serverMeta": "v2",
+                                }
+                            }
+                        ]
+                    },
+                },
+            },
+        ),
+        (
+            "cancel",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "cancel",
+                    "data": {"statuses": [{"error": "not found", "code": 404}]},
+                },
+            },
+        ),
+        (
+            "twapOrder",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "twapOrder",
+                    "data": {
+                        "status": {
+                            "running": {"twapId": 1, "serverMeta": "v2"},
+                            "serverMeta": "v2",
+                        }
+                    },
+                },
+            },
+        ),
+        (
+            "twapCancel",
+            {
+                "status": "ok",
+                "response": {
+                    "type": "twapCancel",
+                    "data": {"status": {"error": "not found", "code": 404}},
+                },
+            },
+        ),
+    ],
+)
+async def test_success_acknowledgement_allows_additive_fields(
+    action_kind: Literal["order", "cancel", "twapOrder", "twapCancel"],
+    outcome: JsonValue,
+) -> None:
+    transport = OutcomeTransport(outcome)
+    client = build_exchange(transport)
+
+    if action_kind == "order":
+        result = await client.place_limit_order(
+            LimitOrder("BTC", Side.BUY, 0.01, 100_000)
+        )
+    elif action_kind == "cancel":
+        result = await client.cancel_orders((CancelOrder("BTC", 1),))
+    elif action_kind == "twapOrder":
+        result = await client.place_twap("BTC", Side.BUY, 0.01, 5)
+    else:
+        result = await client.cancel_twap("BTC", 1)
+
+    assert result == outcome
+    assert transport.calls == 1
 
 
 async def test_concurrent_nonces_are_unique_when_clock_repeats(

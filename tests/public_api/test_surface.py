@@ -20,6 +20,7 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
     assert tuple(parameters) == (
         "account_address",
         "signing_key",
+        "vault_address",
         "network",
         "info_url",
         "exchange_url",
@@ -29,6 +30,8 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
     )
     assert parameters["account_address"].kind is Parameter.POSITIONAL_OR_KEYWORD
     assert parameters["signing_key"].kind is Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["vault_address"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["vault_address"].default is None
     assert parameters["network"].kind is Parameter.KEYWORD_ONLY
     assert parameters["network"].default is Network.MAINNET
     assert parameters["perp_dexes"].default == ("",)
@@ -40,6 +43,19 @@ def test_root_constructor_is_explicit_and_creates_no_async_resource() -> None:
     assert not hasattr(type(client), "__getattr__")
     assert not hasattr(client, "all_mids")
     assert not hasattr(client, "place_limit_order")
+
+
+def test_root_normalizes_vault_execution_target() -> None:
+    client = AsyncHyperliquid(
+        ADDRESS, SIGNING_KEY, vault_address="0xABCDEFabcdefABCDEFabcdefABCDEFabcdefABCD"
+    )
+
+    assert client.exchange._vault_address == ADDRESS.lower()
+
+
+def test_root_rejects_invalid_vault_execution_target() -> None:
+    with pytest.raises(ValueError, match="vault_address"):
+        AsyncHyperliquid(ADDRESS, SIGNING_KEY, vault_address="not-an-address")
 
 
 @pytest.mark.parametrize(
@@ -113,6 +129,17 @@ def test_child_clients_are_concrete_read_only_capabilities() -> None:
         client.info = InfoClient()  # type: ignore[misc]
     with pytest.raises(AttributeError):
         client.exchange = cast(ExchangeClient, object())  # type: ignore[misc]
+
+
+def test_user_abstraction_has_no_per_call_target_override() -> None:
+    assert tuple(signature(ExchangeClient.user_dex_abstraction).parameters) == (
+        "self",
+        "enabled",
+    )
+    assert tuple(signature(ExchangeClient.user_set_abstraction).parameters) == (
+        "self",
+        "abstraction",
+    )
 
 
 async def test_root_owns_one_session_and_closes_it_once() -> None:

@@ -1,6 +1,6 @@
 # Async Hyperliquid
 
-Typed, asynchronous Hyperliquid REST client for Python 3.11+.
+Typed, asynchronous Hyperliquid REST client for Python.
 
 Version 1 has two explicit entry points:
 
@@ -95,6 +95,27 @@ asyncio.run(main())
 `HL_AK` is a 32-byte private key. It is parsed locally and is never sent to an
 Info or Exchange provider.
 
+Set `vault_address=` when the signer trades on behalf of a Hyperliquid vault or
+subaccount:
+
+```python
+client = AsyncHyperliquid(
+    os.environ["HL_ADDR"],
+    os.environ["HL_AK"],
+    vault_address=os.environ["HL_VAULT_ADDR"],
+    network=Network.MAINNET,
+)
+```
+
+The address is normalized once and becomes the client's execution target.
+Execution-scoped L1 actions such as orders and cancels sign and post with that
+target, and account-dependent helpers such as `close_positions` query it.
+Root-scoped administration actions sign as the main account; protocol-specific
+transfers encode the vault/subaccount in their own action fields. Omit
+`vault_address` to trade the main account. A client cannot be retargeted after
+construction; concurrent targets should use separately owned API wallet/client
+pairs.
+
 ### Batch actions
 
 One `place_orders` call creates one action, one signature, and one HTTP POST.
@@ -166,11 +187,24 @@ asyncio.run(main())
 ```
 
 The example still signs for mainnet. The self-hosted Info node receives
-unsigned Info requests. The Exchange provider receives the signed action
-envelope, never the signing key.
+unsigned Info requests. Its metadata and prices nevertheless determine the
+asset ids, precision, and limit prices used to build signed actions, so an Info
+provider attached to an authenticated client is trusted order-construction
+input. The Exchange provider receives the signed action envelope, never the
+signing key. Redirects are rejected; each configured URL is the exact request
+destination.
 
 The library does not add endpoint fallback, provider authentication, health
 checks, or load balancing. Applications own those policies.
+
+A custom Exchange provider is a trusted execution boundary. It can observe
+replayable signed envelopes, delay or censor them, and fabricate a well-shaped
+acknowledgement. A custom Info provider used only through standalone
+`InfoClient` remains read-only, but one used by `AsyncHyperliquid` must also be
+independently trusted because its data shapes signing intent. `expires_after`
+limits only L1 actions that expose that parameter; it does not add an expiry to
+user-signed fund actions. Reconcile through an independently trusted
+`InfoClient` endpoint before resubmitting an indeterminate action.
 
 ## Lifecycle and sessions
 
@@ -181,8 +215,42 @@ When no session is supplied, the client owns and closes one session. When an
 `aiohttp.ClientSession` is supplied, the client borrows it and never closes it.
 `AsyncHyperliquid.info` and `.exchange` share exactly one transport.
 
+Do not place an `Authorization` header or provider cookie on that shared
+session when Info and Exchange use different origins: session-wide credentials
+would be sent to both. Attach credentials with host-scoped aiohttp middleware,
+or use separate clients/sessions for separately authenticated providers.
+
+```python
+import os
+
+from aiohttp import ClientHandlerType, ClientRequest, ClientResponse, ClientSession
+
+from async_hyperliquid import AsyncHyperliquid
+
+
+async def provider_auth(
+    request: ClientRequest, handler: ClientHandlerType
+) -> ClientResponse:
+    if request.url.host == "trading-provider.example":
+        request.headers["Authorization"] = f"Bearer {os.environ['PROVIDER_TOKEN']}"
+    return await handler(request)
+
+
+async def main() -> None:
+    async with ClientSession(middlewares=(provider_auth,)) as session:
+        async with AsyncHyperliquid(
+            os.environ["HL_ADDR"],
+            os.environ["HL_AK"],
+            info_url="http://127.0.0.1:3001/info",
+            exchange_url="https://trading-provider.example/exchange",
+            session=session,
+        ):
+            ...
+```
+
 The default timeout has finite total, connect, and socket-read budgets. A
-custom `aiohttp.ClientTimeout` must keep all three budgets finite and positive.
+custom `aiohttp.ClientTimeout` must keep its total budget finite and positive;
+optional phase budgets are validated when provided.
 
 ## Errors and signed-action reconciliation
 
@@ -195,6 +263,13 @@ The client does not retry signed actions automatically: the server may already
 have accepted the nonce. Reconcile using Info calls such as `order_status`,
 `open_orders`, or `user_fills` before deciding whether to submit another
 action.
+
+Nonce ordering is local to one `ExchangeClient`. One API wallet private key
+must therefore have exactly one live owner submitting Exchange actions.
+Multiple processes or services sharing the same API wallet must serialize and
+coordinate nonces at the application boundary; this library deliberately does
+not provide a distributed nonce service. This restriction does not apply to
+credential-free `InfoClient` instances.
 
 ## Typing
 
