@@ -14,6 +14,7 @@ from async_hyperliquid.types.exchange import (
     EncodedCancel,
     EncodedLimitOrderType,
     EncodedOrder,
+    EncodedTwapDetails,
     EncodedTwapOrder,
 )
 
@@ -47,6 +48,31 @@ def build_exchange(transport: OutcomeTransport) -> ExchangeClient:
         vault_address=None,
         network=Network.MAINNET,
     )
+
+
+async def test_twap_action_attaches_advanced_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = OutcomeTransport(
+        {
+            "status": "ok",
+            "response": {
+                "type": "twapOrder",
+                "data": {"status": {"running": {"twapId": 1}}},
+            },
+        }
+    )
+    client = build_exchange(transport)
+    monkeypatch.setattr(exchange_module, "time_ns", lambda: NONCE * 1_000_000)
+    details = EncodedTwapDetails(s="65000", t={"a": False, "p": "63000"})
+
+    await client._submit_twap(TWAP, details=details)
+
+    assert transport.requests[0]["action"] == {
+        "type": "twapOrder",
+        "twap": TWAP,
+        "details": {"s": "65000", "t": {"a": False, "p": "63000"}},
+    }
 
 
 @pytest.mark.parametrize(

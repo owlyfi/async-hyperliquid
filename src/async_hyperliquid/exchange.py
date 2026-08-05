@@ -67,6 +67,7 @@ from .types.exchange import (
     EncodedCancelByCloid,
     EncodedModify,
     EncodedOrder,
+    EncodedTwapDetails,
     EncodedTwapOrder,
     EvmUserModifyAction,
     ExchangeAction,
@@ -399,9 +400,15 @@ class ExchangeClient:
         return await self._submit_action(action, "default", expires_after=expires_after)
 
     async def _submit_twap(
-        self, twap: EncodedTwapOrder, *, expires_after: int | None = None
+        self,
+        twap: EncodedTwapOrder,
+        *,
+        details: EncodedTwapDetails | None = None,
+        expires_after: int | None = None,
     ) -> PlaceTwapResponse:
         action = TwapOrderAction(type="twapOrder", twap=twap)
+        if details is not None:
+            action["details"] = details
         return await self._submit_action(
             action, "twapOrder", expires_after=expires_after
         )

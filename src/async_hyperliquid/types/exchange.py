@@ -200,9 +200,20 @@ class EncodedTwapOrder(TypedDict):
     t: bool
 
 
+class EncodedTwapTrigger(TypedDict):
+    a: bool
+    p: str
+
+
+class EncodedTwapDetails(TypedDict):
+    s: str | None
+    t: EncodedTwapTrigger | None
+
+
 class TwapOrderAction(TypedDict):
     type: Literal["twapOrder"]
     twap: EncodedTwapOrder
+    details: NotRequired[EncodedTwapDetails]
 
 
 class TwapCancelAction(TypedDict):
