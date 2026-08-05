@@ -315,6 +315,28 @@ async def test_provider_set_closes_owned_resources_in_reverse_order() -> None:
     assert closed == ["second", "recovery", "first"]
 
 
+def test_ccxt_market_resolves_perpetual_by_unified_base() -> None:
+    btc_swap = {
+        "symbol": "BTC/USDC:USDC",
+        "id": "3",
+        "base": "BTC",
+        "baseId": "3",
+        "swap": True,
+    }
+    markets = {
+        "BTC/USDC": {
+            "symbol": "BTC/USDC",
+            "id": "@50",
+            "base": "BTC",
+            "baseId": "10050",
+            "swap": False,
+        },
+        "BTC/USDC:USDC": btc_swap,
+    }
+
+    assert provider_module._ccxt_market(markets, "BTC") is btc_swap
+
+
 async def test_factory_builds_recovery_first_and_closes_partial_clients(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

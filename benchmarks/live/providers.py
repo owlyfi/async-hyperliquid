@@ -393,7 +393,7 @@ def _ccxt_market(markets: Mapping[str, object], coin: str) -> Mapping[str, objec
         if not isinstance(value, Mapping):
             continue
         market = cast(Mapping[str, object], value)
-        if market.get("id") == coin and market.get("swap") is True:
+        if market.get("base") == coin and market.get("swap") is True:
             candidates.append(market)
     if len(candidates) != 1:
         raise BenchmarkFailure("ccxt did not resolve exactly one BTC perpetual market")
