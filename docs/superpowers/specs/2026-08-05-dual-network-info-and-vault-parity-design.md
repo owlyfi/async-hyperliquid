@@ -74,11 +74,17 @@ networks:
 | Mainnet | `HYPE/USDC` | `@107` | `10107` |
 | Testnet | `HYPE/USDC` | `@1035` | `11035` |
 | Mainnet | `PURR/USDC` | `PURR/USDC` | `10000` |
+| Mainnet | `USDT0/USDC` | `@166` | `10166` |
+| Mainnet | `USDE/USDC` | `@150` | `10150` |
+| Mainnet | `USDH/USDC` | `@230` | `10230` |
 
 For each applicable row, the test validates `coin_name`, `asset_id`,
 `coin_symbol`, metadata lookup, and mid-price lookup against `allMids`.
-`PURR/USDC` must not be canonicalized to `@0`. Testnet PURR is validated from
-its own live metadata and is not forced to reuse the mainnet asset ID.
+`PURR/USDC` must not be canonicalized to `@0`. `USDT0/USDC`, `USDE/USDC`,
+and `USDH/USDC` must resolve to their explicit mainnet protocol coins rather
+than a base-token-name heuristic. Testnet PURR and stablecoin pairs are
+validated from their own live metadata and are not forced to reuse mainnet
+asset IDs.
 
 Generic `coin_name`, `coin_symbol`, `asset_id`, `size_decimals`, token ID,
 spot-token metadata, mark price, and mid price assertions run for dynamically
@@ -173,7 +179,8 @@ The implementation proceeds through these red-green contracts:
    and no opt-in deselection.
 2. Availability-policy tests prove one delayed 429 retry, second-429 skip,
    TESTNET 5xx warning/skip, and MAINNET 5xx failure.
-3. Market-mapping tests pin HYPE on both networks and mainnet PURR.
+3. Market-mapping tests pin HYPE on both networks plus mainnet PURR, USDT0,
+   USDE, and USDH.
 4. Naming contracts fail on the current long function names and endpoint-name
    coupling.
 5. Offline SDK parity fails until both account-address configurations are
