@@ -1,5 +1,7 @@
+import asyncio
 import csv
 import fcntl
+import os
 import subprocess
 from pathlib import Path
 from collections.abc import Callable
@@ -91,10 +93,11 @@ def _prepare_publish_repository(
     original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
     (repository / "README.md").write_text(original_root)
     (benchmarks / "README.md").write_text(original_detail)
+    (repository / "notes.txt").write_text("tracked publication note\n")
     _git(repository, "init", "--quiet")
     _git(repository, "config", "user.email", "benchmark-tests@example.invalid")
     _git(repository, "config", "user.name", "Benchmark Tests")
-    _git(repository, "add", "README.md", "benchmarks/README.md")
+    _git(repository, "add", "README.md", "benchmarks/README.md", "notes.txt")
     _git(repository, "commit", "--quiet", "-m", "initial publication state")
     if collision:
         destination = benchmarks / "results" / "20260805T000100Z"
@@ -637,17 +640,17 @@ def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure
     )
     benchmark_readme = repository / "benchmarks" / "README.md"
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
-    real_atomic_text = reporting._atomic_text
+    real_atomic_change = reporting._atomic_text_if_unchanged
     calls = 0
 
-    def fail_second_replace(path: Path, content: str) -> None:
+    def fail_second_replace(change: Any) -> None:
         nonlocal calls
         calls += 1
         if calls == 2:
             raise OSError("simulated second replacement failure")
-        real_atomic_text(path, content)
+        real_atomic_change(change)
 
-    monkeypatch.setattr(reporting, "_atomic_text", fail_second_replace)
+    monkeypatch.setattr(reporting, "_atomic_text_if_unchanged", fail_second_replace)
 
     with pytest.raises(BenchmarkFailure, match="publication failed"):
         publish_report(report_path, repository)
@@ -756,7 +759,7 @@ def test_publish_detects_readme_compare_conflict_without_overwriting_it(
     monkeypatch.setattr(reporting, "write_figures", generate_then_conflict)
 
     with pytest.raises(
-        BenchmarkFailure, match="^benchmark publication failed$"
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
     ) as raised:
         publish_report(report_path, repository)
 
@@ -773,19 +776,21 @@ def test_keyboard_interrupt_during_second_replace_fully_compensates_and_retries(
         _prepare_publish_repository(tmp_path)
     )
     destination = repository / "benchmarks" / "results" / "20260805T000100Z"
-    real_atomic_text = reporting._atomic_text
+    real_atomic_change = reporting._atomic_text_if_unchanged
     calls = 0
 
-    def interrupt_after_second_replace(path: Path, content: str) -> None:
+    def interrupt_after_second_replace(change: Any) -> None:
         nonlocal calls
         calls += 1
-        real_atomic_text(path, content)
+        real_atomic_change(change)
         if calls == 2:
             assert not destination.exists()
             raise KeyboardInterrupt
 
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
-    monkeypatch.setattr(reporting, "_atomic_text", interrupt_after_second_replace)
+    monkeypatch.setattr(
+        reporting, "_atomic_text_if_unchanged", interrupt_after_second_replace
+    )
 
     with pytest.raises(KeyboardInterrupt):
         publish_report(report_path, repository)
@@ -795,7 +800,7 @@ def test_keyboard_interrupt_during_second_replace_fully_compensates_and_retries(
     _assert_no_publication_debris(repository)
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
-    monkeypatch.setattr(reporting, "_atomic_text", real_atomic_text)
+    monkeypatch.setattr(reporting, "_atomic_text_if_unchanged", real_atomic_change)
     published = publish_report(report_path, repository)
 
     assert published == destination
@@ -837,17 +842,15 @@ def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
     repository, report_path, original_root, original_detail = (
         _prepare_publish_repository(tmp_path)
     )
-    real_mkdir = Path.mkdir
+    real_create_owned = reporting._create_owned_directory
 
-    def mkdir_then_interrupt(
-        path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
-    ) -> None:
-        existed = path.exists()
-        real_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
-        if not existed and path.name.endswith(".staging"):
+    def create_then_interrupt(path: Path, registry: list[Any] | None = None) -> Any:
+        owned = real_create_owned(path, registry)
+        if path.name.endswith(".staging"):
             raise KeyboardInterrupt
+        return owned
 
-    monkeypatch.setattr(Path, "mkdir", mkdir_then_interrupt)
+    monkeypatch.setattr(reporting, "_create_owned_directory", create_then_interrupt)
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
 
     with pytest.raises(KeyboardInterrupt):
@@ -878,3 +881,420 @@ def test_final_destination_collision_fails_before_readme_mutation(
     assert sorted(path.name for path in destination.parent.iterdir()) == [
         "20260805T000100Z"
     ]
+
+
+def test_results_creation_collision_is_not_deleted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    results_dir = repository / "benchmarks" / "results"
+    real_mkdir = os.mkdir
+
+    def collide(path: str | os.PathLike[str], mode: int = 0o777) -> None:
+        if Path(path) == results_dir:
+            real_mkdir(path, mode)
+            raise FileExistsError("simulated namespace winner")
+        real_mkdir(path, mode)
+
+    monkeypatch.setattr(os, "mkdir", collide)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert results_dir.is_dir()
+    assert list(results_dir.iterdir()) == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+def test_staging_creation_collision_is_not_deleted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    collision: list[Path] = []
+    real_mkdir = os.mkdir
+
+    def collide(path: str | os.PathLike[str], mode: int = 0o777) -> None:
+        candidate = Path(path)
+        if candidate.name.endswith(".staging"):
+            real_mkdir(path, mode)
+            collision.append(candidate)
+            raise FileExistsError("simulated namespace winner")
+        real_mkdir(path, mode)
+
+    monkeypatch.setattr(os, "mkdir", collide)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert len(collision) == 1
+    assert collision[0].is_dir()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+def test_staging_namespace_swap_is_rejected_without_deleting_replacement(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    swapped: list[tuple[Path, Path]] = []
+
+    def generate_then_swap(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        paths = _write_fake_publish_figures(report, output_dir)
+        moved = output_dir.with_name(f"{output_dir.name}.moved")
+        output_dir.rename(moved)
+        output_dir.mkdir()
+        (output_dir / "belongs-to-another-process").write_text("keep\n")
+        swapped.append((output_dir, moved))
+        return paths
+
+    monkeypatch.setattr(reporting, "write_figures", generate_then_swap)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    replacement, moved = swapped[0]
+    assert (replacement / "belongs-to-another-process").read_text() == "keep\n"
+    assert moved.is_dir()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results" / "20260805T000100Z").exists()
+
+
+def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+    real_rename = os.rename
+    interrupted = False
+
+    def rename_then_interrupt(
+        source: str | os.PathLike[str], target: str | os.PathLike[str]
+    ) -> None:
+        nonlocal interrupted
+        real_rename(source, target)
+        if Path(target) == destination and not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(os, "rename", rename_then_interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not destination.exists()
+
+    monkeypatch.setattr(os, "rename", real_rename)
+    published = publish_report(report_path, repository)
+    assert published == destination
+
+
+@pytest.mark.parametrize(
+    "control_flow", [KeyboardInterrupt(), SystemExit(7), asyncio.CancelledError()]
+)
+def test_control_flow_during_compensation_is_re_raised_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, control_flow: BaseException
+) -> None:
+    repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+
+    def fail_final_rename(
+        source: str | os.PathLike[str], target: str | os.PathLike[str]
+    ) -> None:
+        del source
+        assert Path(target) == destination
+        raise OSError("final rename failed")
+
+    def interrupt_rollback(path: Path, content: str) -> None:
+        del path, content
+        raise control_flow
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(os, "rename", fail_final_rename)
+    monkeypatch.setattr(reporting, "_atomic_text", interrupt_rollback)
+
+    with pytest.raises(type(control_flow)) as raised:
+        publish_report(report_path, repository)
+
+    assert raised.value is control_flow
+
+
+def test_ordinary_lock_release_failure_does_not_mask_keyboard_interrupt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
+    interruption = KeyboardInterrupt()
+    real_open = os.open
+    real_close = os.close
+    lock_fds: set[int] = set()
+
+    def record_lock_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        fd = real_open(path, flags, mode)
+        if Path(path).name == "benchmark-publication.lock":
+            lock_fds.add(fd)
+        return fd
+
+    def close_then_fail(fd: int) -> None:
+        real_close(fd)
+        if fd in lock_fds:
+            raise OSError("simulated close failure")
+
+    def interrupt_generation(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        del report, output_dir
+        raise interruption
+
+    monkeypatch.setattr(os, "open", record_lock_open)
+    monkeypatch.setattr(os, "close", close_then_fail)
+    monkeypatch.setattr(reporting, "write_figures", interrupt_generation)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        publish_report(report_path, repository)
+
+    assert raised.value is interruption
+
+
+def test_readme_change_during_prepared_temp_window_is_not_overwritten(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, _ = _prepare_publish_repository(tmp_path)
+    benchmark_readme = repository / "benchmarks" / "README.md"
+    conflicting_detail = f"external\n{DETAIL_START}\nconflict\n{DETAIL_END}\n"
+    real_fsync = os.fsync
+    changed = False
+
+    def fsync_then_change(fd: int) -> None:
+        nonlocal changed
+        real_fsync(fd)
+        if not changed:
+            changed = True
+            benchmark_readme.write_text(conflicting_detail)
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(os, "fsync", fsync_then_change)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert changed
+    assert benchmark_readme.read_text() == conflicting_detail
+    assert (repository / "README.md").read_text() == original_root
+
+
+def test_ordinary_atomic_temp_close_failure_does_not_mask_keyboard_interrupt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "README.md"
+    target.write_text("original")
+    target_identity = reporting._require_kind(target, directory=False)
+    change = reporting._AtomicTextChange(
+        path=target,
+        snapshot="original",
+        snapshot_identity=target_identity,
+        replacement="replacement",
+    )
+    interruption = KeyboardInterrupt()
+    real_open = Path.open
+
+    class InterruptingHandle:
+        def __init__(self, handle: Any) -> None:
+            self._handle = handle
+
+        def fileno(self) -> int:
+            return self._handle.fileno()
+
+        def write(self, value: str) -> int:
+            del value
+            raise interruption
+
+        def flush(self) -> None:
+            self._handle.flush()
+
+        def close(self) -> None:
+            self._handle.close()
+            raise OSError("simulated temp close failure")
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            self.close()
+
+    def interrupting_open(
+        path: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> Any:
+        handle = real_open(path, mode, buffering, encoding, errors, newline)
+        if path.name.endswith(".tmp"):
+            return InterruptingHandle(handle)
+        return handle
+
+    monkeypatch.setattr(Path, "open", interrupting_open)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        reporting._prepare_atomic_text(change)
+
+    assert raised.value is interruption
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_clean_head_change_during_generation_aborts_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+
+    def generate_then_commit(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        paths = _write_fake_publish_figures(report, output_dir)
+        _git(repository, "commit", "--quiet", "--allow-empty", "-m", "concurrent")
+        return paths
+
+    monkeypatch.setattr(reporting, "write_figures", generate_then_commit)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results" / "20260805T000100Z").exists()
+
+
+def test_dirty_edit_during_generation_aborts_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+
+    def generate_then_edit(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        paths = _write_fake_publish_figures(report, output_dir)
+        (repository / "notes.txt").write_text("concurrent dirty edit\n")
+        return paths
+
+    monkeypatch.setattr(reporting, "write_figures", generate_then_edit)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results" / "20260805T000100Z").exists()
+
+
+def test_lock_symlink_is_rejected_without_touching_target(tmp_path: Path) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    outside = tmp_path / "outside-lock-target"
+    outside.write_text("outside\n")
+    (git_dir / "benchmark-publication.lock").symlink_to(outside)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        publish_report(report_path, repository)
+
+    assert outside.read_text() == "outside\n"
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+def test_nonregular_lock_descriptor_is_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lock_fd = 41
+    closed: list[int] = []
+
+    monkeypatch.setattr(
+        reporting,
+        "_resolve_repository_root",
+        lambda repository_root: (repository_root, repository_root),
+    )
+    monkeypatch.setattr(os, "open", lambda *args, **kwargs: lock_fd)
+    monkeypatch.setattr(os, "fstat", lambda fd: tmp_path.stat())
+    monkeypatch.setattr(os, "close", closed.append)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        with reporting._publication_lock(tmp_path):
+            raise AssertionError("nonregular lock entered the critical section")
+
+    assert closed == [lock_fd]
+
+
+def test_results_symlink_component_is_rejected(tmp_path: Path) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    outside = tmp_path / "outside-results"
+    outside.mkdir()
+    results = repository / "benchmarks" / "results"
+    results.symlink_to(outside, target_is_directory=True)
+    _git(repository, "add", "benchmarks/results")
+    _git(repository, "commit", "--quiet", "-m", "tracked results symlink")
+    report = _valid_report(revision=_git(repository, "rev-parse", "HEAD"))
+    report_path = write_report(report, report_path.parent, forbidden_values=())
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        publish_report(report_path, repository)
+
+    assert list(outside.iterdir()) == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+def test_dangling_final_symlink_collides_before_readme_mutation(tmp_path: Path) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    results = repository / "benchmarks" / "results"
+    results.mkdir()
+    destination = results / "20260805T000100Z"
+    destination.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    _git(repository, "add", "benchmarks/results/20260805T000100Z")
+    _git(repository, "commit", "--quiet", "-m", "dangling publication collision")
+    report = _valid_report(revision=_git(repository, "rev-parse", "HEAD"))
+    report_path = write_report(report, report_path.parent, forbidden_values=())
+
+    with pytest.raises(
+        BenchmarkFailure, match="^published benchmark timestamp already exists$"
+    ):
+        publish_report(report_path, repository)
+
+    assert destination.is_symlink()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail

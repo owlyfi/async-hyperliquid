@@ -5,14 +5,17 @@ import errno
 import fcntl
 import json
 import math
+import os
 import re
 import shutil
+import stat
 import statistics
 import subprocess
 import uuid
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -88,6 +91,40 @@ _PUBLICATION_LOCKED_FAILURE = "benchmark publication is already in progress"
 _PUBLICATION_FAILURE = "benchmark publication failed"
 
 
+@dataclass(frozen=True, slots=True)
+class _PathIdentity:
+    device: int
+    inode: int
+    mode: int
+
+
+@dataclass(frozen=True, slots=True)
+class _OwnedPath:
+    path: Path
+    identity: _PathIdentity
+
+
+@dataclass(slots=True)
+class _AtomicTextChange:
+    path: Path
+    snapshot: str
+    snapshot_identity: _PathIdentity
+    replacement: str
+    replacement_identity: _PathIdentity | None = None
+
+
+@dataclass(slots=True)
+class _CleanupOutcome:
+    ordinary: list[Exception] = field(default_factory=list)
+    control_flow: BaseException | None = None
+
+    def capture(self, error: BaseException, message: str) -> None:
+        if isinstance(error, Exception):
+            self.ordinary.append(RuntimeError(message))
+        else:
+            self.control_flow = error
+
+
 def figure_series(
     report: LiveBenchmarkReport, suite: str
 ) -> dict[str, dict[str, list[int]]]:
@@ -103,14 +140,176 @@ def figure_series(
     return series
 
 
-def _atomic_text(path: Path, content: str) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
+def _identity_from_stat(value: os.stat_result) -> _PathIdentity:
+    return _PathIdentity(device=value.st_dev, inode=value.st_ino, mode=value.st_mode)
+
+
+def _lexical_identity(path: Path) -> _PathIdentity | None:
     try:
-        temporary.write_text(content)
-        temporary.replace(path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+        return _identity_from_stat(path.lstat())
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
+
+
+def _matches_identity(path: Path, identity: _PathIdentity) -> bool:
+    try:
+        current = _identity_from_stat(path.lstat())
+    except OSError:
+        return False
+    return current == identity
+
+
+def _require_kind(path: Path, *, directory: bool) -> _PathIdentity:
+    identity = _lexical_identity(path)
+    expected = stat.S_ISDIR if directory else stat.S_ISREG
+    if identity is None or not expected(identity.mode):
+        raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
+    return identity
+
+
+def _read_pinned_text(path: Path, identity: _PathIdentity) -> str:
+    if not stat.S_ISREG(identity.mode) or not _matches_identity(path, identity):
+        raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    try:
+        value = path.read_text()
+    except (OSError, UnicodeError):
+        raise BenchmarkFailure(_PUBLICATION_FAILURE) from None
+    if not _matches_identity(path, identity):
+        raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    return value
+
+
+def _create_owned_directory(
+    path: Path, registry: list[_OwnedPath] | None = None
+) -> _OwnedPath:
+    if _lexical_identity(path) is not None:
+        raise FileExistsError
+    os.mkdir(path)
+    identity = _require_kind(path, directory=True)
+    owned = _OwnedPath(path=path, identity=identity)
+    if registry is not None:
+        registry.append(owned)
+    return owned
+
+
+def _remove_owned_directory(owned: _OwnedPath) -> None:
+    if not _matches_identity(owned.path, owned.identity):
+        return
+    shutil.rmtree(owned.path)
+
+
+def _remove_owned_empty_directory(owned: _OwnedPath) -> None:
+    if not _matches_identity(owned.path, owned.identity):
+        return
+    os.rmdir(owned.path)
+
+
+def _remove_owned_file(owned: _OwnedPath) -> None:
+    if not _matches_identity(owned.path, owned.identity):
+        return
+    os.unlink(owned.path)
+
+
+def _capture_cleanup(outcome: _CleanupOutcome, operation: Any, message: str) -> None:
+    try:
+        operation()
+    except BaseException as error:
+        outcome.capture(error, message)
+
+
+def _safe_exception_group(
+    message: str, ordinary: Sequence[Exception]
+) -> ExceptionGroup:
+    return ExceptionGroup(message, list(ordinary))
+
+
+def _raise_with_cleanup(
+    primary: BaseException, cleanup: _CleanupOutcome, *, primary_message: str
+) -> None:
+    safe_failures = [RuntimeError(primary_message), *cleanup.ordinary]
+    control_flow = cleanup.control_flow
+    if control_flow is None and not isinstance(primary, Exception):
+        control_flow = primary
+    if control_flow is not None:
+        if safe_failures:
+            raise control_flow from _safe_exception_group(
+                "cleanup failures", safe_failures
+            )
+        raise control_flow
+    raise primary from _safe_exception_group("cleanup failures", safe_failures)
+
+
+def _prepare_atomic_text(change: _AtomicTextChange) -> _OwnedPath:
+    temporary = change.path.with_name(f".{change.path.name}.{uuid.uuid4().hex}.tmp")
+    handle: Any | None = None
+    owned: _OwnedPath | None = None
+    primary: BaseException | None = None
+    cleanup = _CleanupOutcome()
+    try:
+        handle = temporary.open("x")
+        owned = _OwnedPath(
+            path=temporary, identity=_identity_from_stat(os.fstat(handle.fileno()))
+        )
+        handle.write(change.replacement)
+        handle.flush()
+        os.fsync(handle.fileno())
+    except BaseException as error:
+        primary = error
+    if handle is not None:
+        try:
+            handle.close()
+        except BaseException as error:
+            if primary is None:
+                primary = error
+            else:
+                cleanup.capture(error, "atomic temporary close failed")
+    if primary is not None:
+        if owned is not None:
+            _capture_cleanup(
+                cleanup,
+                lambda: _remove_owned_file(owned),
+                "atomic temporary cleanup failed",
+            )
+        _raise_with_cleanup(
+            primary, cleanup, primary_message="atomic text preparation failed"
+        )
+        raise AssertionError("unreachable")
+    if owned is None:
+        raise AssertionError("atomic temporary was not created")
+    return owned
+
+
+def _atomic_text_if_unchanged(change: _AtomicTextChange) -> None:
+    temporary = _prepare_atomic_text(change)
+    change.replacement_identity = temporary.identity
+    try:
+        current = _read_pinned_text(change.path, change.snapshot_identity)
+        if current != change.snapshot:
+            raise BenchmarkFailure(_PUBLICATION_FAILURE)
+        os.replace(temporary.path, change.path)
+    except BaseException as error:
+        cleanup = _CleanupOutcome()
+        _capture_cleanup(
+            cleanup,
+            lambda: _remove_owned_file(temporary),
+            "atomic temporary cleanup failed",
+        )
+        _raise_with_cleanup(
+            error, cleanup, primary_message="atomic text replacement failed"
+        )
+
+
+def _atomic_text(path: Path, content: str) -> None:
+    identity = _require_kind(path, directory=False)
+    change = _AtomicTextChange(
+        path=path,
+        snapshot=_read_pinned_text(path, identity),
+        snapshot_identity=identity,
+        replacement=content,
+    )
+    _atomic_text_if_unchanged(change)
 
 
 def _git_output(repository_root: Path, *arguments: str) -> str:
@@ -128,7 +327,7 @@ def _git_output(repository_root: Path, *arguments: str) -> str:
         raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
     if completed.returncode != 0:
         raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
-    return completed.stdout.strip()
+    return completed.stdout.rstrip("\n")
 
 
 def _resolve_repository_root(repository_root: Path) -> tuple[Path, Path]:
@@ -146,55 +345,90 @@ def _resolve_repository_root(repository_root: Path) -> tuple[Path, Path]:
     return resolved_root, git_dir
 
 
+def _close_lock(fd: int, primary: BaseException | None) -> None:
+    try:
+        os.close(fd)
+    except BaseException as error:
+        if primary is None:
+            if isinstance(error, Exception):
+                raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from (
+                    _safe_exception_group(
+                        "lock release failures",
+                        [RuntimeError("publication lock release failed")],
+                    )
+                )
+            raise
+        cleanup = _CleanupOutcome()
+        cleanup.capture(error, "publication lock release failed")
+        _raise_with_cleanup(
+            primary, cleanup, primary_message="publication operation failed"
+        )
+
+
 @contextmanager
-def _publication_lock(repository_root: Path) -> Iterator[Path]:
+def _publication_lock(repository_root: Path) -> Iterator[tuple[Path, Path]]:
     resolved_root, git_dir = _resolve_repository_root(repository_root)
     lock_path = git_dir / _PUBLICATION_LOCK_FILENAME
+    flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
     try:
-        lock_file = lock_path.open("a+b")
+        lock_fd = os.open(lock_path, flags, 0o600)
     except OSError:
         raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
     try:
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_stat = os.fstat(lock_fd)
+        except OSError:
+            raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
+        if not stat.S_ISREG(lock_stat.st_mode):
+            raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             if error.errno in {errno.EACCES, errno.EAGAIN}:
                 raise BenchmarkFailure(_PUBLICATION_LOCKED_FAILURE) from None
             raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
-        yield resolved_root
-    finally:
-        lock_file.close()
+        yield resolved_root, git_dir
+    except BaseException as error:
+        _close_lock(lock_fd, error)
+        raise
+    else:
+        _close_lock(lock_fd, None)
 
 
-def _verify_repository(repository_root: Path, report: LiveBenchmarkReport) -> None:
+def _verify_repository(
+    repository_root: Path,
+    git_dir: Path,
+    report: LiveBenchmarkReport,
+    *,
+    allowed_status: frozenset[str] = frozenset(),
+) -> None:
+    current_root, current_git_dir = _resolve_repository_root(repository_root)
     inside_worktree = _git_output(repository_root, "rev-parse", "--is-inside-work-tree")
     top_level_text = _git_output(repository_root, "rev-parse", "--show-toplevel")
-    head = _git_output(repository_root, "rev-parse", "--verify", "HEAD")
-    status = _git_output(
+    status_before = _git_output(
         repository_root, "status", "--porcelain=v1", "--untracked-files=all"
     )
+    head_before = _git_output(repository_root, "rev-parse", "--verify", "HEAD")
+    status_after = _git_output(
+        repository_root, "status", "--porcelain=v1", "--untracked-files=all"
+    )
+    head_after = _git_output(repository_root, "rev-parse", "--verify", "HEAD")
     try:
         top_level = Path(top_level_text).resolve(strict=True)
     except OSError:
         raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
     if (
         inside_worktree != "true"
+        or current_root != repository_root
+        or current_git_dir != git_dir
         or top_level != repository_root
-        or status != ""
+        or frozenset(status_before.splitlines()) != allowed_status
+        or frozenset(status_after.splitlines()) != allowed_status
         or report["git"]["dirty"] is not False
-        or head != report["git"]["revision"]
+        or head_before != report["git"]["revision"]
+        or head_after != report["git"]["revision"]
     ):
         raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
-
-
-def _atomic_text_if_unchanged(path: Path, snapshot: str, replacement: str) -> None:
-    try:
-        current = path.read_text()
-    except OSError:
-        raise BenchmarkFailure(_PUBLICATION_FAILURE) from None
-    if current != snapshot:
-        raise BenchmarkFailure(_PUBLICATION_FAILURE)
-    _atomic_text(path, replacement)
 
 
 def write_csv(report: LiveBenchmarkReport, output_dir: Path) -> Path:
@@ -761,69 +995,85 @@ def _artifact_timestamp(completed_at: str) -> str:
         raise BenchmarkFailure("report completion time is not publishable") from error
 
 
-def _safe_cleanup_failure(message: str) -> RuntimeError:
-    return RuntimeError(message)
-
-
 def _compensate_publication(
     *,
-    root_readme: Path,
-    root_snapshot: str,
-    rendered_root: str,
-    root_replaced: bool,
-    benchmark_readme: Path,
-    benchmark_snapshot: str,
-    rendered_benchmark: str,
-    benchmark_replaced: bool,
-    staging: Path | None,
+    root_change: _AtomicTextChange,
+    benchmark_change: _AtomicTextChange,
+    staging: _OwnedPath | None,
     destination: Path,
-    destination_created: bool,
-    results_dir: Path,
-    results_dir_created: bool,
-) -> list[Exception]:
-    failures: list[Exception] = []
-    for replaced, path, snapshot, replacement, failure_message in (
-        (
-            root_replaced,
-            root_readme,
-            root_snapshot,
-            rendered_root,
-            "root README rollback failed",
-        ),
-        (
-            benchmark_replaced,
-            benchmark_readme,
-            benchmark_snapshot,
-            rendered_benchmark,
-            "benchmark README rollback failed",
-        ),
+    results: _OwnedPath | None,
+) -> _CleanupOutcome:
+    outcome = _CleanupOutcome()
+    for change, failure_message in (
+        (root_change, "root README rollback failed"),
+        (benchmark_change, "benchmark README rollback failed"),
     ):
-        try:
-            current = path.read_text()
-            if replaced or current == replacement:
-                _atomic_text(path, snapshot)
-        except BaseException:
-            failures.append(_safe_cleanup_failure(failure_message))
+        replacement_identity = change.replacement_identity
+        if replacement_identity is None or not _matches_identity(
+            change.path, replacement_identity
+        ):
+            continue
+        _capture_cleanup(
+            outcome,
+            lambda change=change: _atomic_text(change.path, change.snapshot),
+            failure_message,
+        )
 
-    final_belongs_to_invocation = destination_created or (
-        staging is not None and not staging.exists() and destination.exists()
+    if staging is not None and _matches_identity(destination, staging.identity):
+        _capture_cleanup(
+            outcome,
+            lambda: _remove_owned_directory(_OwnedPath(destination, staging.identity)),
+            "final artifact cleanup failed",
+        )
+    if staging is not None and _matches_identity(staging.path, staging.identity):
+        _capture_cleanup(
+            outcome,
+            lambda: _remove_owned_directory(staging),
+            "staging artifact cleanup failed",
+        )
+    if results is not None:
+        _capture_cleanup(
+            outcome,
+            lambda: _remove_owned_empty_directory(results),
+            "results directory cleanup failed",
+        )
+    return outcome
+
+
+def _raise_publication_failure(error: BaseException, cleanup: _CleanupOutcome) -> None:
+    control_flow = cleanup.control_flow
+    if control_flow is None and not isinstance(error, Exception):
+        control_flow = error
+    safe_failures = [RuntimeError("publication operation failed"), *cleanup.ordinary]
+    if control_flow is not None:
+        raise control_flow from _safe_exception_group(
+            "publication failures", safe_failures
+        )
+    if isinstance(error, BenchmarkFailure) and str(error) in {
+        _PUBLICATION_REPOSITORY_FAILURE,
+        "published benchmark timestamp already exists",
+    }:
+        raise error from _safe_exception_group("publication failures", safe_failures)
+    raise BenchmarkFailure(_PUBLICATION_FAILURE) from _safe_exception_group(
+        "publication failures", safe_failures
     )
-    if final_belongs_to_invocation:
-        try:
-            shutil.rmtree(destination)
-        except BaseException:
-            failures.append(_safe_cleanup_failure("final artifact cleanup failed"))
-    if staging is not None and staging.exists():
-        try:
-            shutil.rmtree(staging)
-        except BaseException:
-            failures.append(_safe_cleanup_failure("staging artifact cleanup failed"))
-    if results_dir_created:
-        try:
-            results_dir.rmdir()
-        except BaseException:
-            failures.append(_safe_cleanup_failure("results directory cleanup failed"))
-    return failures
+
+
+def _require_publication_namespace(
+    *,
+    benchmarks_dir: _OwnedPath,
+    results_dir: _OwnedPath,
+    staging: _OwnedPath,
+    destination: Path,
+) -> None:
+    if (
+        not _matches_identity(benchmarks_dir.path, benchmarks_dir.identity)
+        or not _matches_identity(results_dir.path, results_dir.identity)
+        or not _matches_identity(staging.path, staging.identity)
+    ):
+        raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    if _lexical_identity(destination) is not None:
+        raise BenchmarkFailure("published benchmark timestamp already exists")
 
 
 def publish_report(report_path: Path, repository_root: Path) -> Path:
@@ -840,15 +1090,18 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
         raise BenchmarkFailure("benchmark artifacts are not publishable")
     timestamp = _artifact_timestamp(report["completed_at"])
 
-    with _publication_lock(repository_root) as locked_root:
-        _verify_repository(locked_root, report)
+    with _publication_lock(repository_root) as (locked_root, git_dir):
+        _verify_repository(locked_root, git_dir, report)
+        benchmarks_dir_path = locked_root / "benchmarks"
+        benchmarks_dir = _OwnedPath(
+            benchmarks_dir_path, _require_kind(benchmarks_dir_path, directory=True)
+        )
         root_readme = locked_root / "README.md"
-        benchmark_readme = locked_root / "benchmarks" / "README.md"
-        try:
-            root_text = root_readme.read_text()
-            benchmark_text = benchmark_readme.read_text()
-        except OSError:
-            raise BenchmarkFailure("README files are not publishable") from None
+        benchmark_readme = benchmarks_dir.path / "README.md"
+        root_identity = _require_kind(root_readme, directory=False)
+        benchmark_identity = _require_kind(benchmark_readme, directory=False)
+        root_text = _read_pinned_text(root_readme, root_identity)
+        benchmark_text = _read_pinned_text(benchmark_readme, benchmark_identity)
 
         rendered_root = _replace_marker(
             root_text, OVERALL_START, OVERALL_END, _overall_markdown(report)
@@ -859,65 +1112,94 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
             DETAIL_END,
             _detail_markdown(report, timestamp),
         )
-        results_dir = locked_root / "benchmarks" / "results"
-        destination = results_dir / timestamp
-        if destination.exists():
+        root_change = _AtomicTextChange(
+            root_readme, root_text, root_identity, rendered_root
+        )
+        benchmark_change = _AtomicTextChange(
+            benchmark_readme, benchmark_text, benchmark_identity, rendered_benchmark
+        )
+        results_path = benchmarks_dir.path / "results"
+        results_identity = _lexical_identity(results_path)
+        if results_identity is not None and not stat.S_ISDIR(results_identity.mode):
+            raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
+        destination = results_path / timestamp
+        if _lexical_identity(destination) is not None:
             raise BenchmarkFailure("published benchmark timestamp already exists")
 
-        staging: Path | None = None
-        results_dir_created = False
-        destination_created = False
-        benchmark_replaced = False
-        root_replaced = False
+        results_owned: _OwnedPath | None = None
+        staging: _OwnedPath | None = None
+        results_registry: list[_OwnedPath] = []
+        staging_registry: list[_OwnedPath] = []
         try:
-            if not results_dir.exists():
-                results_dir_created = True
-                results_dir.mkdir()
-            staging = results_dir / (f".{timestamp}.{uuid.uuid4().hex}.staging")
-            staging.mkdir()
-            write_report(report, staging, forbidden_values=())
-            write_csv(report, staging)
-            write_figures(report, staging)
-            if {path.name for path in staging.iterdir()} != required:
-                raise BenchmarkFailure(_PUBLICATION_FAILURE)
-            if destination.exists():
-                raise BenchmarkFailure("published benchmark timestamp already exists")
-
-            _atomic_text_if_unchanged(
-                benchmark_readme, benchmark_text, rendered_benchmark
+            if results_identity is None:
+                results_owned = _create_owned_directory(results_path, results_registry)
+                results_dir = results_owned
+            else:
+                results_dir = _OwnedPath(results_path, results_identity)
+            staging_path = git_dir / (
+                f"benchmark-publication.{timestamp}.{uuid.uuid4().hex}.staging"
             )
-            benchmark_replaced = True
-            _atomic_text_if_unchanged(root_readme, root_text, rendered_root)
-            root_replaced = True
-            staging.rename(destination)
-            destination_created = True
-        except BaseException as error:
-            rollback_failures = _compensate_publication(
-                root_readme=root_readme,
-                root_snapshot=root_text,
-                rendered_root=rendered_root,
-                root_replaced=root_replaced,
-                benchmark_readme=benchmark_readme,
-                benchmark_snapshot=benchmark_text,
-                rendered_benchmark=rendered_benchmark,
-                benchmark_replaced=benchmark_replaced,
+            staging = _create_owned_directory(staging_path, staging_registry)
+            if staging.identity.device != results_dir.identity.device:
+                raise BenchmarkFailure(_PUBLICATION_FAILURE)
+
+            write_report(report, staging.path, forbidden_values=())
+            write_csv(report, staging.path)
+            write_figures(report, staging.path)
+            if not _matches_identity(staging.path, staging.identity):
+                raise BenchmarkFailure(_PUBLICATION_FAILURE)
+            if {path.name for path in staging.path.iterdir()} != required:
+                raise BenchmarkFailure(_PUBLICATION_FAILURE)
+
+            _require_publication_namespace(
+                benchmarks_dir=benchmarks_dir,
+                results_dir=results_dir,
                 staging=staging,
                 destination=destination,
-                destination_created=destination_created,
+            )
+            _verify_repository(locked_root, git_dir, report)
+            _atomic_text_if_unchanged(benchmark_change)
+
+            _verify_repository(
+                locked_root,
+                git_dir,
+                report,
+                allowed_status=frozenset({" M benchmarks/README.md"}),
+            )
+            if not _matches_identity(
+                benchmark_readme,
+                cast(_PathIdentity, benchmark_change.replacement_identity),
+            ):
+                raise BenchmarkFailure(_PUBLICATION_FAILURE)
+            _atomic_text_if_unchanged(root_change)
+
+            _require_publication_namespace(
+                benchmarks_dir=benchmarks_dir,
                 results_dir=results_dir,
-                results_dir_created=results_dir_created,
+                staging=staging,
+                destination=destination,
             )
-            if not isinstance(error, Exception):
-                if rollback_failures:
-                    raise error from ExceptionGroup(
-                        "publication rollback failures", rollback_failures
-                    )
-                raise
-            safe_causes = [
-                _safe_cleanup_failure("publication operation failed"),
-                *rollback_failures,
-            ]
-            raise BenchmarkFailure(_PUBLICATION_FAILURE) from ExceptionGroup(
-                "publication failures", safe_causes
+            if not _matches_identity(
+                root_readme, cast(_PathIdentity, root_change.replacement_identity)
+            ) or not _matches_identity(
+                benchmark_readme,
+                cast(_PathIdentity, benchmark_change.replacement_identity),
+            ):
+                raise BenchmarkFailure(_PUBLICATION_FAILURE)
+            _verify_repository(
+                locked_root,
+                git_dir,
+                report,
+                allowed_status=frozenset({" M README.md", " M benchmarks/README.md"}),
             )
+            os.rename(staging.path, destination)
+        except BaseException as error:
+            cleanup = _compensate_publication(
+                root_change=root_change,
+                benchmark_change=benchmark_change,
+                staging=staging or next(iter(staging_registry), None),
+                destination=destination,
+                results=results_owned or next(iter(results_registry), None),
+            )
+            _raise_publication_failure(error, cleanup)
         return destination
