@@ -402,8 +402,16 @@ shared start gate. See the
 before running it because it submits real testnet orders.
 
 <!-- live-exchange-benchmark:overall:start -->
-No validated concurrent OID/CLOID result has been published yet. Provider
-diagnostic reports are not eligible for this section.
+#### Published live Exchange result
+
+The validated testnet run uses concurrency=20 (10 OID + 10 CLOID) single-order cancellation requests per measured round.
+
+| Identifier | Individual median (ms) | Individual p95 (ms) | Round-max median (ms) | Round-max p95 (ms) |
+|---|---:|---:|---:|---:|
+| OID | 916.78 | 1003.99 | 948.75 | 1131.51 |
+| CLOID | 913.98 | 1001.03 | 945.31 | 1026.93 |
+
+See the [detailed methodology, distributions, and artifacts](benchmarks/README.md#published-live-exchange-benchmark).
 <!-- live-exchange-benchmark:overall:end -->
 
 The credential-free Info command always runs the complete suite against both

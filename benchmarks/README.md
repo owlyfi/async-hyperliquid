@@ -166,8 +166,45 @@ sanitized report, 600-sample CSV, and cancel-id PNG/SVG into
 and in the repository README. Provider diagnostic reports are ineligible.
 
 <!-- live-exchange-benchmark:detail:start -->
-No validated concurrent OID/CLOID result has been published yet. Provider
-diagnostic reports are not eligible for this section.
+## Published live Exchange benchmark
+
+Validated testnet run completed `2026-08-05T19:26:21Z`. The runner used
+three warmup rounds, 30 measured rounds, and a maximum controlled rate of
+240 weight/minute. Initialization, market metadata, mid lookup, pacing, and
+cleanup are excluded from measured latency. Each measured round uses
+concurrency=20 (10 OID + 10 CLOID) single-order cancellation requests.
+
+| Environment | Value |
+|---|---|
+| network | testnet |
+| python | 3.12.13 |
+| platform | Darwin-arm64 |
+| async-hyperliquid | 1.0.0rc1 |
+| sdk | 0.24.0 |
+| ccxt | 4.5.71 |
+
+### OID versus CLOID cancellation
+
+All 300 individual request latencies per identifier are shown below.
+
+| Identifier | Median (ms) | MAD (ms) | p95 (ms) | Min (ms) | Max (ms) |
+|---|---:|---:|---:|---:|---:|
+| OID | 916.78 | 41.04 | 1003.99 | 804.46 | 1131.90 |
+| CLOID | 913.98 | 40.56 | 1001.03 | 802.30 | 1036.00 |
+
+### Per-round method maxima
+
+Each value is the slowest of that method's ten requests in one measured round.
+
+| Identifier | Rounds | Median (ms) | p95 (ms) |
+|---|---:|---:|---:|
+| OID | 30 | 948.75 | 1131.51 |
+| CLOID | 30 | 945.31 | 1026.93 |
+
+![OID and CLOID latency](results/20260805T192621Z/cancel-id-latency.svg)
+Artifacts: [sanitized JSON](results/20260805T192621Z/report.json), [sample CSV](results/20260805T192621Z/samples.csv).
+
+These measurements describe one testnet run, not exchange capacity. Shared-IP traffic, geography, testnet load, dependency versions, and network conditions can change results.
 <!-- live-exchange-benchmark:detail:end -->
 
 ## Signing benchmark
