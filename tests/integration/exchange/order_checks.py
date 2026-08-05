@@ -32,9 +32,13 @@ def requires_order_cleanup(response: PlaceOrderResponse) -> bool:
 
 def _assert_targeted_cancel_succeeded(response: CancelOrderResponse) -> None:
     if response["status"] != "ok":
-        raise AssertionError("targeted test-order cleanup request failed")
+        raise AssertionError(
+            f"targeted test-order cleanup request failed: response={response!r}"
+        )
     if response["response"]["data"]["statuses"] != ["success"]:
-        raise AssertionError("targeted test-order cleanup was not confirmed")
+        raise AssertionError(
+            f"targeted test-order cleanup was not confirmed: response={response!r}"
+        )
 
 
 async def cleanup_order(
@@ -70,7 +74,11 @@ async def cleanup_order(
             return False
         failures.append(AssertionError("test order remains open after cleanup"))
 
-    raise ExceptionGroup("targeted order cleanup failed", failures)
+    raise ExceptionGroup(
+        "targeted order cleanup failed "
+        f"(owner_address={owner_address!r}, coin={coin!r}, cloid={cloid!r})",
+        failures,
+    )
 
 
 async def cleanup_shared_cloid_orders(

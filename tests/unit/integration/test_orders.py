@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from traceback import format_exception
 from typing import cast
 
 import pytest
@@ -42,6 +43,9 @@ _ORDER_ERROR_RESPONSE = cast(
 _CANCEL_SUCCESS = cast(
     CancelOrderResponse,
     {"status": "ok", "response": {"type": "cancel", "data": {"statuses": ["success"]}}},
+)
+_CANCEL_REJECTED = cast(
+    CancelOrderResponse, {"status": "err", "response": "cancel rejected by exchange"}
 )
 _OPEN_ORDER_STATUS = cast(OrderStatus, {"status": "order", "order": {"status": "open"}})
 _UNKNOWN_ORDER_STATUS = cast(OrderStatus, {"status": "unknownOid"})
@@ -151,6 +155,30 @@ async def test_cleanup_targets_the_submitted_market() -> None:
     )
 
     assert client.cancelled_coins == ["PURR/USDC"]
+
+
+async def test_cleanup_exhaustion_reports_public_order_context() -> None:
+    owner_address = "0x1111111111111111111111111111111111111111"
+    coin = "PURR/USDC"
+    cloid = Cloid.from_int(3)
+    client = SubaccountOrderClientStub(
+        _RESTING_RESPONSE,
+        (_CANCEL_REJECTED, _CANCEL_REJECTED),
+        (_OPEN_ORDER_STATUS, _OPEN_ORDER_STATUS),
+    )
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await cleanup_order(cast(AsyncHyperliquid, client), owner_address, coin, cloid)
+
+    output = "".join(format_exception(raised.value))
+    expected_context = {
+        owner_address,
+        coin,
+        str(cloid),
+        "cancel rejected by exchange",
+        "'status': 'err'",
+    }
+    assert {value for value in expected_context if value not in output} == set()
 
 
 async def test_shared_cleanup_preserves_isolation_and_cleanup_failures() -> None:
