@@ -181,10 +181,31 @@ def test_live_report_declares_v2_concurrent_workload_contract() -> None:
     report = _valid_report()
 
     assert report["schema_version"] == 2
+    assert report["failure_context"] is None
     assert report["config"]["workload"] == (
         "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
     )
     validate_publishable(report)
+
+
+def test_publication_rejects_non_null_failure_context() -> None:
+    report = _valid_report()
+    cast(dict[str, object], report)["failure_context"] = {
+        "phase": "cancel_id",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "cancel_by_oid",
+        "launch_slot": 0,
+        "category": "timeout",
+        "failed_count": 1,
+        "successful_count": 19,
+        "recovery_attempted": True,
+        "recovery_count": 1,
+        "recovery_ok": True,
+    }
+
+    with pytest.raises(BenchmarkFailure, match="^report is not publishable$"):
+        validate_publishable(report)
 
 
 def test_publication_rejects_legacy_v1_report() -> None:

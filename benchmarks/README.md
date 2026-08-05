@@ -120,6 +120,32 @@ for the remaining orders. Any recovery or client-close failure sets
 `cleanup_ok=false`; inspect the testnet subaccount manually before another run
 whenever the command exits nonzero.
 
+Schema-v2 reports always include `failure_context`. It is `null` for a valid
+report. For an invalid runtime report it is an exact, allowlisted object with:
+
+- `phase` and `operation`: known enums identifying the safe lifecycle stage and
+  operation, never provider or exception text;
+- `logical_round`: a nonnegative round index or `null`, and `measured_round`: a
+  nonnegative measured index or `null` during warmup or outside a suite;
+- `launch_slot`: `null` or the first failed concurrent slot from 0 through 19;
+- `category`: one of `rate_limited`, `timeout`, `protocol`,
+  `unsuccessful_response`, `indeterminate_action`, `placement`, `recovery`,
+  `client_close`, `preflight`, or `internal`;
+- `failed_count` and `successful_count`: bounded operation counts from 0 through
+  20 (with at least one failure in an invalid context); and
+- `recovery_attempted`, `recovery_count`, and nullable `recovery_ok`: whether a
+  targeted recovery ran, how many orders it covered, and its outcome.
+
+The classifier examines only bounded exception groups, known exception classes,
+and typed integer HTTP status attributes. Exception messages, tracebacks,
+credentials, addresses, OIDs, CLOIDs, nonces, signatures, bodies, and responses
+are never copied into the report. If a transport status is no longer available,
+the action is `indeterminate_action`; the report does not guess that it was a
+rate limit. For `rate_limited`, do not immediately rerun: first allow the limit
+window to recover and check competing traffic. If `cleanup_ok=false` or
+`recovery_ok=false`, stop and perform manual inspection of the testnet
+subaccount before any rerun.
+
 A valid selected-suite run writes sanitized `report.json`, `samples.csv`, and
 the applicable PNG/SVG figures. An invalid run writes
 `report.invalid.json`, preserves already collected safe samples, and does not

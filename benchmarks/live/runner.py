@@ -7,7 +7,16 @@ from time import perf_counter_ns
 from typing import Literal
 from uuid import uuid4
 
-from .models import BenchmarkConfig, BenchmarkFailure, CanonicalOrder, LatencySample
+from .models import (
+    BenchmarkConfig,
+    BenchmarkFailure,
+    BenchmarkRunFailure,
+    CanonicalOrder,
+    FailureContext,
+    FailureOperation,
+    LatencySample,
+    classify_failure,
+)
 from .pacing import WeightedPacer
 from .providers import (
     ConcurrentCancelProvider,
@@ -72,24 +81,70 @@ async def run_cancel_id_suite(
 ) -> None:
     total_rounds = config.warmups + config.rounds
     for logical_round in range(total_rounds):
-        await pacer.wait(weight=2)
-        mid, size_decimals = await mid_source.snapshot()
-        pairs = tuple(
-            build_order_pair(
-                mid,
-                size_decimals,
-                target_notional=config.target_notional,
-                cloids=(cloid_factory(), cloid_factory()),
-                buy_multiplier=config.buy_multiplier,
-                sell_multiplier=config.sell_multiplier,
+        measured = logical_round >= config.warmups
+        measured_round = logical_round - config.warmups if measured else None
+        try:
+            await pacer.wait(weight=2)
+            mid, size_decimals = await mid_source.snapshot()
+        except BaseException as error:
+            if not isinstance(error, Exception):
+                raise
+            raise BenchmarkRunFailure(
+                "cancel-id benchmark failed",
+                FailureContext(
+                    phase="cancel_id",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation="market_snapshot",
+                    launch_slot=None,
+                    category=classify_failure(error),
+                    failed_count=1,
+                    successful_count=0,
+                    recovery_attempted=False,
+                    recovery_count=0,
+                    recovery_ok=None,
+                ),
+            ) from error
+        try:
+            pairs = tuple(
+                build_order_pair(
+                    mid,
+                    size_decimals,
+                    target_notional=config.target_notional,
+                    cloids=(cloid_factory(), cloid_factory()),
+                    buy_multiplier=config.buy_multiplier,
+                    sell_multiplier=config.sell_multiplier,
+                )
+                for _ in range(10)
             )
-            for _ in range(10)
-        )
-        orders = tuple(order for pair in pairs for order in pair.as_tuple())
-        pending = {order.cloid: order for order in orders}
-        if len(pending) != len(orders):
-            raise BenchmarkFailure("cancel-id generated non-unique CLOIDs")
+            orders = tuple(order for pair in pairs for order in pair.as_tuple())
+            pending = {order.cloid: order for order in orders}
+            if len(pending) != len(orders):
+                raise BenchmarkFailure("cancel-id generated non-unique CLOIDs")
+        except BaseException as error:
+            if not isinstance(error, Exception):
+                raise
+            raise BenchmarkRunFailure(
+                "cancel-id benchmark failed",
+                FailureContext(
+                    phase="cancel_id",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation="placement",
+                    launch_slot=None,
+                    category=classify_failure(error),
+                    failed_count=1,
+                    successful_count=0,
+                    recovery_attempted=False,
+                    recovery_count=0,
+                    recovery_ok=None,
+                ),
+            ) from error
         failure: BaseException | None = None
+        failure_operation: FailureOperation = "placement"
+        failure_slot: int | None = None
+        failed_count = 1
+        successful_count = 0
 
         try:
             await pacer.wait(weight=1)
@@ -124,9 +179,8 @@ async def run_cancel_id_suite(
                 )
                 for request in pair
             )
+            failure_operation = "internal"
 
-            measured = logical_round >= config.warmups
-            measured_round = logical_round - config.warmups
             await pacer.wait(weight=20)
             gate = asyncio.Event()
             tasks = tuple(
@@ -143,13 +197,13 @@ async def run_cancel_id_suite(
                 await asyncio.gather(*tasks, return_exceptions=True)
                 raise
 
-            cancel_failures: list[BaseException] = []
+            cancel_failures: list[tuple[int, _CancelRequest, BaseException]] = []
             samples: list[LatencySample] = []
             for provider_order, (request, result) in enumerate(
                 zip(requests, results, strict=True)
             ):
                 if isinstance(result, BaseException):
-                    cancel_failures.append(result)
+                    cancel_failures.append((provider_order, request, result))
                     continue
                 pending.pop(request.order.cloid)
                 if measured:
@@ -158,25 +212,33 @@ async def run_cancel_id_suite(
                             suite="cancel-id",
                             provider=provider.name,
                             operation=request.operation,
-                            round_index=measured_round,
+                            round_index=logical_round - config.warmups,
                             provider_order=provider_order,
                             duration_ns=result,
                         )
                     )
             if cancel_failures:
+                first_slot, first_request, _ = cancel_failures[0]
+                failure_operation = first_request.operation
+                failure_slot = first_slot
+                failed_count = len(cancel_failures)
+                successful_count = len(requests) - failed_count
                 failure = BaseExceptionGroup(
-                    "cancel-id concurrent cancel failed", cancel_failures
+                    "cancel-id concurrent cancel failed",
+                    [error for _, _, error in cancel_failures],
                 )
             for sample in samples:
                 recorder.record(sample)
         except BaseException as error:
             if failure is None:
                 failure = error
+                successful_count = len(orders) - len(pending)
             else:
                 failure = BaseExceptionGroup(
                     "cancel-id multiple operation failures", [failure, error]
                 )
 
+        recovery_count = len(pending)
         cleanup_failure = await _recover_pending(pending, recovery, pacer)
         if cleanup_failure is not None:
             if failure is not None and not isinstance(failure, Exception):
@@ -188,9 +250,41 @@ async def run_cancel_id_suite(
                     "cancel-id operation and cleanup both failed",
                     [failure, cleanup_failure],
                 )
-            raise BenchmarkFailure("cancel-id cleanup failed") from cause
+            raise BenchmarkRunFailure(
+                "cancel-id cleanup failed",
+                FailureContext(
+                    phase="recovery",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation=failure_operation,
+                    launch_slot=failure_slot,
+                    category="recovery",
+                    failed_count=failed_count,
+                    successful_count=successful_count,
+                    recovery_attempted=True,
+                    recovery_count=recovery_count,
+                    recovery_ok=False,
+                ),
+            ) from cause
         if failure is not None:
-            raise failure
+            if not isinstance(failure, Exception):
+                raise failure
+            raise BenchmarkRunFailure(
+                "cancel-id benchmark failed",
+                FailureContext(
+                    phase="cancel_id",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation=failure_operation,
+                    launch_slot=failure_slot,
+                    category=classify_failure(failure),
+                    failed_count=failed_count,
+                    successful_count=successful_count,
+                    recovery_attempted=recovery_count > 0,
+                    recovery_count=recovery_count,
+                    recovery_ok=True if recovery_count > 0 else None,
+                ),
+            ) from failure
 
 
 async def run_provider_suite(
@@ -213,24 +307,32 @@ async def run_provider_suite(
 
     total_rounds = config.warmups + config.rounds
     for logical_round in range(total_rounds):
-        await pacer.wait(weight=2)
-        mid, size_decimals = await mid_source.snapshot()
-        parity_pair = build_order_pair(
-            mid,
-            size_decimals,
-            target_notional=config.target_notional,
-            cloids=(cloid_factory(), cloid_factory()),
-            buy_multiplier=config.buy_multiplier,
-            sell_multiplier=config.sell_multiplier,
-        )
-        validate_provider_wire_parity(tuple(providers), parity_pair)
-
         measured = logical_round >= config.warmups
-        measured_round = logical_round - config.warmups
-        ordered_names = rotate_names(provider_names, logical_round)
-        for provider_order, provider_name in enumerate(ordered_names):
-            provider = providers_by_name[provider_name]
-            pair = build_order_pair(
+        measured_round = logical_round - config.warmups if measured else None
+        try:
+            await pacer.wait(weight=2)
+            mid, size_decimals = await mid_source.snapshot()
+        except BaseException as error:
+            if not isinstance(error, Exception):
+                raise
+            raise BenchmarkRunFailure(
+                "providers benchmark failed",
+                FailureContext(
+                    phase="providers",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation="market_snapshot",
+                    launch_slot=None,
+                    category=classify_failure(error),
+                    failed_count=1,
+                    successful_count=0,
+                    recovery_attempted=False,
+                    recovery_count=0,
+                    recovery_ok=None,
+                ),
+            ) from error
+        try:
+            parity_pair = build_order_pair(
                 mid,
                 size_decimals,
                 target_notional=config.target_notional,
@@ -238,36 +340,93 @@ async def run_provider_suite(
                 buy_multiplier=config.buy_multiplier,
                 sell_multiplier=config.sell_multiplier,
             )
+            validate_provider_wire_parity(tuple(providers), parity_pair)
+        except BaseException as error:
+            if not isinstance(error, Exception):
+                raise
+            raise BenchmarkRunFailure(
+                "providers benchmark failed",
+                FailureContext(
+                    phase="providers",
+                    logical_round=logical_round,
+                    measured_round=measured_round,
+                    operation="wire_parity",
+                    launch_slot=None,
+                    category=classify_failure(error),
+                    failed_count=1,
+                    successful_count=0,
+                    recovery_attempted=False,
+                    recovery_count=0,
+                    recovery_ok=None,
+                ),
+            ) from error
+        ordered_names = rotate_names(provider_names, logical_round)
+        for provider_order, provider_name in enumerate(ordered_names):
+            provider = providers_by_name[provider_name]
+            try:
+                pair = build_order_pair(
+                    mid,
+                    size_decimals,
+                    target_notional=config.target_notional,
+                    cloids=(cloid_factory(), cloid_factory()),
+                    buy_multiplier=config.buy_multiplier,
+                    sell_multiplier=config.sell_multiplier,
+                )
+            except BaseException as error:
+                if not isinstance(error, Exception):
+                    raise
+                raise BenchmarkRunFailure(
+                    "providers benchmark failed",
+                    FailureContext(
+                        phase="providers",
+                        logical_round=logical_round,
+                        measured_round=measured_round,
+                        operation="placement",
+                        launch_slot=None,
+                        category=classify_failure(error),
+                        failed_count=1,
+                        successful_count=0,
+                        recovery_attempted=False,
+                        recovery_count=0,
+                        recovery_ok=None,
+                    ),
+                ) from error
             pending = {order.cloid: order for order in pair.as_tuple()}
             failure: BaseException | None = None
+            failure_operation: FailureOperation = "placement"
+            successful_count = 0
 
             try:
                 await pacer.wait(weight=1)
                 place_started = clock_ns() if measured else 0
                 oids = await provider.place(pair)
                 if measured:
+                    failure_operation = "internal"
                     recorder.record(
                         LatencySample(
                             suite="providers",
                             provider=provider.name,
                             operation="place_batch_2",
-                            round_index=measured_round,
+                            round_index=logical_round - config.warmups,
                             provider_order=provider_order,
                             duration_ns=clock_ns() - place_started,
                         )
                     )
 
+                failure_operation = "cancel_batch_2_by_oid"
                 await pacer.wait(weight=1)
                 cancel_started = clock_ns() if measured else 0
                 await provider.cancel_oids(pair.as_tuple(), oids)
                 pending.clear()
+                successful_count = 1
                 if measured:
+                    failure_operation = "internal"
                     recorder.record(
                         LatencySample(
                             suite="providers",
                             provider=provider.name,
                             operation="cancel_batch_2_by_oid",
-                            round_index=measured_round,
+                            round_index=logical_round - config.warmups,
                             provider_order=provider_order,
                             duration_ns=clock_ns() - cancel_started,
                         )
@@ -275,8 +434,11 @@ async def run_provider_suite(
             except BaseException as error:
                 failure = error
 
+            recovery_count = len(pending)
             cleanup_failure = await _recover_pending(pending, recovery, pacer)
             if cleanup_failure is not None:
+                if failure is not None and not isinstance(failure, Exception):
+                    raise failure from cleanup_failure
                 if failure is None:
                     cause: BaseException = cleanup_failure
                 else:
@@ -284,6 +446,38 @@ async def run_provider_suite(
                         "provider operation and cleanup both failed",
                         [failure, cleanup_failure],
                     )
-                raise BenchmarkFailure("providers cleanup failed") from cause
+                raise BenchmarkRunFailure(
+                    "providers cleanup failed",
+                    FailureContext(
+                        phase="recovery",
+                        logical_round=logical_round,
+                        measured_round=measured_round,
+                        operation=failure_operation,
+                        launch_slot=None,
+                        category="recovery",
+                        failed_count=1,
+                        successful_count=successful_count,
+                        recovery_attempted=True,
+                        recovery_count=recovery_count,
+                        recovery_ok=False,
+                    ),
+                ) from cause
             if failure is not None:
-                raise failure
+                if not isinstance(failure, Exception):
+                    raise failure
+                raise BenchmarkRunFailure(
+                    "providers benchmark failed",
+                    FailureContext(
+                        phase="providers",
+                        logical_round=logical_round,
+                        measured_round=measured_round,
+                        operation=failure_operation,
+                        launch_slot=None,
+                        category=classify_failure(failure),
+                        failed_count=1,
+                        successful_count=successful_count,
+                        recovery_attempted=recovery_count > 0,
+                        recovery_count=recovery_count,
+                        recovery_ok=True if recovery_count > 0 else None,
+                    ),
+                ) from failure

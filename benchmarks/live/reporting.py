@@ -52,6 +52,7 @@ _TOP_LEVEL_FIELDS = frozenset(
         "schema_version",
         "valid",
         "failure_reason",
+        "failure_context",
         "cleanup_ok",
         "started_at",
         "completed_at",
@@ -1370,6 +1371,7 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
         if (
             not report["valid"]
             or report["failure_reason"] is not None
+            or report["failure_context"] is not None
             or not report["cleanup_ok"]
             or config.get("workload") != CONCURRENT_CANCEL_WORKLOAD
             or not _is_exact_int(config.get("rounds"))

@@ -7,7 +7,9 @@ import pytest
 
 from benchmarks.live.models import (
     BenchmarkConfig,
+    BenchmarkFailure,
     CanonicalOrder,
+    FailureContext,
     GitMetadata,
     LiveBenchmarkReport,
     OrderPair,
@@ -50,11 +52,13 @@ class ProviderStub:
         clock: TickClock,
         events: list[tuple[str, str, OrderPair]],
         *,
+        fail_place: bool = False,
         fail_cancel: bool = False,
     ) -> None:
         self.name = name
         self.clock = clock
         self.events = events
+        self.fail_place = fail_place
         self.fail_cancel = fail_cancel
 
     def wire_orders(self, pair: OrderPair) -> tuple[dict[str, object], ...]:
@@ -77,6 +81,8 @@ class ProviderStub:
     async def place(self, pair: OrderPair) -> tuple[int, int]:
         self.events.append(("place", self.name, pair))
         self.clock.advance(10)
+        if self.fail_place:
+            raise TimeoutError("provider placement timed out")
         return (101, 202)
 
     async def cancel_oids(
@@ -99,11 +105,14 @@ class ProviderStub:
 class RecoveryStub:
     name = "recovery"
 
-    def __init__(self) -> None:
+    def __init__(self, *, error: BaseException | None = None) -> None:
         self.cleaned: list[tuple[str, ...]] = []
+        self.error = error
 
     async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None:
         self.cleaned.append(tuple(order.cloid for order in orders))
+        if self.error is not None:
+            raise self.error
 
 
 def _recorder(config: BenchmarkConfig) -> SampleRecorder:
@@ -206,7 +215,9 @@ async def test_provider_cancel_failure_cleans_both_cloids_without_retry() -> Non
     failing = ProviderStub("ccxt", clock, events, fail_cancel=True)
     recovery = RecoveryStub()
 
-    with pytest.raises(TimeoutError, match="provider cancel timed out"):
+    with pytest.raises(
+        BenchmarkFailure, match="^providers benchmark failed$"
+    ) as raised:
         await run_provider_suite(
             cast(Any, (failing,)),
             cast(Any, recovery),
@@ -221,6 +232,53 @@ async def test_provider_cancel_failure_cleans_both_cloids_without_retry() -> Non
     assert [operation for operation, _, _ in events] == ["place", "cancel"]
     assert len(recovery.cleaned) == 1
     assert len(recovery.cleaned[0]) == 2
+    assert raised.value.failure_context.as_record() == {  # type: ignore[attr-defined]
+        "phase": "providers",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "cancel_batch_2_by_oid",
+        "launch_slot": None,
+        "category": "timeout",
+        "failed_count": 1,
+        "successful_count": 0,
+        "recovery_attempted": True,
+        "recovery_count": 2,
+        "recovery_ok": True,
+    }
+
+
+async def test_provider_placement_and_recovery_failure_has_safe_context() -> None:
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    events: list[tuple[str, str, OrderPair]] = []
+    failing = ProviderStub("sdk", clock, events, fail_place=True)
+    recovery = RecoveryStub(error=RuntimeError("secret recovery body"))
+
+    with pytest.raises(BenchmarkFailure, match="^providers cleanup failed$") as raised:
+        await run_provider_suite(
+            cast(Any, (failing,)),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            _recorder(config),
+            clock_ns=clock.now,
+            cloid_factory=_cloid_factory(),
+        )
+
+    assert raised.value.failure_context.as_record() == {  # type: ignore[attr-defined]
+        "phase": "recovery",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "placement",
+        "launch_slot": None,
+        "category": "recovery",
+        "failed_count": 1,
+        "successful_count": 0,
+        "recovery_attempted": True,
+        "recovery_count": 2,
+        "recovery_ok": False,
+    }
 
 
 def _invalid_report() -> LiveBenchmarkReport:
@@ -228,6 +286,19 @@ def _invalid_report() -> LiveBenchmarkReport:
     return _recorder(config).build_report(
         valid=False,
         failure_reason="ccxt rate limited",
+        failure_context=FailureContext(
+            phase="providers",
+            logical_round=0,
+            measured_round=0,
+            operation="placement",
+            launch_slot=None,
+            category="rate_limited",
+            failed_count=1,
+            successful_count=0,
+            recovery_attempted=True,
+            recovery_count=2,
+            recovery_ok=True,
+        ),
         cleanup_ok=True,
         started_at="2026-08-05T00:00:00Z",
         completed_at="2026-08-05T00:00:01Z",

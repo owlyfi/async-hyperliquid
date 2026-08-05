@@ -300,7 +300,7 @@ async def test_indeterminate_place_cleans_both_cloids_without_retry() -> None:
     provider = ProviderStub(clock, fail_place=True)
     recovery = RecoveryStub()
 
-    with pytest.raises(TimeoutError, match="indeterminate placement"):
+    with pytest.raises(BenchmarkFailure) as raised:
         await run_cancel_id_suite(
             cast(Any, provider),
             cast(Any, recovery),
@@ -315,6 +315,19 @@ async def test_indeterminate_place_cleans_both_cloids_without_retry() -> None:
     assert provider.placement_sizes == [20]
     assert len(recovery.cleaned) == 1
     assert len(recovery.cleaned[0]) == 20
+    assert raised.value.failure_context.as_record() == {  # type: ignore[attr-defined]
+        "phase": "cancel_id",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "placement",
+        "launch_slot": None,
+        "category": "timeout",
+        "failed_count": 1,
+        "successful_count": 0,
+        "recovery_attempted": True,
+        "recovery_count": 20,
+        "recovery_ok": True,
+    }
 
 
 async def test_duplicate_cloid_generation_fails_before_placement_or_cancel() -> None:
@@ -324,8 +337,8 @@ async def test_duplicate_cloid_generation_fails_before_placement_or_cancel() -> 
     recovery = RecoveryStub()
 
     with pytest.raises(
-        BenchmarkFailure, match="^cancel-id generated non-unique CLOIDs$"
-    ):
+        BenchmarkFailure, match="^cancel-id benchmark failed$"
+    ) as raised:
         await run_cancel_id_suite(
             cast(Any, provider),
             cast(Any, recovery),
@@ -340,6 +353,41 @@ async def test_duplicate_cloid_generation_fails_before_placement_or_cancel() -> 
     assert provider.placement_sizes == []
     assert provider.cancel_calls == 0
     assert recovery.cleaned == []
+    assert raised.value.failure_context.category == "internal"  # type: ignore[attr-defined]
+    assert raised.value.failure_context.recovery_attempted is False  # type: ignore[attr-defined]
+
+
+async def test_cloid_construction_failure_retains_round_without_recovery() -> None:
+    config = BenchmarkConfig(rounds=1, warmups=1)
+    clock = TickClock()
+    provider = ProviderStub(clock)
+    recovery = RecoveryStub()
+
+    def fail_cloid() -> str:
+        raise RuntimeError("secret construction value")
+
+    with pytest.raises(
+        BenchmarkFailure, match="^cancel-id benchmark failed$"
+    ) as raised:
+        await run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            _recorder(config),
+            clock_ns=clock.now,
+            cloid_factory=fail_cloid,
+        )
+
+    context = raised.value.failure_context  # type: ignore[attr-defined]
+    assert context.logical_round == 0
+    assert context.measured_round is None
+    assert context.operation == "placement"
+    assert context.category == "internal"
+    assert context.recovery_attempted is False
+    assert provider.placement_sizes == []
+    assert recovery.cleaned == []
 
 
 async def test_duplicate_oid_response_recovers_every_placed_cloid_before_cancel() -> (
@@ -352,9 +400,8 @@ async def test_duplicate_oid_response_recovers_every_placed_cloid_before_cancel(
     recorder = _recorder(config)
 
     with pytest.raises(
-        BenchmarkFailure,
-        match="^async-hyperliquid produced a non-resting placement result$",
-    ):
+        BenchmarkFailure, match="^cancel-id benchmark failed$"
+    ) as raised:
         await run_cancel_id_suite(
             cast(Any, provider),
             cast(Any, recovery),
@@ -371,6 +418,8 @@ async def test_duplicate_oid_response_recovers_every_placed_cloid_before_cancel(
     assert recorder.samples == ()
     assert len(recovery.cleaned) == 1
     assert len(recovery.cleaned[0]) == 20
+    assert raised.value.failure_context.category == "placement"  # type: ignore[attr-defined]
+    assert raised.value.failure_context.operation == "placement"  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(("fail_calls", "expected_pending"), [({4}, 1), ({4, 15}, 2)])
@@ -383,7 +432,7 @@ async def test_concurrent_cancel_waits_for_all_tasks_and_recovers_pending(
     recovery = RecoveryStub()
     recorder = _recorder(config)
 
-    with pytest.raises(ExceptionGroup, match="concurrent cancel"):
+    with pytest.raises(BenchmarkFailure) as raised:
         await run_cancel_id_suite(
             cast(Any, provider),
             cast(Any, recovery),
@@ -399,6 +448,19 @@ async def test_concurrent_cancel_waits_for_all_tasks_and_recovers_pending(
     assert provider.completed_calls == set(range(1, 21)) - fail_calls
     assert len(recovery.cleaned[0]) == expected_pending
     assert len(recorder.samples) == 20 - expected_pending
+    assert raised.value.failure_context.as_record() == {  # type: ignore[attr-defined]
+        "phase": "cancel_id",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "cancel_by_cloid",
+        "launch_slot": 3,
+        "category": "timeout",
+        "failed_count": expected_pending,
+        "successful_count": 20 - expected_pending,
+        "recovery_attempted": True,
+        "recovery_count": expected_pending,
+        "recovery_ok": True,
+    }
 
 
 @pytest.mark.parametrize("cleanup_fails", [False, True])
@@ -488,7 +550,9 @@ async def test_recorder_failure_recovers_only_unconfirmed_orders() -> None:
     recovery = RecoveryStub()
     recorder = FailingRecorder()
 
-    with pytest.raises(RuntimeError, match="recorder sink failed"):
+    with pytest.raises(
+        BenchmarkFailure, match="^cancel-id benchmark failed$"
+    ) as raised:
         await run_cancel_id_suite(
             cast(Any, provider),
             cast(Any, recovery),
@@ -503,6 +567,8 @@ async def test_recorder_failure_recovers_only_unconfirmed_orders() -> None:
     assert provider.completed_calls == set(range(1, 21))
     assert recorder.calls == 1
     assert recovery.cleaned == []
+    assert raised.value.failure_context.operation == "internal"  # type: ignore[attr-defined]
+    assert raised.value.failure_context.successful_count == 20  # type: ignore[attr-defined]
 
 
 async def test_cleanup_failure_is_terminal_and_value_free() -> None:
@@ -524,3 +590,16 @@ async def test_cleanup_failure_is_terminal_and_value_free() -> None:
 
     assert "0x" not in str(raised.value)
     assert "transport" not in str(raised.value)
+    assert raised.value.failure_context.as_record() == {  # type: ignore[attr-defined]
+        "phase": "recovery",
+        "logical_round": 0,
+        "measured_round": 0,
+        "operation": "placement",
+        "launch_slot": None,
+        "category": "recovery",
+        "failed_count": 1,
+        "successful_count": 0,
+        "recovery_attempted": True,
+        "recovery_count": 20,
+        "recovery_ok": False,
+    }

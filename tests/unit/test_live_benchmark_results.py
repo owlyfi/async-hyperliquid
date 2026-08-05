@@ -3,11 +3,14 @@ from collections.abc import Sequence
 
 import pytest
 
+import benchmarks.live.models as live_models
+from async_hyperliquid.errors import IndeterminateActionError, ProtocolError
 from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
     LatencySample,
     PROVIDER_DIAGNOSTIC_WORKLOAD,
+    classify_failure,
 )
 from benchmarks.live.results import (
     SampleRecorder,
@@ -190,6 +193,7 @@ def test_sample_recorder_builds_serializable_grouped_report() -> None:
 
     json.dumps(report)
     assert report["schema_version"] == 2
+    assert report["failure_context"] is None
     assert report["config"]["workload"] == "providers-sequential-place2-cancel2-v1"
     assert report["summaries"]["providers"]["place_batch_2"]["sdk"] == {
         "count": 2,
@@ -199,6 +203,83 @@ def test_sample_recorder_builds_serializable_grouped_report() -> None:
         "min_ns": 20,
         "max_ns": 40,
     }
+
+
+def test_invalid_report_serializes_exact_safe_failure_context() -> None:
+    recorder = SampleRecorder(
+        config=BenchmarkConfig(rounds=1, warmups=1),
+        environment={"network": "testnet"},
+        versions={"async-hyperliquid": "1.0.0rc1"},
+        git={"revision": "abc123", "dirty": False},
+        workload=PROVIDER_DIAGNOSTIC_WORKLOAD,
+    )
+    context = live_models.FailureContext(
+        phase="recovery",
+        logical_round=0,
+        measured_round=None,
+        operation="cancel_by_oid",
+        launch_slot=3,
+        category="timeout",
+        failed_count=2,
+        successful_count=18,
+        recovery_attempted=True,
+        recovery_count=2,
+        recovery_ok=True,
+    )
+
+    report = recorder.build_report(
+        valid=False,
+        failure_reason="cancel_id_failed",
+        failure_context=context,
+        cleanup_ok=True,
+        started_at="2026-08-05T00:00:00Z",
+        completed_at="2026-08-05T00:01:00Z",
+    )
+
+    assert report["failure_context"] == {
+        "phase": "recovery",
+        "logical_round": 0,
+        "measured_round": None,
+        "operation": "cancel_by_oid",
+        "launch_slot": 3,
+        "category": "timeout",
+        "failed_count": 2,
+        "successful_count": 18,
+        "recovery_attempted": True,
+        "recovery_count": 2,
+        "recovery_ok": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"launch_slot": 20},
+        {"failed_count": True},
+        {"recovery_attempted": False, "recovery_count": 1},
+        {"recovery_attempted": True, "recovery_ok": None},
+    ],
+)
+def test_failure_context_rejects_values_outside_exact_contract(
+    mutation: dict[str, object],
+) -> None:
+    values: dict[str, object] = {
+        "phase": "cancel_id",
+        "logical_round": 1,
+        "measured_round": 0,
+        "operation": "cancel_by_cloid",
+        "launch_slot": 1,
+        "category": "protocol",
+        "failed_count": 1,
+        "successful_count": 19,
+        "recovery_attempted": True,
+        "recovery_count": 1,
+        "recovery_ok": True,
+    }
+    values.update(mutation)
+
+    with pytest.raises(ValueError, match="failure context"):
+        live_models.FailureContext(**values)  # type: ignore[attr-defined]
 
 
 def test_report_sanitizer_rejects_sensitive_keys_and_values() -> None:
@@ -215,3 +296,47 @@ def test_report_sanitizer_rejects_sensitive_keys_and_values() -> None:
             {**safe, "reason": "contains SUPER-SECRET material"},
             forbidden_values=("super-secret",),
         )
+
+
+class _HostileStatusError(RuntimeError):
+    attribute_reads = 0
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.status_code = 429
+
+    def __getattribute__(self, name: str) -> object:
+        if name in {"status", "status_code", "__cause__", "__context__"}:
+            type(self).attribute_reads += 1
+        return super().__getattribute__(name)
+
+    def __str__(self) -> str:
+        raise AssertionError("classification must not render exceptions")
+
+
+def test_failure_classifier_uses_only_bounded_typed_exception_state() -> None:
+    _HostileStatusError.attribute_reads = 0
+    status_error = _HostileStatusError("secret body")
+    outer = RuntimeError("secret wrapper")
+    outer.__cause__ = status_error
+
+    assert classify_failure(outer) == "rate_limited"
+    assert _HostileStatusError.attribute_reads == 0
+    assert classify_failure(TimeoutError("secret timeout")) == "timeout"
+    assert classify_failure(ProtocolError("secret response")) == "protocol"
+    assert (
+        classify_failure(IndeterminateActionError("order", 1_760_000_000_123))
+        == "indeterminate_action"
+    )
+    assert (
+        classify_failure(
+            BenchmarkFailure("secret rejection", category="unsuccessful_response")
+        )
+        == "unsuccessful_response"
+    )
+
+
+def test_failure_classifier_does_not_guess_rate_limit_after_status_is_lost() -> None:
+    error = IndeterminateActionError("cancel", 1_760_000_000_123)
+
+    assert classify_failure(error) == "indeterminate_action"

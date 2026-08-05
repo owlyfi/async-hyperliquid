@@ -10,6 +10,7 @@ from typing import cast
 from .models import (
     BenchmarkConfig,
     BenchmarkFailure,
+    FailureContext,
     GitMetadata,
     LIVE_REPORT_SCHEMA_VERSION,
     LatencySample,
@@ -45,16 +46,24 @@ def _mapping(value: object) -> Mapping[str, object] | None:
 def _statuses(response: object, *, provider: str, operation: str) -> list[object]:
     root = _mapping(response)
     if root is None or root.get("status") != "ok":
-        raise BenchmarkFailure(f"{provider} produced an invalid {operation} response")
+        raise BenchmarkFailure(
+            f"{provider} produced an invalid {operation} response", category="protocol"
+        )
     inner = _mapping(root.get("response"))
     if inner is None:
-        raise BenchmarkFailure(f"{provider} produced an invalid {operation} response")
+        raise BenchmarkFailure(
+            f"{provider} produced an invalid {operation} response", category="protocol"
+        )
     data = _mapping(inner.get("data"))
     if data is None:
-        raise BenchmarkFailure(f"{provider} produced an invalid {operation} response")
+        raise BenchmarkFailure(
+            f"{provider} produced an invalid {operation} response", category="protocol"
+        )
     statuses = data.get("statuses")
     if not isinstance(statuses, list):
-        raise BenchmarkFailure(f"{provider} produced an invalid {operation} response")
+        raise BenchmarkFailure(
+            f"{provider} produced an invalid {operation} response", category="protocol"
+        )
     return cast(list[object], statuses)
 
 
@@ -89,7 +98,9 @@ def parse_resting_oids(
                 break
             oids.append(oid)
     if len(oids) != expected or len(set(oids)) != expected:
-        raise BenchmarkFailure(f"{provider} produced a non-resting placement result")
+        raise BenchmarkFailure(
+            f"{provider} produced a non-resting placement result", category="placement"
+        )
     return tuple(oids)
 
 
@@ -98,7 +109,10 @@ def parse_cancel_success(response: object, *, expected: int, provider: str) -> N
         raise ValueError("expected must be positive")
     statuses = _statuses(response, provider=provider, operation="cancel")
     if len(statuses) != expected or any(status != "success" for status in statuses):
-        raise BenchmarkFailure(f"{provider} produced an unsuccessful cancel result")
+        raise BenchmarkFailure(
+            f"{provider} produced an unsuccessful cancel result",
+            category="unsuccessful_response",
+        )
 
 
 def parse_ccxt_resting_oids(orders: object) -> tuple[int, int]:
@@ -120,7 +134,9 @@ def parse_ccxt_resting_oids(orders: object) -> tuple[int, int]:
                 break
             oids.append(oid)
     if len(oids) != 2 or len(set(oids)) != 2:
-        raise BenchmarkFailure("ccxt produced a non-resting placement result")
+        raise BenchmarkFailure(
+            "ccxt produced a non-resting placement result", category="placement"
+        )
     return (oids[0], oids[1])
 
 
@@ -128,7 +144,10 @@ def parse_ccxt_cancel_success(orders: object, *, expected: int) -> None:
     if expected < 1:
         raise ValueError("expected must be positive")
     if not isinstance(orders, list) or len(orders) != expected:
-        raise BenchmarkFailure("ccxt produced an unsuccessful cancel result")
+        raise BenchmarkFailure(
+            "ccxt produced an unsuccessful cancel result",
+            category="unsuccessful_response",
+        )
     for order in orders:
         order_mapping = _mapping(order)
         if (
@@ -136,7 +155,10 @@ def parse_ccxt_cancel_success(orders: object, *, expected: int) -> None:
             or order_mapping.get("info") != "success"
             or order_mapping.get("status") != "success"
         ):
-            raise BenchmarkFailure("ccxt produced an unsuccessful cancel result")
+            raise BenchmarkFailure(
+                "ccxt produced an unsuccessful cancel result",
+                category="unsuccessful_response",
+            )
 
 
 def summarize_ns(samples: Sequence[int]) -> LatencySummary:
@@ -211,7 +233,10 @@ class SampleRecorder:
         cleanup_ok: bool,
         started_at: str,
         completed_at: str,
+        failure_context: FailureContext | None = None,
     ) -> LiveBenchmarkReport:
+        if valid == (failure_context is not None):
+            raise ValueError("validity and failure context do not agree")
         grouped: dict[str, dict[str, dict[str, list[int]]]] = {}
         for sample in self._samples:
             grouped.setdefault(sample.suite, {}).setdefault(
@@ -232,6 +257,9 @@ class SampleRecorder:
             "schema_version": LIVE_REPORT_SCHEMA_VERSION,
             "valid": valid,
             "failure_reason": failure_reason,
+            "failure_context": (
+                None if failure_context is None else failure_context.as_record()
+            ),
             "cleanup_ok": cleanup_ok,
             "started_at": started_at,
             "completed_at": completed_at,

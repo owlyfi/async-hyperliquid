@@ -21,11 +21,14 @@ if __package__ in (None, ""):
 from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
+    BenchmarkRunFailure,
     COMBINED_DIAGNOSTIC_WORKLOAD,
     CONCURRENT_CANCEL_WORKLOAD,
     GitMetadata,
+    FailureContext,
     PROVIDER_DIAGNOSTIC_WORKLOAD,
     WorkloadName,
+    classify_failure,
 )
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
@@ -145,9 +148,9 @@ def _failure_reason(error: Exception, phase: str) -> str:
         return "preflight_failed"
     if phase == "provider_setup":
         return "provider_setup_failed"
-    if isinstance(error, BenchmarkFailure) and error.args in (
-        ("cancel-id cleanup failed",),
-        ("providers cleanup failed",),
+    if (
+        isinstance(error, BenchmarkRunFailure)
+        and error.failure_context.phase == "recovery"
     ):
         return "order_cleanup_failed"
     if phase == "cancel-id":
@@ -155,6 +158,42 @@ def _failure_reason(error: Exception, phase: str) -> str:
     if phase == "providers":
         return "provider_suite_failed"
     return "benchmark_failed"
+
+
+def _fallback_failure_context(error: Exception, phase: str) -> FailureContext:
+    if phase == "preflight":
+        context_phase = "preflight"
+        operation = "preflight"
+        category = "preflight"
+    elif phase == "provider_setup":
+        context_phase = "provider_setup"
+        operation = "provider_setup"
+        category = classify_failure(error)
+    elif phase == "cancel-id":
+        context_phase = "cancel_id"
+        operation = "internal"
+        category = classify_failure(error)
+    elif phase == "providers":
+        context_phase = "providers"
+        operation = "internal"
+        category = classify_failure(error)
+    else:
+        context_phase = "provider_setup"
+        operation = "internal"
+        category = classify_failure(error)
+    return FailureContext(
+        phase=context_phase,
+        logical_round=None,
+        measured_round=None,
+        operation=operation,
+        launch_slot=None,
+        category=category,
+        failed_count=1,
+        successful_count=0,
+        recovery_attempted=False,
+        recovery_count=0,
+        recovery_ok=None,
+    )
 
 
 def _secret_values(environ: Mapping[str, str]) -> tuple[str, ...]:
@@ -216,6 +255,7 @@ async def run_live(
     started_at = _utc_now()
     providers: ProviderSet | None = None
     failure_reason: str | None = None
+    failure_context: FailureContext | None = None
     cleanup_ok = True
     phase = "preflight"
 
@@ -259,6 +299,11 @@ async def run_live(
             )
     except Exception as error:
         failure_reason = _failure_reason(error, phase)
+        failure_context = (
+            error.failure_context
+            if isinstance(error, BenchmarkRunFailure)
+            else _fallback_failure_context(error, phase)
+        )
         if failure_reason == "order_cleanup_failed":
             cleanup_ok = False
     finally:
@@ -272,6 +317,30 @@ async def run_live(
                     if failure_reason is None
                     else "multiple_failures"
                 )
+                previous = failure_context
+                failure_context = FailureContext(
+                    phase="client_close",
+                    logical_round=(
+                        None if previous is None else previous.logical_round
+                    ),
+                    measured_round=(
+                        None if previous is None else previous.measured_round
+                    ),
+                    operation=(
+                        "client_close" if previous is None else previous.operation
+                    ),
+                    launch_slot=(None if previous is None else previous.launch_slot),
+                    category="client_close",
+                    failed_count=(1 if previous is None else previous.failed_count),
+                    successful_count=(
+                        0 if previous is None else previous.successful_count
+                    ),
+                    recovery_attempted=(
+                        False if previous is None else previous.recovery_attempted
+                    ),
+                    recovery_count=(0 if previous is None else previous.recovery_count),
+                    recovery_ok=(None if previous is None else previous.recovery_ok),
+                )
 
     completed_at = _utc_now()
     valid = failure_reason is None and cleanup_ok
@@ -281,6 +350,7 @@ async def run_live(
         cleanup_ok=cleanup_ok,
         started_at=started_at,
         completed_at=completed_at,
+        failure_context=failure_context,
     )
     forbidden_values = _secret_values(environ)
     if valid:
@@ -289,12 +359,26 @@ async def run_live(
             write_figures(report, output_dir)
         except Exception:
             valid = False
+            failure_context = FailureContext(
+                phase="artifact_generation",
+                logical_round=None,
+                measured_round=None,
+                operation="artifact_generation",
+                launch_slot=None,
+                category="internal",
+                failed_count=1,
+                successful_count=0,
+                recovery_attempted=False,
+                recovery_count=0,
+                recovery_ok=None,
+            )
             report = recorder.build_report(
                 valid=False,
                 failure_reason="artifact_generation_failed",
                 cleanup_ok=cleanup_ok,
                 started_at=started_at,
                 completed_at=completed_at,
+                failure_context=failure_context,
             )
     report_path = write_report(report, output_dir, forbidden_values=forbidden_values)
     return LiveRunOutcome(report_path=report_path, valid=valid)

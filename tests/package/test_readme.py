@@ -77,3 +77,26 @@ def test_readme_documents_live_integration_commands_without_run_flags() -> None:
 
     assert "uv run pytest -q tests/integration/test_info.py" in readme
     assert "IS_MAINNET=false uv run pytest -q tests/integration/exchange" in readme
+
+
+def test_benchmark_manual_documents_safe_failure_context_and_operator_actions() -> None:
+    manual = (ROOT / "benchmarks" / "README.md").read_text()
+
+    for field in (
+        "phase",
+        "logical_round",
+        "measured_round",
+        "operation",
+        "launch_slot",
+        "category",
+        "failed_count",
+        "successful_count",
+        "recovery_attempted",
+        "recovery_count",
+        "recovery_ok",
+    ):
+        assert f"`{field}`" in manual
+    assert "`rate_limited`" in manual
+    assert "do not immediately rerun" in manual
+    assert "`recovery_ok=false`" in manual
+    assert "manual inspection" in manual

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import math
 from dataclasses import dataclass
 from typing import Final, Literal, TypedDict
+
+from async_hyperliquid.errors import IndeterminateActionError, ProtocolError
 
 
 MIN_INTERVAL_NS = 250_000_000
@@ -12,6 +15,82 @@ WorkloadName = Literal[
     "providers-sequential-place2-cancel2-v1",
     "combined-cancel-id-concurrent20-providers-sequential2-v1",
 ]
+FailurePhase = Literal[
+    "preflight",
+    "provider_setup",
+    "cancel_id",
+    "providers",
+    "recovery",
+    "client_close",
+    "artifact_generation",
+]
+FailureOperation = Literal[
+    "preflight",
+    "provider_setup",
+    "market_snapshot",
+    "wire_parity",
+    "placement",
+    "cancel_by_oid",
+    "cancel_by_cloid",
+    "cancel_batch_2_by_oid",
+    "recovery",
+    "client_close",
+    "artifact_generation",
+    "internal",
+]
+FailureCategory = Literal[
+    "rate_limited",
+    "timeout",
+    "protocol",
+    "unsuccessful_response",
+    "indeterminate_action",
+    "placement",
+    "recovery",
+    "client_close",
+    "preflight",
+    "internal",
+]
+_FAILURE_PHASES = frozenset(
+    {
+        "preflight",
+        "provider_setup",
+        "cancel_id",
+        "providers",
+        "recovery",
+        "client_close",
+        "artifact_generation",
+    }
+)
+_FAILURE_OPERATIONS = frozenset(
+    {
+        "preflight",
+        "provider_setup",
+        "market_snapshot",
+        "wire_parity",
+        "placement",
+        "cancel_by_oid",
+        "cancel_by_cloid",
+        "cancel_batch_2_by_oid",
+        "recovery",
+        "client_close",
+        "artifact_generation",
+        "internal",
+    }
+)
+_FAILURE_CATEGORIES = frozenset(
+    {
+        "rate_limited",
+        "timeout",
+        "protocol",
+        "unsuccessful_response",
+        "indeterminate_action",
+        "placement",
+        "recovery",
+        "client_close",
+        "preflight",
+        "internal",
+    }
+)
 CONCURRENT_CANCEL_WORKLOAD: Final[WorkloadName] = (
     "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
 )
@@ -25,6 +104,182 @@ COMBINED_DIAGNOSTIC_WORKLOAD: Final[WorkloadName] = (
 
 class BenchmarkFailure(RuntimeError):
     """The live benchmark cannot produce trustworthy comparable results."""
+
+    def __init__(self, message: str, *, category: FailureCategory = "internal") -> None:
+        self.category = category
+        super().__init__(message)
+
+
+class FailureContextRecord(TypedDict):
+    phase: FailurePhase
+    logical_round: int | None
+    measured_round: int | None
+    operation: FailureOperation
+    launch_slot: int | None
+    category: FailureCategory
+    failed_count: int
+    successful_count: int
+    recovery_attempted: bool
+    recovery_count: int
+    recovery_ok: bool | None
+
+
+def _bounded_int(value: object, *, minimum: int, maximum: int | None = None) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int)
+        and value >= minimum
+        and (maximum is None or value <= maximum)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FailureContext:
+    phase: FailurePhase
+    logical_round: int | None
+    measured_round: int | None
+    operation: FailureOperation
+    launch_slot: int | None
+    category: FailureCategory
+    failed_count: int
+    successful_count: int
+    recovery_attempted: bool
+    recovery_count: int
+    recovery_ok: bool | None
+
+    def __post_init__(self) -> None:
+        valid_rounds = (
+            (self.logical_round is None or _bounded_int(self.logical_round, minimum=0))
+            and (
+                self.measured_round is None
+                or _bounded_int(self.measured_round, minimum=0)
+            )
+            and not (self.logical_round is None and self.measured_round is not None)
+        )
+        valid_recovery = (
+            self.recovery_attempted
+            and _bounded_int(self.recovery_count, minimum=1, maximum=20)
+            and isinstance(self.recovery_ok, bool)
+        ) or (
+            self.recovery_attempted is False
+            and self.recovery_count == 0
+            and self.recovery_ok is None
+        )
+        if (
+            self.phase not in _FAILURE_PHASES
+            or self.operation not in _FAILURE_OPERATIONS
+            or self.category not in _FAILURE_CATEGORIES
+            or not valid_rounds
+            or (
+                self.launch_slot is not None
+                and not _bounded_int(self.launch_slot, minimum=0, maximum=19)
+            )
+            or not _bounded_int(self.failed_count, minimum=1, maximum=20)
+            or not _bounded_int(self.successful_count, minimum=0, maximum=20)
+            or not isinstance(self.recovery_attempted, bool)
+            or not valid_recovery
+        ):
+            raise ValueError("failure context is outside the safe contract")
+
+    def as_record(self) -> FailureContextRecord:
+        return {
+            "phase": self.phase,
+            "logical_round": self.logical_round,
+            "measured_round": self.measured_round,
+            "operation": self.operation,
+            "launch_slot": self.launch_slot,
+            "category": self.category,
+            "failed_count": self.failed_count,
+            "successful_count": self.successful_count,
+            "recovery_attempted": self.recovery_attempted,
+            "recovery_count": self.recovery_count,
+            "recovery_ok": self.recovery_ok,
+        }
+
+
+class BenchmarkRunFailure(BenchmarkFailure):
+    """A runtime failure with a report-safe, bounded diagnostic context."""
+
+    def __init__(self, message: str, failure_context: FailureContext) -> None:
+        self.failure_context = failure_context
+        super().__init__(message, category=failure_context.category)
+
+
+def _safe_status(error: BaseException) -> int | None:
+    try:
+        attributes = BaseException.__getattribute__(error, "__dict__")
+    except BaseException:
+        return None
+    if not isinstance(attributes, dict):
+        return None
+    for name in ("status", "status_code"):
+        value = attributes.get(name, inspect.getattr_static(error, name, None))
+        if not isinstance(value, bool) and isinstance(value, int):
+            return value
+    return None
+
+
+def _safe_link(
+    error: BaseException, name: Literal["__cause__", "__context__"]
+) -> BaseException | None:
+    try:
+        linked = BaseException.__getattribute__(error, name)
+    except BaseException:
+        return None
+    return linked if isinstance(linked, BaseException) else None
+
+
+def classify_failure(error: BaseException) -> FailureCategory:
+    """Classify bounded typed exception state without rendering exception text."""
+    pending: list[tuple[BaseException, int]] = [(error, 0)]
+    seen: set[int] = set()
+    categories: set[FailureCategory] = set()
+    while pending and len(seen) < 32:
+        current, depth = pending.pop(0)
+        identity = id(current)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if _safe_status(current) == 429:
+            categories.add("rate_limited")
+        if isinstance(current, IndeterminateActionError):
+            categories.add("indeterminate_action")
+        elif isinstance(current, TimeoutError):
+            categories.add("timeout")
+        elif isinstance(current, ProtocolError):
+            categories.add("protocol")
+        elif isinstance(current, BenchmarkFailure):
+            categories.add(current.category)
+        if depth >= 4:
+            continue
+        if isinstance(current, BaseExceptionGroup):
+            try:
+                children = BaseExceptionGroup.__getattribute__(current, "exceptions")
+            except BaseException:
+                children = ()
+            pending.extend(
+                (child, depth + 1)
+                for child in children[:20]
+                if isinstance(child, BaseException)
+            )
+        for name in ("__cause__", "__context__"):
+            if (linked := _safe_link(current, name)) is not None:
+                pending.append((linked, depth + 1))
+    for category in (
+        "rate_limited",
+        "indeterminate_action",
+        "timeout",
+        "protocol",
+        "unsuccessful_response",
+        "placement",
+        "recovery",
+        "client_close",
+        "preflight",
+        "internal",
+    ):
+        if category in categories:
+            return category
+    return "internal"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +382,7 @@ class LiveBenchmarkReport(TypedDict):
     schema_version: int
     valid: bool
     failure_reason: str | None
+    failure_context: FailureContextRecord | None
     cleanup_ok: bool
     started_at: str
     completed_at: str

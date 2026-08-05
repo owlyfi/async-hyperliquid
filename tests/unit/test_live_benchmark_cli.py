@@ -26,10 +26,21 @@ ROOT = Path(__file__).parents[2]
 
 
 class FakeProvider:
-    def __init__(self, name: str, *, fail_place: bool = False) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        fail_place: bool = False,
+        place_error: BaseException | None = None,
+        cancel_cloid_error: BaseException | None = None,
+        close_error: BaseException | None = None,
+    ) -> None:
         self.name = name
         self.closed = False
         self.fail_place = fail_place
+        self.place_error = place_error
+        self.cancel_cloid_error = cancel_cloid_error
+        self.close_error = close_error
         self._next_oid = 100
 
     def wire_orders(self, pair: OrderPair) -> tuple[WireOrder, WireOrder]:
@@ -53,6 +64,8 @@ class FakeProvider:
     async def place_many(self, orders: Sequence[CanonicalOrder]) -> tuple[int, ...]:
         if self.fail_place:
             raise TimeoutError("raw-response-secret")
+        if self.place_error is not None:
+            raise self.place_error
         first_oid = self._next_oid
         self._next_oid += len(orders)
         return tuple(range(first_oid, self._next_oid))
@@ -67,9 +80,13 @@ class FakeProvider:
 
     async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None:
         assert orders
+        if self.cancel_cloid_error is not None:
+            raise self.cancel_cloid_error
 
     async def close(self) -> None:
         self.closed = True
+        if self.close_error is not None:
+            raise self.close_error
 
 
 class SerialOnlyProvider:
@@ -182,6 +199,19 @@ async def test_missing_credentials_fail_before_provider_construction(
     assert not constructed
     report = json.loads(outcome.report_path.read_text())
     assert report["failure_reason"] == "preflight_failed"
+    assert report["failure_context"] == {
+        "phase": "preflight",
+        "logical_round": None,
+        "measured_round": None,
+        "operation": "preflight",
+        "launch_slot": None,
+        "category": "preflight",
+        "failed_count": 1,
+        "successful_count": 0,
+        "recovery_attempted": False,
+        "recovery_count": 0,
+        "recovery_ok": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -422,5 +452,233 @@ async def test_invalid_report_preserves_safe_suite_failure_context(
 
     assert not outcome.valid
     rendered = outcome.report_path.read_text()
-    assert json.loads(rendered)["failure_reason"] == expected_reason
+    report = json.loads(rendered)
+    assert report["failure_reason"] == expected_reason
+    assert report["failure_context"]["phase"] == command.replace("-", "_")
+    assert report["failure_context"]["operation"] == "placement"
+    assert report["failure_context"]["category"] == "timeout"
+    assert report["failure_context"]["recovery_attempted"] is True
+    assert report["failure_context"]["recovery_ok"] is True
     assert "raw-response-secret" not in rendered
+
+
+class HostileRateLimitError(RuntimeError):
+    status_code = 429
+
+
+@pytest.mark.asyncio
+async def test_invalid_report_excludes_hostile_exception_values_and_classifies_429(
+    tmp_path: Path,
+) -> None:
+    forbidden = {
+        "address": "0x1111111111111111111111111111111111111111",
+        "api_wallet": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        "private_key": "0x" + "11" * 32,
+        "subaccount": "0x3333333333333333333333333333333333333333",
+        "oid": "987654321",
+        "cloid": "0xdeadbeefdeadbeefdeadbeefdeadbeef",
+        "nonce": "1760000000123",
+        "signature": "0xsensitive-signature",
+        "body": "signed-request-response-body",
+    }
+    hostile = HostileRateLimitError(" ".join(forbidden.values()))
+    provider = FakeProvider("async-hyperliquid", place_error=hostile)
+    recovery = FakeProvider("recovery")
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [
+                "cancel-id",
+                "--output-dir",
+                str(tmp_path),
+                "--rounds",
+                "1",
+                "--warmups",
+                "0",
+            ]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": forbidden["address"],
+            "HL_AK": forbidden["api_wallet"],
+            "HL_SK": forbidden["private_key"],
+            "HL_SUB": forbidden["subaccount"],
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    report = json.loads(outcome.report_path.read_text())
+    rendered = json.dumps(report, sort_keys=True)
+    assert report["failure_reason"] == "cancel_id_failed"
+    assert report["failure_context"]["category"] == "rate_limited"
+    for value in forbidden.values():
+        assert value not in rendered
+
+
+@pytest.mark.asyncio
+async def test_client_close_only_failure_has_fixed_safe_context(tmp_path: Path) -> None:
+    provider = FakeProvider(
+        "async-hyperliquid", close_error=RuntimeError("secret close response")
+    )
+    recovery = FakeProvider("recovery")
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [
+                "cancel-id",
+                "--output-dir",
+                str(tmp_path),
+                "--rounds",
+                "1",
+                "--warmups",
+                "0",
+            ]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        clock_ns=IncrementingClock(1_000_000),
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    report = json.loads(outcome.report_path.read_text())
+    assert report["failure_reason"] == "client_cleanup_failed"
+    assert report["cleanup_ok"] is False
+    assert report["failure_context"]["phase"] == "client_close"
+    assert report["failure_context"]["operation"] == "client_close"
+    assert report["failure_context"]["category"] == "client_close"
+    assert "secret close response" not in outcome.report_path.read_text()
+
+
+@pytest.mark.asyncio
+async def test_combined_runtime_and_close_failure_preserves_recovery_state(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        "async-hyperliquid",
+        fail_place=True,
+        close_error=RuntimeError("secret close response"),
+    )
+    recovery = FakeProvider(
+        "recovery", cancel_cloid_error=RuntimeError("secret recovery response")
+    )
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [
+                "cancel-id",
+                "--output-dir",
+                str(tmp_path),
+                "--rounds",
+                "1",
+                "--warmups",
+                "0",
+            ]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    report = json.loads(outcome.report_path.read_text())
+    assert report["failure_reason"] == "multiple_failures"
+    assert report["failure_context"]["phase"] == "client_close"
+    assert report["failure_context"]["category"] == "client_close"
+    assert report["failure_context"]["operation"] == "placement"
+    assert report["failure_context"]["recovery_attempted"] is True
+    assert report["failure_context"]["recovery_count"] == 20
+    assert report["failure_context"]["recovery_ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_failed_recovery_persists_fixed_reason_and_manual_inspection_state(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider("async-hyperliquid", fail_place=True)
+    recovery = FakeProvider(
+        "recovery", cancel_cloid_error=RuntimeError("secret recovery response")
+    )
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [
+                "cancel-id",
+                "--output-dir",
+                str(tmp_path),
+                "--rounds",
+                "1",
+                "--warmups",
+                "0",
+            ]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    report = json.loads(outcome.report_path.read_text())
+    assert report["failure_reason"] == "order_cleanup_failed"
+    assert report["cleanup_ok"] is False
+    assert report["failure_context"]["phase"] == "recovery"
+    assert report["failure_context"]["operation"] == "placement"
+    assert report["failure_context"]["category"] == "recovery"
+    assert report["failure_context"]["recovery_ok"] is False
+    assert "secret recovery response" not in outcome.report_path.read_text()
