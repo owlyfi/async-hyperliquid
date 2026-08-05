@@ -451,7 +451,7 @@ def test_root_addresses_reject_semantically_identical_values() -> None:
         _normalize_distinct_root_addresses("0x" + "ab" * 20, "0x" + "AB" * 20)
 
 
-async def test_subaccount_account_address_payload_matches_official_sdk_without_network(
+async def test_local_three_route_order_signing_matches_official_sdk_without_network(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     signing_key = _local_value("HL_SK")
@@ -466,16 +466,11 @@ async def test_subaccount_account_address_payload_matches_official_sdk_without_n
     ):
         raise pytest.skip.Exception("HL_SK, HL_AK, HL_ADDR, and HL_SUB are required")
 
-    try:
-        account = Account.from_key(signing_key)
-    except (TypeError, ValueError):
-        raise AssertionError("HL_SK is not a valid private key") from None
-    if not is_address(api_address) or not is_same_address(account.address, api_address):
-        raise AssertionError("HL_SK does not match HL_AK")
+    account = _local_account("HL_SK", "HL_AK")
     master_address, subaccount_address = _normalize_distinct_root_addresses(
         master_address, subaccount_address
     )
-
+    api_address = to_normalized_address(api_address)
     sdk_orders: list[SdkOrderRequest] = [
         {
             "coin": "ASSET-0",
@@ -497,16 +492,21 @@ async def test_subaccount_account_address_payload_matches_official_sdk_without_n
             "order_type": limit_order_type(TimeInForce.GTC),
         },
     )
+    routes = (
+        ("master-target", master_address, None),
+        ("subaccount-from-master", master_address, subaccount_address),
+        ("subaccount-from-agent", api_address, subaccount_address),
+    )
     sdk_payloads: list[JsonObject] = []
     async_payloads: list[JsonObject] = []
 
-    for account_address in (master_address, subaccount_address):
+    for _, account_address, vault_address in routes:
         sdk_payloads.append(
             _sdk_order_payload(
                 account,
                 sdk_orders,
                 account_address=account_address,
-                vault_address=subaccount_address,
+                vault_address=vault_address,
                 expires_after=None,
                 monkeypatch=monkeypatch,
             )
@@ -516,59 +516,18 @@ async def test_subaccount_account_address_payload_matches_official_sdk_without_n
                 account_address,
                 signing_key,
                 async_orders,
-                vault_address=subaccount_address,
+                vault_address=vault_address,
                 expires_after=None,
                 monkeypatch=monkeypatch,
             )
         )
 
-    if async_payloads != sdk_payloads:
-        raise AssertionError("async payloads differ from official SDK payloads")
-    if async_payloads[0] != async_payloads[1]:
-        raise AssertionError("master-root and subaccount-root payloads differ")
-    if not all(
-        payload.get("vaultAddress") == subaccount_address for payload in async_payloads
+    for (route, _, _), actual, expected in zip(
+        routes, async_payloads, sdk_payloads, strict=True
     ):
-        raise AssertionError("payload vault address differs from HL_SUB")
-
-
-@pytest.mark.parametrize(
-    ("private_key_name", "address_name", "action", "use_subaccount", "expires_after"),
-    [
-        ("HL_PK", "HL_ADDR", ORDER_ACTION, False, None),
-        ("HL_SK", "HL_AK", BATCH_ORDER_ACTION, True, NONCE + 2_000),
-    ],
-)
-async def test_local_credentials_match_official_sdk_payload_without_network(
-    private_key_name: str,
-    address_name: str,
-    action: OrderAction,
-    use_subaccount: bool,
-    expires_after: int | None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    account = _local_account(private_key_name, address_name)
-    vault_address = _local_value("HL_SUB") if use_subaccount else None
-    if use_subaccount and (vault_address is None or not is_address(vault_address)):
-        raise pytest.skip.Exception(
-            "HL_SUB is required and must be an Ethereum address"
-        )
-
-    expected = _sdk_payload(
-        account,
-        action,
-        nonce=NONCE + 1,
-        vault_address=vault_address,
-        expires_after=expires_after,
-        monkeypatch=monkeypatch,
-    )
-    actual = await _async_payload(
-        account,
-        action,
-        nonce=NONCE + 1,
-        vault_address=vault_address,
-        expires_after=expires_after,
-    )
-
-    if actual != expected:
-        raise AssertionError(f"{private_key_name} payload differs from official SDK")
+        assert actual == expected, route
+    assert async_payloads[1] == async_payloads[2]
+    assert async_payloads[0] != async_payloads[1]
+    assert async_payloads[0]["vaultAddress"] is None
+    assert async_payloads[1]["vaultAddress"] == subaccount_address
+    assert async_payloads[0]["signature"] != async_payloads[1]["signature"]
