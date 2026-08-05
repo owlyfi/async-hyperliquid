@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Core-to-EVM data transfers, HIP-3 liquidator transfers, outcome actions,
   AQAv2 authorization, risk-free-rate voting, noop, and reward claims.
 - Add testnet-only live fixtures that validate master/API-wallet roles without
-  exposing keys, plus mechanical deterministic/live endpoint coverage gates.
+  exposing keys, plus separate deterministic and live integration commands.
 - Add credential-free `InfoClient` with exact constructor-time routing for
   official, self-hosted, and third-party Info endpoints.
 - Add immutable typed command dataclasses and exact `TypedDict` wire-response
@@ -43,7 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names using their domain directories, and use `hl` consistently for the
   authenticated integration client.
 - Keep Info and Exchange integration cases visible to pytest and VS Code;
-  execution opt-ins now produce explicit skips instead of marker deselection.
+  deterministic tests remain an explicitly offline suite.
+- Run the complete credential-free Info integration suite against both MAINNET
+  and TESTNET. Retry an initial HTTP 429 once after 60 seconds, skip after a
+  second 429, and warn then skip when TESTNET returns a 5xx response.
+- Restrict signed Exchange integration to testnet with `IS_MAINNET=false` as
+  its only suite-level execution setting; `IS_MAINNET=true` hard-fails.
 - Replace the duplicate order dataclass hierarchy with one
   `PlaceOrderRequest`/`ModifyOrderRequest` `TypedDict` vocabulary using
   `is_buy`, `cloid`, singular order option names, and `Builder`.
@@ -56,8 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vault targeting, and submission.
 - Require `PlaceOrderRequest.is_market` explicitly and route matching singular
   order/cancel methods through their canonical batch implementations.
-- Make test collection exclude signed Exchange and retained mainnet Info cases
-  unless their explicit opt-in markers are selected.
+- Collect signed Exchange and dual-network Info cases without execution opt-in
+  marker filtering.
 - Replace the dynamic facade with an explicit resource owner whose concrete
   `.info` and `.exchange` clients share one HTTP transport.
 - Require valid account and signing credentials for `AsyncHyperliquid`; use

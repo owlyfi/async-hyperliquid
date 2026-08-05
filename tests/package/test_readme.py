@@ -23,3 +23,18 @@ def test_readme_links_the_benchmark_manual() -> None:
     assert "24,641 ops/s" in readme
     assert "scripts/signing_benchmark.py" not in readme
     assert (ROOT / "benchmarks" / "README.md").is_file()
+
+
+def test_readme_documents_live_integration_commands_without_run_flags() -> None:
+    readme = (ROOT / "README.md").read_text()
+
+    for removed_flag in (
+        "RUN_INFO_TESTS",
+        "RUN_MAINNET_INFO_TESTS",
+        "RUN_EXCHANGE_TESTS",
+        "RUN_DESTRUCTIVE_EXCHANGE_TESTS",
+    ):
+        assert removed_flag not in readme
+
+    assert "uv run pytest -q tests/integration/test_info.py" in readme
+    assert "IS_MAINNET=false uv run pytest -q tests/integration/exchange" in readme

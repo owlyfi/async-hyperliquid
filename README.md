@@ -338,8 +338,8 @@ The package includes `py.typed`.
 
 ## Testing
 
-The default suite performs no network API calls. Integration cases remain
-visible to pytest and VS Code, but skip unless their explicit opt-in is set:
+The default deterministic suite performs no network API calls. Run it
+separately from the live integration suites:
 
 ```bash
 uv run pytest -q tests/unit tests/contracts tests/oracle tests/public_api tests/package
@@ -390,19 +390,28 @@ warmup, and CCXT's CoinCurve signer was verified before timing. The detailed
 manual contains the machine specification, per-operation median/MAD/p95,
 throughput, aggregation formula, and exact reproduction command.
 
-Read-only integration tests require `RUN_INFO_TESTS=true`. Signed integration
-is restricted to testnet and skipped by default. It requires
-`RUN_EXCHANGE_TESTS=true` and `IS_MAINNET=false`. Destructive cases require
-`RUN_DESTRUCTIVE_EXCHANGE_TESTS=true` as a second opt-in.
+The credential-free Info command always runs the complete suite against both
+MAINNET and TESTNET:
 
 ```bash
-RUN_EXCHANGE_TESTS=true RUN_DESTRUCTIVE_EXCHANGE_TESTS=true \
-  uv run pytest -q tests/integration/exchange
+uv run pytest -q tests/integration/test_info.py
 ```
 
-Pytest and VS Code always collect these cases. The opt-ins control execution,
-so disabled integration appears as skipped rather than disappearing from the
-test explorer.
+On the first HTTP 429 response, the Info integration client waits 60 seconds
+and retries the request once; a second 429 skips the affected case. A TESTNET
+5xx response emits a warning and skips the affected case, while the same
+MAINNET failure remains a test failure.
+
+Signed Exchange integration is testnet-only and uses `IS_MAINNET` as its only
+network safety gate. Set it explicitly to `false` when running the suite;
+`IS_MAINNET=true` hard-fails before credentials or orders are used:
+
+```bash
+IS_MAINNET=false uv run pytest -q tests/integration/exchange
+```
+
+Pytest and VS Code always collect the Info and Exchange cases. There are no
+additional integration-suite execution flags.
 
 The local `.env.local` roles are:
 
