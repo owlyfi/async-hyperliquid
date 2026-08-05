@@ -82,6 +82,12 @@ def check_v1_command_types() -> None:
 
 async def check_twap_response_types(client: AsyncHyperliquid) -> None:
     assert_type(await client.place_twap("BTC", True, 0.01, 5), PlaceTwapResponse)
+    assert_type(
+        await client.place_twap(
+            "BTC", True, 0.01, 5, trigger_px=105_000.0, stop_px=95_000.0
+        ),
+        PlaceTwapResponse,
+    )
     assert_type(await client.cancel_twap("BTC", 1), CancelTwapResponse)
 
 

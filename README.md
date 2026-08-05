@@ -199,6 +199,27 @@ actions that resolve coin metadata live on `AsyncHyperliquid`. The concrete
 `ExchangeClient` owns only Info-independent action construction, nonce/signing,
 vault targeting, and submission; it never holds an `InfoClient`.
 
+### TWAP advanced prices
+
+`trigger_px` delays a TWAP until the market reaches its trigger; `stop_px`
+stops it at the configured price. Either keyword may be supplied independently:
+
+```python
+async def place_advanced_twap(client: AsyncHyperliquid) -> None:
+    result = await client.place_twap(
+        "BTC",
+        True,
+        0.01,
+        30,
+        trigger_px=105_000.0,
+        stop_px=95_000.0,
+    )
+    print(result)
+```
+
+The client derives the protocol's trigger-direction flag from the current mark
+price. Callers supply the price, not the wire-level flag.
+
 `close_position`, `close_positions`, and `close_all_positions` close the full
 live size. They expose no size or slippage override. One workflow performs one
 position query and submits all required reduce-only market orders in one

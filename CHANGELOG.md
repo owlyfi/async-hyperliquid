@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add an immutable `vault_address` execution target for vault and subaccount
   signing, envelopes, account queries, and transfer-specific fields.
 - Add exact `twapOrder` and `twapCancel` response contracts and return types.
+- Add independently optional `trigger_px` and `stop_px` arguments to
+  `place_twap`, with exact action-level `details` encoding and automatic
+  trigger direction from the current mark price.
 - Add deterministic lifecycle, finite timeout budgets, cancellation-safe atomic
   metadata snapshots, and explicit `IndeterminateActionError` reconciliation
   semantics.
