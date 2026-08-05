@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .models import BenchmarkFailure, LatencySummary, LiveBenchmarkReport
-from .results import assert_report_is_sanitized, summarize_ns
+from .results import assert_report_is_sanitized, summarize_ns, write_report
 
 
 DETAIL_START = "<!-- live-exchange-benchmark:detail:start -->"
@@ -25,8 +25,8 @@ FIGURE_FILENAMES = (
     "providers-latency.png",
     "providers-latency.svg",
 )
+_PUBLISH_FIGURE_FILENAMES = FIGURE_FILENAMES[:2]
 _PROVIDERS = ("async-hyperliquid", "sdk", "ccxt")
-_ROTATION_PROVIDERS = ("ccxt", "sdk", "async-hyperliquid")
 _CSV_FIELDS = (
     "suite",
     "provider",
@@ -158,16 +158,35 @@ def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, 
         cancel_values = [
             cancel[operation]["async-hyperliquid"] for operation in cancel_operations
         ]
+        round_max_values = _round_max_values(report)
+        cancel_round_max_values = [
+            round_max_values[operation] for operation in cancel_operations
+        ]
         cancel_labels = ("OID", "CLOID")
-        cancel_figure, cancel_axes = plt.subplots(1, 2, figsize=(12, 5))
+        cancel_figure, cancel_axes = plt.subplots(2, 2, figsize=(12, 10))
         _distribution_panel(
-            cancel_axes[0],
+            cancel_axes[0][0],
             cancel_values,
             cancel_labels,
-            title="Cancel latency distribution",
+            title="Individual cancel request distribution",
         )
         _comparison_panel(
-            cancel_axes[1], cancel_values, cancel_labels, title="Cancel median and p95"
+            cancel_axes[0][1],
+            cancel_values,
+            cancel_labels,
+            title="Individual request median and p95",
+        )
+        _distribution_panel(
+            cancel_axes[1][0],
+            cancel_round_max_values,
+            cancel_labels,
+            title="Per-round method maximum distribution",
+        )
+        _comparison_panel(
+            cancel_axes[1][1],
+            cancel_round_max_values,
+            cancel_labels,
+            title="Per-round maximum median and p95",
         )
         cancel_figure.tight_layout()
         cancel_paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[:2])
@@ -210,29 +229,12 @@ def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, 
 
 
 def _expected_counts() -> Counter[tuple[str, str, str]]:
-    expected = Counter(
+    return Counter(
         {
-            ("cancel-id", "async-hyperliquid", "cancel_by_oid"): 30,
-            ("cancel-id", "async-hyperliquid", "cancel_by_cloid"): 30,
+            ("cancel-id", "async-hyperliquid", "cancel_by_oid"): 300,
+            ("cancel-id", "async-hyperliquid", "cancel_by_cloid"): 300,
         }
     )
-    for provider in ("ccxt", "sdk", "async-hyperliquid"):
-        expected[("providers", provider, "place_batch_2")] = 30
-        expected[("providers", provider, "cancel_batch_2_by_oid")] = 30
-    return expected
-
-
-def _expected_provider_order(
-    key: tuple[str, str, str], round_index: int, warmups: int
-) -> int:
-    suite, provider, operation = key
-    logical_round = warmups + round_index
-    if suite == "cancel-id":
-        oid_order = 0 if logical_round % 2 == 0 else 1
-        return oid_order if operation == "cancel_by_oid" else 1 - oid_order
-    offset = logical_round % len(_ROTATION_PROVIDERS)
-    rotated = _ROTATION_PROVIDERS[offset:] + _ROTATION_PROVIDERS[:offset]
-    return rotated.index(provider)
 
 
 def _is_git_revision(value: object) -> bool:
@@ -291,7 +293,7 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
             raise BenchmarkFailure("report sample shape is not publishable")
 
         grouped: dict[tuple[str, str, str], list[int]] = {}
-        rounds: dict[tuple[str, str, str], set[int]] = {}
+        round_samples: dict[int, dict[str, list[dict[str, object]]]] = {}
         for sample in report["samples"]:
             if set(sample) != set(_CSV_FIELDS):
                 raise BenchmarkFailure("report sample schema is not publishable")
@@ -304,18 +306,41 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
                 or isinstance(provider_order, bool)
                 or not isinstance(provider_order, int)
                 or provider_order < 0
-                or provider_order > (1 if key[0] == "cancel-id" else 2)
-                or provider_order
-                != _expected_provider_order(
-                    key, round_index, cast(int, config["warmups"])
-                )
+                or provider_order > 19
             ):
                 raise BenchmarkFailure("report sample values are not publishable")
             grouped.setdefault(key, []).append(sample["duration_ns"])
-            rounds.setdefault(key, set()).add(round_index)
-        expected_rounds = set(range(30))
-        if any(indices != expected_rounds for indices in rounds.values()):
+            round_samples.setdefault(round_index, {}).setdefault(
+                sample["operation"], []
+            ).append(cast(dict[str, object], sample))
+
+        expected_rounds = set(range(cast(int, config["rounds"])))
+        if set(round_samples) != expected_rounds:
             raise BenchmarkFailure("report measured rounds are not publishable")
+        warmups = cast(int, config["warmups"])
+        for round_index, operations in round_samples.items():
+            expected_oid_even = (warmups + round_index) % 2 == 0
+            slots: set[int] = set()
+            for operation in ("cancel_by_oid", "cancel_by_cloid"):
+                samples = operations.get(operation, [])
+                if len(samples) != 10:
+                    raise BenchmarkFailure("report sample shape is not publishable")
+                for sample in samples:
+                    slot = cast(int, sample["provider_order"])
+                    if slot in slots:
+                        raise BenchmarkFailure("report sample shape is not publishable")
+                    slots.add(slot)
+                    expected_even = (
+                        expected_oid_even
+                        if operation == "cancel_by_oid"
+                        else not expected_oid_even
+                    )
+                    if (slot % 2 == 0) != expected_even:
+                        raise BenchmarkFailure("report sample values are not publishable")
+            if set(operations) != {"cancel_by_oid", "cancel_by_cloid"} or slots != set(
+                range(20)
+            ):
+                raise BenchmarkFailure("report sample shape is not publishable")
 
         rebuilt: dict[str, dict[str, dict[str, LatencySummary]]] = {}
         for (suite, provider, operation), values in grouped.items():
@@ -344,37 +369,40 @@ def _ms(value: float | int) -> str:
     return f"{value / 1_000_000:.2f}"
 
 
-def _cancel_comparison(report: LiveBenchmarkReport) -> tuple[str, float]:
-    oid = _summary(report, "cancel-id", "cancel_by_oid", "async-hyperliquid")[
-        "median_ns"
-    ]
-    cloid = _summary(report, "cancel-id", "cancel_by_cloid", "async-hyperliquid")[
-        "median_ns"
-    ]
-    winner = "OID" if oid <= cloid else "CLOID"
-    return winner, max(oid, cloid) / min(oid, cloid)
+def _round_max_values(report: LiveBenchmarkReport) -> dict[str, list[int]]:
+    grouped: dict[str, dict[int, list[int]]] = {}
+    for sample in report["samples"]:
+        if (
+            sample["suite"] != "cancel-id"
+            or sample["provider"] != "async-hyperliquid"
+        ):
+            continue
+        grouped.setdefault(sample["operation"], {}).setdefault(
+            sample["round_index"], []
+        ).append(sample["duration_ns"])
+    return {
+        operation: [max(values) for _, values in sorted(rounds.items())]
+        for operation, rounds in grouped.items()
+    }
 
 
-def _combined_scores(report: LiveBenchmarkReport) -> list[tuple[str, float]]:
-    scores = []
-    for provider in _PROVIDERS:
-        place = _summary(report, "providers", "place_batch_2", provider)["median_ns"]
-        cancel = _summary(report, "providers", "cancel_batch_2_by_oid", provider)[
-            "median_ns"
-        ]
-        scores.append((provider, math.sqrt(place * cancel)))
-    return sorted(scores, key=lambda item: item[1])
+def round_max_summaries(report: LiveBenchmarkReport) -> dict[str, LatencySummary]:
+    return {
+        operation: summarize_ns(values)
+        for operation, values in _round_max_values(report).items()
+    }
 
 
 def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
-    winner, ratio = _cancel_comparison(report)
+    round_maximums = round_max_summaries(report)
     lines = [
         "## Published live Exchange benchmark",
         "",
         f"Validated testnet run completed `{report['completed_at']}`. The runner used",
         "three warmup rounds, 30 measured rounds, and a maximum controlled rate of",
         "240 weight/minute. Initialization, market metadata, mid lookup, pacing, and",
-        "cleanup are excluded from measured latency.",
+        "cleanup are excluded from measured latency. Each measured round uses",
+        "concurrency=20 (10 OID + 10 CLOID) single-order cancellation requests.",
         "",
         "| Environment | Value |",
         "|---|---|",
@@ -388,7 +416,7 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
             "",
             "### OID versus CLOID cancellation",
             "",
-            f"{winner} had the lower median latency; the slower median was {ratio:.3f}x the faster median.",
+            "All 300 individual request latencies per identifier are shown below.",
             "",
             "| Identifier | Median (ms) | MAD (ms) | p95 (ms) | Min (ms) | Max (ms) |",
             "|---|---:|---:|---:|---:|---:|",
@@ -403,37 +431,24 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
     lines.extend(
         [
             "",
+            "### Per-round method maxima",
+            "",
+            "Each value is the slowest of that method's ten requests in one measured round.",
+            "",
+            "| Identifier | Rounds | Median (ms) | p95 (ms) |",
+            "|---|---:|---:|---:|",
+        ]
+    )
+    for operation, label in (("cancel_by_oid", "OID"), ("cancel_by_cloid", "CLOID")):
+        summary = round_maximums[operation]
+        lines.append(
+            f"| {label} | {summary['count']} | {_ms(summary['median_ns'])} | "
+            f"{_ms(summary['p95_ns'])} |"
+        )
+    lines.extend(
+        [
+            "",
             f"![OID and CLOID latency](results/{artifact_dir}/cancel-id-latency.svg)",
-            "",
-            "### Provider comparison",
-            "",
-            "| Operation | Provider | Median (ms) | MAD (ms) | p95 (ms) |",
-            "|---|---|---:|---:|---:|",
-        ]
-    )
-    for operation in ("place_batch_2", "cancel_batch_2_by_oid"):
-        for provider in _PROVIDERS:
-            summary = _summary(report, "providers", operation, provider)
-            lines.append(
-                f"| {operation} | {provider} | {_ms(summary['median_ns'])} | "
-                f"{_ms(summary['mad_ns'])} | {_ms(summary['p95_ns'])} |"
-            )
-    lines.extend(
-        [
-            "",
-            f"![Provider place and cancel latency](results/{artifact_dir}/providers-latency.svg)",
-            "",
-            "### Equal-weight overall latency",
-            "",
-            "| Rank | Provider | Geometric mean of place/cancel medians (ms) |",
-            "|---:|---|---:|",
-        ]
-    )
-    for rank, (provider, score) in enumerate(_combined_scores(report), start=1):
-        lines.append(f"| {rank} | {provider} | {_ms(score)} |")
-    lines.extend(
-        [
-            "",
             "Artifacts: [sanitized JSON](results/"
             f"{artifact_dir}/report.json), [sample CSV](results/{artifact_dir}/samples.csv).",
             "",
@@ -445,39 +460,25 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
 
 
 def _overall_markdown(report: LiveBenchmarkReport) -> str:
-    winner, ratio = _cancel_comparison(report)
+    round_maximums = round_max_summaries(report)
     lines = [
         "#### Published live Exchange result",
         "",
-        f"On the validated testnet run, {winner} cancellation had the lower median; the slower "
-        f"identifier was {ratio:.3f}x the faster median.",
+        "The validated testnet run uses concurrency=20 (10 OID + 10 CLOID) single-order "
+        "cancellation requests per measured round.",
         "",
-        "| Operation | Provider | Median (ms) | p95 (ms) |",
-        "|---|---|---:|---:|",
+        "| Identifier | Individual median (ms) | Individual p95 (ms) | Round-max median (ms) | Round-max p95 (ms) |",
+        "|---|---:|---:|---:|---:|",
     ]
-    for operation in ("place_batch_2", "cancel_batch_2_by_oid"):
-        ranked = sorted(
-            (
-                (provider, _summary(report, "providers", operation, provider))
-                for provider in _PROVIDERS
-            ),
-            key=lambda item: item[1]["median_ns"],
+    for operation, label in (("cancel_by_oid", "OID"), ("cancel_by_cloid", "CLOID")):
+        individual = _summary(report, "cancel-id", operation, "async-hyperliquid")
+        maximum = round_maximums[operation]
+        lines.append(
+            f"| {label} | {_ms(individual['median_ns'])} | {_ms(individual['p95_ns'])} | "
+            f"{_ms(maximum['median_ns'])} | {_ms(maximum['p95_ns'])} |"
         )
-        for provider, summary in ranked:
-            lines.append(
-                f"| {operation} | {provider} | {_ms(summary['median_ns'])} | {_ms(summary['p95_ns'])} |"
-            )
     lines.extend(
         [
-            "",
-            "Overall equal-weight ranking: "
-            + ", ".join(
-                f"{rank}. {provider} ({_ms(score)} ms)"
-                for rank, (provider, score) in enumerate(
-                    _combined_scores(report), start=1
-                )
-            )
-            + ".",
             "",
             "See the [detailed methodology, distributions, and artifacts](benchmarks/README.md#published-live-exchange-benchmark).",
         ]
@@ -519,7 +520,7 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
     report = _load_report(report_path)
     validate_publishable(report)
     source_dir = report_path.parent
-    required = {"report.json", "samples.csv", *FIGURE_FILENAMES}
+    required = {"report.json", "samples.csv", *_PUBLISH_FIGURE_FILENAMES}
     if any(not (source_dir / filename).is_file() for filename in required):
         raise BenchmarkFailure("benchmark artifacts are not publishable")
 
@@ -550,7 +551,7 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
     benchmark_replaced = False
     root_replaced = False
     try:
-        shutil.copy2(report_path, destination / "report.json")
+        write_report(report, destination, forbidden_values=())
         write_csv(report, destination)
         write_figures(report, destination)
         _atomic_text(benchmark_readme, rendered_benchmark)

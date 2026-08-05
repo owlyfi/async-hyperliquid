@@ -1,5 +1,4 @@
 import csv
-import copy
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, cast
@@ -23,6 +22,7 @@ from benchmarks.live.reporting import (
     chart_statistics,
     figure_series,
     publish_report,
+    round_max_summaries,
     validate_publishable,
     write_csv,
     write_figures,
@@ -46,54 +46,19 @@ def _valid_report() -> LiveBenchmarkReport:
         git=GitMetadata(revision="a" * 40, dirty=False),
     )
     for round_index in range(30):
-        oid_order = 0 if (round_index + 3) % 2 == 0 else 1
-        recorder.record(
-            LatencySample(
-                suite="cancel-id",
-                provider="async-hyperliquid",
-                operation="cancel_by_oid",
-                round_index=round_index,
-                provider_order=oid_order,
-                duration_ns=10_000_000 + round_index,
-            )
-        )
-        recorder.record(
-            LatencySample(
-                suite="cancel-id",
-                provider="async-hyperliquid",
-                operation="cancel_by_cloid",
-                round_index=round_index,
-                provider_order=1 - oid_order,
-                duration_ns=20_000_000 + round_index,
-            )
-        )
-        offset = round_index % len(PROVIDERS)
-        ordered_providers = PROVIDERS[offset:] + PROVIDERS[:offset]
-        for provider in PROVIDERS:
-            provider_order = ordered_providers.index(provider)
-            base = {
-                "ccxt": 100_000_000,
-                "sdk": 110_000_000,
-                "async-hyperliquid": 90_000_000,
-            }[provider]
+        oid_is_even = (round_index + 3) % 2 == 0
+        for launch_slot in range(20):
+            oid = launch_slot % 2 == 0 if oid_is_even else launch_slot % 2 == 1
             recorder.record(
                 LatencySample(
-                    suite="providers",
-                    provider=provider,
-                    operation="place_batch_2",
+                    suite="cancel-id",
+                    provider="async-hyperliquid",
+                    operation="cancel_by_oid" if oid else "cancel_by_cloid",
                     round_index=round_index,
-                    provider_order=provider_order,
-                    duration_ns=base + round_index,
-                )
-            )
-            recorder.record(
-                LatencySample(
-                    suite="providers",
-                    provider=provider,
-                    operation="cancel_batch_2_by_oid",
-                    round_index=round_index,
-                    provider_order=provider_order,
-                    duration_ns=base + 100_000_000 + round_index,
+                    provider_order=launch_slot,
+                    duration_ns=(10_000_000 if oid else 20_000_000)
+                    + round_index * 100
+                    + launch_slot,
                 )
             )
     return recorder.build_report(
@@ -106,12 +71,12 @@ def _valid_report() -> LiveBenchmarkReport:
 
 
 def test_figure_series_keeps_operations_and_providers_separate() -> None:
-    series = figure_series(_valid_report(), "providers")
+    series = figure_series(_valid_report(), "cancel-id")
 
-    assert set(series) == {"place_batch_2", "cancel_batch_2_by_oid"}
-    assert set(series["place_batch_2"]) == set(PROVIDERS)
-    assert series["place_batch_2"]["async-hyperliquid"][0] == 90_000_000
-    assert series["cancel_batch_2_by_oid"]["sdk"][0] == 210_000_000
+    assert set(series) == {"cancel_by_oid", "cancel_by_cloid"}
+    assert set(series["cancel_by_oid"]) == {"async-hyperliquid"}
+    assert series["cancel_by_oid"]["async-hyperliquid"][0] == 10_000_001
+    assert series["cancel_by_cloid"]["async-hyperliquid"][0] == 20_000_000
 
 
 def test_chart_statistics_match_report_median_and_nearest_rank_p95() -> None:
@@ -134,7 +99,7 @@ def test_csv_contains_only_safe_sample_columns(tmp_path: Path) -> None:
         "provider_order",
         "duration_ns",
     )
-    assert len(rows) == 240
+    assert len(rows) == 600
     assert not ({"oid", "cloid", "address", "signature"} & rows[0].keys())
     assert b"\r\n" not in path.read_bytes()
 
@@ -177,18 +142,102 @@ def test_publication_rejects_invalid_or_non_default_reports(
 
 def test_publication_rejects_duplicate_measured_rounds() -> None:
     report = _valid_report()
-    report["samples"][8]["round_index"] = 0
+    report["samples"][20]["round_index"] = 0
 
     with pytest.raises(BenchmarkFailure, match="publish"):
         validate_publishable(report)
 
 
-def test_publication_rejects_unbalanced_provider_order() -> None:
+def test_publication_requires_concurrent_cancel_shape() -> None:
     report = _valid_report()
-    report["samples"][0]["provider_order"] = 0
+
+    validate_publishable(report)
+
+    assert len(report["samples"]) == 600
+    report["samples"].pop()
+    with pytest.raises(BenchmarkFailure, match="sample shape"):
+        validate_publishable(report)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                1, {**report["samples"][1], "provider_order": 0}
+            ),
+            id="duplicate-launch-slot",
+        ),
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                0, {**report["samples"][0], "provider_order": 1}
+            ),
+            id="wrong-oid-slot-parity",
+        ),
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                0, {**report["samples"][0], "operation": "cancel_by_oid"}
+            ),
+            id="eleven-nine-method-split",
+        ),
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                0, {**report["samples"][0], "provider": "sdk"}
+            ),
+            id="provider-sample",
+        ),
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                0, {**report["samples"][0], "suite": "all"}
+            ),
+            id="all-report",
+        ),
+    ],
+)
+def test_publication_rejects_invalid_concurrent_cancel_slots(
+    mutation: Callable[[dict[str, Any]], None],
+) -> None:
+    report = _valid_report()
+    mutation(cast(dict[str, Any], report))
 
     with pytest.raises(BenchmarkFailure, match="publish"):
         validate_publishable(report)
+
+
+def _small_concurrent_report(
+    oid_rounds: tuple[tuple[int, ...], ...],
+    cloid_rounds: tuple[tuple[int, ...], ...],
+) -> LiveBenchmarkReport:
+    samples = []
+    for operation, rounds in (
+        ("cancel_by_oid", oid_rounds),
+        ("cancel_by_cloid", cloid_rounds),
+    ):
+        for round_index, durations in enumerate(rounds):
+            for launch_slot, duration_ns in enumerate(durations):
+                samples.append(
+                    {
+                        "suite": "cancel-id",
+                        "provider": "async-hyperliquid",
+                        "operation": operation,
+                        "round_index": round_index,
+                        "provider_order": launch_slot,
+                        "duration_ns": duration_ns,
+                    }
+                )
+    return cast(LiveBenchmarkReport, {"samples": samples})
+
+
+def test_round_max_summaries_use_the_slowest_request_per_method_round() -> None:
+    report = _small_concurrent_report(
+        oid_rounds=((1, 2, 9), (3, 4, 8)),
+        cloid_rounds=((5, 6, 7), (2, 10, 11)),
+    )
+
+    summaries = round_max_summaries(report)
+
+    assert summaries["cancel_by_oid"]["median_ns"] == 8.5
+    assert summaries["cancel_by_cloid"]["median_ns"] == 9.0
 
 
 def test_figures_are_written_as_png_and_svg(tmp_path: Path) -> None:
@@ -196,35 +245,23 @@ def test_figures_are_written_as_png_and_svg(tmp_path: Path) -> None:
 
     paths = write_figures(_valid_report(), tmp_path)
 
-    assert {path.name for path in paths} == set(FIGURE_FILENAMES)
+    assert {path.name for path in paths} == set(FIGURE_FILENAMES[:2])
     for path in paths:
         assert path.stat().st_size > 100
     assert (tmp_path / "cancel-id-latency.png").read_bytes().startswith(b"\x89PNG")
-    provider_svg = tmp_path / "providers-latency.svg"
-    assert b"<svg" in provider_svg.read_bytes()[:1000]
-    assert all(line == line.rstrip() for line in provider_svg.read_text().splitlines())
+    cancel_svg = tmp_path / "cancel-id-latency.svg"
+    assert b"<svg" in cancel_svg.read_bytes()[:1000]
+    assert all(line == line.rstrip() for line in cancel_svg.read_text().splitlines())
 
 
-@pytest.mark.parametrize(
-    ("suite", "expected"),
-    [
-        ("cancel-id", {"cancel-id-latency.png", "cancel-id-latency.svg"}),
-        ("providers", {"providers-latency.png", "providers-latency.svg"}),
-    ],
-)
-def test_figures_support_one_selected_suite(
-    suite: str, expected: set[str], tmp_path: Path
-) -> None:
+def test_figures_render_cancel_request_and_round_maximum_views(tmp_path: Path) -> None:
     pytest.importorskip("matplotlib")
-    report = copy.deepcopy(_valid_report())
-    report["samples"] = [
-        sample for sample in report["samples"] if sample["suite"] == suite
-    ]
-    report["summaries"] = {suite: report["summaries"][suite]}
+    paths = write_figures(_valid_report(), tmp_path)
 
-    paths = write_figures(report, tmp_path)
-
-    assert {path.name for path in paths} == expected
+    assert {path.name for path in paths} == {
+        "cancel-id-latency.png",
+        "cancel-id-latency.svg",
+    }
 
 
 def test_publish_updates_detailed_and_overall_markers_from_one_report(
@@ -235,7 +272,7 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     report_path = write_report(_valid_report(), source, forbidden_values=())
     write_csv(_valid_report(), source)
     (source / "samples.csv").write_text("tampered source CSV\n")
-    for filename in FIGURE_FILENAMES:
+    for filename in FIGURE_FILENAMES[:2]:
         (source / filename).write_bytes(b"safe benchmark figure")
 
     (tmp_path / "README.md").write_text(
@@ -251,7 +288,7 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
 
     assert published.name == "20260805T000100Z"
     assert sorted(path.name for path in published.iterdir()) == sorted(
-        ("report.json", "samples.csv", *FIGURE_FILENAMES)
+        ("report.json", "samples.csv", *FIGURE_FILENAMES[:2])
     )
     assert (
         (published / "samples.csv")
@@ -259,7 +296,6 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
         .startswith("suite,provider,operation,round_index,provider_order,duration_ns\n")
     )
     assert (published / "cancel-id-latency.png").read_bytes().startswith(b"\x89PNG")
-    assert b"<svg" in (published / "providers-latency.svg").read_bytes()[:1000]
     root_readme = (tmp_path / "README.md").read_text()
     detail_readme = (benchmarks / "README.md").read_text()
     assert root_readme.startswith("root before\n")
@@ -267,12 +303,14 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     assert "old overall" not in root_readme
     assert "#### Published live Exchange result" in root_readme
     assert "OID" in root_readme
-    assert "async-hyperliquid" in root_readme
+    assert "concurrency=20 (10 OID + 10 CLOID)" in root_readme
+    assert "Overall equal-weight ranking" not in root_readme
     assert detail_readme.startswith("benchmark before\n")
     assert detail_readme.endswith("benchmark after\n")
     assert "old detail" not in detail_readme
     assert "240 weight/minute" in detail_readme
-    assert "results/20260805T000100Z/providers-latency.svg" in detail_readme
+    assert "Per-round method maxima" in detail_readme
+    assert "Provider comparison" not in detail_readme
     assert all(line == line.rstrip() for line in detail_readme.splitlines())
 
 
@@ -281,7 +319,7 @@ def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:
     source.mkdir()
     report_path = write_report(_valid_report(), source, forbidden_values=())
     write_csv(_valid_report(), source)
-    for filename in FIGURE_FILENAMES:
+    for filename in FIGURE_FILENAMES[:2]:
         (source / filename).write_bytes(b"safe benchmark figure")
     (tmp_path / "README.md").write_text("missing markers\n")
     benchmarks = tmp_path / "benchmarks"
@@ -302,7 +340,7 @@ def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure
     source.mkdir()
     report_path = write_report(_valid_report(), source, forbidden_values=())
     write_csv(_valid_report(), source)
-    for filename in FIGURE_FILENAMES:
+    for filename in FIGURE_FILENAMES[:2]:
         (source / filename).write_bytes(b"source figure")
     original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
     original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
