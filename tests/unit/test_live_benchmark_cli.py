@@ -238,6 +238,9 @@ async def test_all_runs_offline_through_injected_providers(tmp_path: Path) -> No
     assert constructed == 1
     assert all(provider.closed for provider in (*providers, recovery))
     report = json.loads(outcome.report_path.read_text())
+    assert report["config"]["workload"] == (
+        "combined-cancel-id-concurrent20-providers-sequential2-v1"
+    )
     assert len(report["samples"]) == 26
     assert sum(sample["suite"] == "cancel-id" for sample in report["samples"]) == 20
     assert sum(sample["suite"] == "providers" for sample in report["samples"]) == 6
@@ -330,6 +333,9 @@ async def test_default_cancel_id_run_records_600_request_samples(
 
     report = json.loads(outcome.report_path.read_text())
     assert outcome.valid
+    assert report["config"]["workload"] == (
+        "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
+    )
     assert len(report["samples"]) == 600
     assert (
         sum(sample["operation"] == "cancel_by_oid" for sample in report["samples"])

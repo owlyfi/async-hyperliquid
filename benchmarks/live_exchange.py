@@ -18,7 +18,15 @@ from time import perf_counter_ns
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from benchmarks.live.models import BenchmarkConfig, BenchmarkFailure, GitMetadata
+from benchmarks.live.models import (
+    BenchmarkConfig,
+    BenchmarkFailure,
+    COMBINED_DIAGNOSTIC_WORKLOAD,
+    CONCURRENT_CANCEL_WORKLOAD,
+    GitMetadata,
+    PROVIDER_DIAGNOSTIC_WORKLOAD,
+    WorkloadName,
+)
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import (
@@ -184,6 +192,14 @@ async def run_live(
         warmups=args.warmups,
         interval_ns=args.interval_ms * 1_000_000,
     )
+    workloads: dict[str, WorkloadName] = {
+        "cancel-id": CONCURRENT_CANCEL_WORKLOAD,
+        "providers": PROVIDER_DIAGNOSTIC_WORKLOAD,
+        "all": COMBINED_DIAGNOSTIC_WORKLOAD,
+    }
+    workload = workloads.get(args.command)
+    if workload is None:
+        raise BenchmarkFailure("benchmark workload is not supported")
     recorder = SampleRecorder(
         config=config,
         environment={
@@ -193,6 +209,7 @@ async def run_live(
         },
         versions=_runtime_versions() if versions is None else versions,
         git=_git_metadata(Path.cwd()),
+        workload=workload,
     )
     started_at = _utc_now()
     providers: ProviderSet | None = None

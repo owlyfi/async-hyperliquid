@@ -85,8 +85,9 @@ weight/minute on average.
 
 One round therefore reserves 23 weight. After the cancellation burst, the next
 request cannot start until the pacer has honored the five-second reservation.
-The 33-round default run reserves 759 weight and has a theoretical pacing floor
-of 189.75 seconds, excluding network time and initialization.
+The 33-round default run reserves 759 weight. Its reserved next-start horizon is
+189.75 seconds; the zero-network final burst launch floor is about 184.75
+seconds, plus final request latency to complete the run.
 
 This controls the documented IP-weight budget but cannot override cumulative
 address-based limits. Any rate-limit response invalidates the run.

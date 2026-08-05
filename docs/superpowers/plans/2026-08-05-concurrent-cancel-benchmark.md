@@ -679,7 +679,7 @@ uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
   --output-dir "$OUTPUT_DIR"
 ```
 
-Expected runtime is at least 189.75 seconds plus setup and network time. Do not publish an invalid report or retry a failed measured sample.
+The reserved next-start horizon is 189.75 seconds. In a zero-network model the final burst launch floor is about 184.75 seconds, plus final request latency; setup and real network time add further delay. Do not publish an invalid report or retry a failed measured sample.
 
 - [ ] **Step 2: Validate the live report independently**
 

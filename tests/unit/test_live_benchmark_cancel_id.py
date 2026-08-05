@@ -10,11 +10,12 @@ from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
     CanonicalOrder,
+    CONCURRENT_CANCEL_WORKLOAD,
     GitMetadata,
     OrderPair,
 )
 from benchmarks.live import runner as runner_module
-from benchmarks.live.results import SampleRecorder
+from benchmarks.live.results import SampleRecorder, parse_resting_oids
 from benchmarks.live.runner import run_cancel_id_suite
 
 
@@ -56,11 +57,13 @@ class ProviderStub:
         clock: TickClock,
         *,
         fail_place: bool = False,
+        duplicate_oids: bool = False,
         fail_cancel_calls: set[int] | None = None,
         gate_probe: Any = None,
     ) -> None:
         self.clock = clock
         self.fail_place = fail_place
+        self.duplicate_oids = duplicate_oids
         self.fail_cancel_calls = fail_cancel_calls or set()
         self.gate_probe = gate_probe
         self.placement_sizes: list[int] = []
@@ -80,6 +83,13 @@ class ProviderStub:
         self.clock.advance(500)
         if self.fail_place:
             raise TimeoutError("indeterminate placement")
+        if self.duplicate_oids:
+            statuses = [{"resting": {"oid": 100}} for _ in orders]
+            return parse_resting_oids(
+                {"status": "ok", "response": {"data": {"statuses": statuses}}},
+                expected=len(orders),
+                provider=self.name,
+            )
         return tuple(range(100, 100 + len(orders)))
 
     def _begin_cancel(self, method: str, order: CanonicalOrder) -> int:
@@ -137,6 +147,7 @@ def _recorder(config: BenchmarkConfig) -> SampleRecorder:
         environment={"network": "testnet"},
         versions={"async-hyperliquid": "1.0.0rc1"},
         git=GitMetadata(revision="abc", dirty=False),
+        workload=CONCURRENT_CANCEL_WORKLOAD,
     )
 
 
@@ -302,6 +313,62 @@ async def test_indeterminate_place_cleans_both_cloids_without_retry() -> None:
         )
 
     assert provider.placement_sizes == [20]
+    assert len(recovery.cleaned) == 1
+    assert len(recovery.cleaned[0]) == 20
+
+
+async def test_duplicate_cloid_generation_fails_before_placement_or_cancel() -> None:
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    provider = ProviderStub(clock)
+    recovery = RecoveryStub()
+
+    with pytest.raises(
+        BenchmarkFailure, match="^cancel-id generated non-unique CLOIDs$"
+    ):
+        await run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            _recorder(config),
+            clock_ns=clock.now,
+            cloid_factory=lambda: "0x00000000000000000000000000000001",
+        )
+
+    assert provider.placement_sizes == []
+    assert provider.cancel_calls == 0
+    assert recovery.cleaned == []
+
+
+async def test_duplicate_oid_response_recovers_every_placed_cloid_before_cancel() -> (
+    None
+):
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    provider = ProviderStub(clock, duplicate_oids=True)
+    recovery = RecoveryStub()
+    recorder = _recorder(config)
+
+    with pytest.raises(
+        BenchmarkFailure,
+        match="^async-hyperliquid produced a non-resting placement result$",
+    ):
+        await run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            recorder,
+            clock_ns=clock.now,
+            cloid_factory=_cloid_factory(),
+        )
+
+    assert provider.placement_sizes == [20]
+    assert provider.cancel_calls == 0
+    assert recorder.samples == ()
     assert len(recovery.cleaned) == 1
     assert len(recovery.cleaned[0]) == 20
 

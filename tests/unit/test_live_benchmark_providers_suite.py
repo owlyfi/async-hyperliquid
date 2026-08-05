@@ -11,6 +11,7 @@ from benchmarks.live.models import (
     GitMetadata,
     LiveBenchmarkReport,
     OrderPair,
+    PROVIDER_DIAGNOSTIC_WORKLOAD,
 )
 from benchmarks.live.results import SampleRecorder, write_report
 from benchmarks.live.runner import run_provider_suite
@@ -111,6 +112,7 @@ def _recorder(config: BenchmarkConfig) -> SampleRecorder:
         environment={"network": "testnet"},
         versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
         git=GitMetadata(revision="abc", dirty=False),
+        workload=PROVIDER_DIAGNOSTIC_WORKLOAD,
     )
 
 

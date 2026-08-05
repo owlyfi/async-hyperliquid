@@ -9,6 +9,7 @@ import benchmarks.live.reporting as reporting
 from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
+    CONCURRENT_CANCEL_WORKLOAD,
     GitMetadata,
     LatencySample,
     LiveBenchmarkReport,
@@ -44,6 +45,7 @@ def _valid_report() -> LiveBenchmarkReport:
         },
         versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
         git=GitMetadata(revision="a" * 40, dirty=False),
+        workload=CONCURRENT_CANCEL_WORKLOAD,
     )
     for round_index in range(30):
         oid_is_even = (round_index + 3) % 2 == 0
@@ -104,12 +106,201 @@ def test_csv_contains_only_safe_sample_columns(tmp_path: Path) -> None:
     assert b"\r\n" not in path.read_bytes()
 
 
+def test_live_report_declares_v2_concurrent_workload_contract() -> None:
+    report = _valid_report()
+
+    assert report["schema_version"] == 2
+    assert report["config"]["workload"] == (
+        "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
+    )
+    validate_publishable(report)
+
+
+def test_publication_rejects_legacy_v1_report() -> None:
+    report = _valid_report()
+    report["schema_version"] = 1
+    cast(dict[str, object], report["config"]).pop("workload", None)
+
+    with pytest.raises(BenchmarkFailure, match="^report is not publishable$"):
+        validate_publishable(report)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(
+            lambda report: report.update(
+                note="<!-- live-exchange-benchmark:detail:end -->"
+            ),
+            id="top-level-readme-marker",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, str], report["versions"]).update(
+                api_key="credential-shaped-extra"
+            ),
+            id="version-credential-extra",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, object], report["git"]).update(
+                branch="main\n<!-- injected -->"
+            ),
+            id="git-newline-extra",
+        ),
+    ],
+)
+def test_publication_rejects_undeclared_fields_with_sanitized_failure(
+    mutation: Callable[[dict[str, Any]], None],
+) -> None:
+    report = _valid_report()
+    mutation(cast(dict[str, Any], report))
+
+    with pytest.raises(
+        BenchmarkFailure, match="^report schema is not publishable$"
+    ) as raised:
+        validate_publishable(report)
+
+    assert "credential" not in str(raised.value)
+    assert "<!--" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(
+            lambda report: cast(dict[str, object], report["config"]).update(
+                credential="extra"
+            ),
+            id="config-extra",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, str], report["environment"]).update(
+                credential="extra"
+            ),
+            id="environment-extra",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, Any], report["summaries"]).update(
+                credential={}
+            ),
+            id="summary-suite-extra",
+        ),
+        pytest.param(
+            lambda report: cast(
+                dict[str, Any], report["summaries"]["cancel-id"]
+            ).update(credential={}),
+            id="summary-operation-extra",
+        ),
+        pytest.param(
+            lambda report: cast(
+                dict[str, Any], report["summaries"]["cancel-id"]["cancel_by_oid"]
+            ).update(credential={}),
+            id="summary-provider-extra",
+        ),
+        pytest.param(
+            lambda report: cast(
+                dict[str, Any],
+                report["summaries"]["cancel-id"]["cancel_by_oid"]["async-hyperliquid"],
+            ).update(credential="extra"),
+            id="summary-value-extra",
+        ),
+    ],
+)
+def test_publication_requires_exact_config_and_summary_key_levels(
+    mutation: Callable[[dict[str, Any]], None],
+) -> None:
+    report = _valid_report()
+    mutation(cast(dict[str, Any], report))
+
+    with pytest.raises(BenchmarkFailure, match="^report schema is not publishable$"):
+        validate_publishable(report)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(
+            lambda report: cast(dict[str, str], report["environment"]).update(
+                python="3.12.13\n<!-- injected -->"
+            ),
+            id="python-newline",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, str], report["environment"]).update(
+                platform="darwin|marker"
+            ),
+            id="platform-table-marker",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, str], report["versions"]).update(
+                sdk="0.24.0\ncredential"
+            ),
+            id="version-newline",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, object], report["git"]).update(
+                revision="A" * 40
+            ),
+            id="uppercase-revision",
+        ),
+        pytest.param(
+            lambda report: cast(dict[str, object], report["config"]).update(
+                workload="cancel-id\n<!-- injected -->"
+            ),
+            id="unknown-workload",
+        ),
+    ],
+)
+def test_publication_rejects_noncanonical_persisted_metadata(
+    mutation: Callable[[dict[str, Any]], None],
+) -> None:
+    report = _valid_report()
+    mutation(cast(dict[str, Any], report))
+
+    with pytest.raises(BenchmarkFailure, match="^report is not publishable$") as raised:
+        validate_publishable(report)
+
+    assert "credential" not in str(raised.value)
+    assert "<!--" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("started_at", "completed_at"),
+    [
+        pytest.param(
+            "2026-08-05T00:00:00+00:00", "2026-08-05T00:01:00Z", id="offset-not-z"
+        ),
+        pytest.param(
+            "2026-08-05T00:00:00.000Z", "2026-08-05T00:01:00Z", id="fractional-seconds"
+        ),
+        pytest.param("2026-08-05T00:02:00Z", "2026-08-05T00:01:00Z", id="reversed"),
+        pytest.param(
+            "2026-08-05T00:00:00Z\n<!-- injected -->",
+            "2026-08-05T00:01:00Z",
+            id="newline-marker",
+        ),
+    ],
+)
+def test_publication_rejects_noncanonical_or_reversed_timestamps(
+    started_at: str, completed_at: str
+) -> None:
+    report = _valid_report()
+    report["started_at"] = started_at
+    report["completed_at"] = completed_at
+
+    with pytest.raises(
+        BenchmarkFailure, match="^report schema is not publishable$"
+    ) as raised:
+        validate_publishable(report)
+
+    assert "injected" not in str(raised.value)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
         lambda report: report.update(valid=False),
         lambda report: report.update(cleanup_ok=False),
-        lambda report: report.update(schema_version=2),
+        lambda report: report.update(schema_version=1),
         lambda report: cast(dict[str, str], report["environment"]).update(
             network="mainnet"
         ),
@@ -226,6 +417,16 @@ def test_publication_requires_concurrent_cancel_shape() -> None:
                 0, {**report["samples"][0], "suite": "all"}
             ),
             id="all-report",
+        ),
+        pytest.param(
+            lambda report: report["samples"].__setitem__(
+                0,
+                {
+                    **report["samples"][0],
+                    "operation": "cancel_by_oid\n<!-- injected -->",
+                },
+            ),
+            id="operation-newline",
         ),
     ],
 )
@@ -344,6 +545,10 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     assert "240 weight/minute" in detail_readme
     assert "Per-round method maxima" in detail_readme
     assert "Provider comparison" not in detail_readme
+    async_index = detail_readme.index("| async-hyperliquid |")
+    sdk_index = detail_readme.index("| sdk |")
+    ccxt_index = detail_readme.index("| ccxt |")
+    assert async_index < sdk_index < ccxt_index
     assert all(line == line.rstrip() for line in detail_readme.splitlines())
 
 
@@ -365,14 +570,13 @@ def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:
     assert (tmp_path / "README.md").read_text() == "missing markers\n"
 
 
-def test_publish_sanitizes_overflowing_completion_timestamp_before_mutation(
+def test_publish_rejects_noncanonical_completion_timestamp_before_mutation(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
     report = _valid_report()
     report["completed_at"] = "0001-01-01T00:00:00+23:59"
-    validate_publishable(report)
     report_path = write_report(report, source, forbidden_values=())
     write_csv(report, source)
     for filename in FIGURE_FILENAMES[:2]:
@@ -384,9 +588,7 @@ def test_publish_sanitizes_overflowing_completion_timestamp_before_mutation(
     benchmarks.mkdir()
     (benchmarks / "README.md").write_text(original_detail)
 
-    with pytest.raises(
-        BenchmarkFailure, match="^report completion time is not publishable$"
-    ):
+    with pytest.raises(BenchmarkFailure, match="^report schema is not publishable$"):
         publish_report(report_path, tmp_path)
 
     assert (tmp_path / "README.md").read_text() == original_root

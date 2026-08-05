@@ -87,6 +87,8 @@ async def run_cancel_id_suite(
         )
         orders = tuple(order for pair in pairs for order in pair.as_tuple())
         pending = {order.cloid: order for order in orders}
+        if len(pending) != len(orders):
+            raise BenchmarkFailure("cancel-id generated non-unique CLOIDs")
         failure: BaseException | None = None
 
         try:

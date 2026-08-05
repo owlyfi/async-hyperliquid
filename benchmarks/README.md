@@ -85,8 +85,10 @@ weight 2 for the mid snapshot, weight 1 for the one 20-order placement batch,
 and weight 20 once before the concurrent cancellation burst: 23 weight total.
 The global pacer reserves at least 250 ms for every unit of request weight,
 limiting the controlled workload to 240 weight/minute, or 20% of the documented
-IP allowance. The default 33-round run reserves 759 weight, with a theoretical
-pacing floor of about 189.75 seconds excluding initialization and network time.
+IP allowance. The default 33-round run reserves 759 weight. Its reserved
+next-start horizon is about 189.75 seconds; in a zero-network model the final
+burst can launch at about 184.75 seconds, and completion then includes the
+final request latency.
 It places about 660 testnet orders including warmups. Metadata and role
 validation happen before timing and use the remaining headroom; avoid any other
 traffic from the same public IP while collecting a report. See the

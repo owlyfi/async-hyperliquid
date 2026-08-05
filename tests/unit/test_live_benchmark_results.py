@@ -3,7 +3,12 @@ from collections.abc import Sequence
 
 import pytest
 
-from benchmarks.live.models import BenchmarkConfig, BenchmarkFailure, LatencySample
+from benchmarks.live.models import (
+    BenchmarkConfig,
+    BenchmarkFailure,
+    LatencySample,
+    PROVIDER_DIAGNOSTIC_WORKLOAD,
+)
 from benchmarks.live.results import (
     SampleRecorder,
     assert_report_is_sanitized,
@@ -48,6 +53,18 @@ def test_parse_twenty_resting_oids_requires_exact_count() -> None:
 
     with pytest.raises(BenchmarkFailure, match="non-resting"):
         parse_resting_oids(response, expected=19, provider="async-hyperliquid")
+
+
+def test_parse_resting_oids_rejects_duplicate_placement_identity() -> None:
+    response = _resting_place_response((777, 777))
+
+    with pytest.raises(
+        BenchmarkFailure,
+        match="^async-hyperliquid produced a non-resting placement result$",
+    ) as raised:
+        parse_resting_oids(response, expected=2, provider="async-hyperliquid")
+
+    assert "777" not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -126,6 +143,7 @@ def test_sample_recorder_builds_serializable_grouped_report() -> None:
         environment={"python": "3.12.13", "network": "testnet"},
         versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0"},
         git={"revision": "abc123", "dirty": False},
+        workload=PROVIDER_DIAGNOSTIC_WORKLOAD,
     )
     recorder.record(
         LatencySample(
@@ -157,6 +175,8 @@ def test_sample_recorder_builds_serializable_grouped_report() -> None:
     )
 
     json.dumps(report)
+    assert report["schema_version"] == 2
+    assert report["config"]["workload"] == "providers-sequential-place2-cancel2-v1"
     assert report["summaries"]["providers"]["place_batch_2"]["sdk"] == {
         "count": 2,
         "median_ns": 30.0,

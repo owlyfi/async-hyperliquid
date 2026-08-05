@@ -2,10 +2,25 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Final, Literal, TypedDict
 
 
 MIN_INTERVAL_NS = 250_000_000
+LIVE_REPORT_SCHEMA_VERSION = 2
+WorkloadName = Literal[
+    "cancel-id-concurrent-batch20-singles20-10-per-method-v1",
+    "providers-sequential-place2-cancel2-v1",
+    "combined-cancel-id-concurrent20-providers-sequential2-v1",
+]
+CONCURRENT_CANCEL_WORKLOAD: Final[WorkloadName] = (
+    "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
+)
+PROVIDER_DIAGNOSTIC_WORKLOAD: Final[WorkloadName] = (
+    "providers-sequential-place2-cancel2-v1"
+)
+COMBINED_DIAGNOSTIC_WORKLOAD: Final[WorkloadName] = (
+    "combined-cancel-id-concurrent20-providers-sequential2-v1"
+)
 
 
 class BenchmarkFailure(RuntimeError):
@@ -97,6 +112,17 @@ class GitMetadata(TypedDict):
     dirty: bool
 
 
+class BenchmarkReportConfig(TypedDict):
+    workload: WorkloadName
+    rounds: int
+    warmups: int
+    interval_ns: int
+    coin: str
+    target_notional: float
+    buy_multiplier: float
+    sell_multiplier: float
+
+
 class LiveBenchmarkReport(TypedDict):
     schema_version: int
     valid: bool
@@ -104,7 +130,7 @@ class LiveBenchmarkReport(TypedDict):
     cleanup_ok: bool
     started_at: str
     completed_at: str
-    config: dict[str, str | int | float]
+    config: BenchmarkReportConfig
     environment: dict[str, str]
     versions: dict[str, str]
     git: GitMetadata

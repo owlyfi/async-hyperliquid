@@ -11,10 +11,12 @@ from .models import (
     BenchmarkConfig,
     BenchmarkFailure,
     GitMetadata,
+    LIVE_REPORT_SCHEMA_VERSION,
     LatencySample,
     LatencySummary,
     LiveBenchmarkReport,
     SampleRecord,
+    WorkloadName,
 )
 
 
@@ -86,7 +88,7 @@ def parse_resting_oids(
             if oid is None:
                 break
             oids.append(oid)
-    if len(oids) != expected:
+    if len(oids) != expected or len(set(oids)) != expected:
         raise BenchmarkFailure(f"{provider} produced a non-resting placement result")
     return tuple(oids)
 
@@ -169,7 +171,14 @@ def _sample_record(sample: LatencySample) -> SampleRecord:
 
 
 class SampleRecorder:
-    __slots__ = ("_config", "_environment", "_git", "_samples", "_versions")
+    __slots__ = (
+        "_config",
+        "_environment",
+        "_git",
+        "_samples",
+        "_versions",
+        "_workload",
+    )
 
     def __init__(
         self,
@@ -178,11 +187,13 @@ class SampleRecorder:
         environment: Mapping[str, str],
         versions: Mapping[str, str],
         git: GitMetadata,
+        workload: WorkloadName,
     ) -> None:
         self._config = config
         self._environment = dict(environment)
         self._versions = dict(versions)
         self._git = GitMetadata(revision=git["revision"], dirty=git["dirty"])
+        self._workload = workload
         self._samples: list[LatencySample] = []
 
     @property
@@ -218,13 +229,14 @@ class SampleRecorder:
         }
         config = self._config
         report: LiveBenchmarkReport = {
-            "schema_version": 1,
+            "schema_version": LIVE_REPORT_SCHEMA_VERSION,
             "valid": valid,
             "failure_reason": failure_reason,
             "cleanup_ok": cleanup_ok,
             "started_at": started_at,
             "completed_at": completed_at,
             "config": {
+                "workload": self._workload,
                 "rounds": config.rounds,
                 "warmups": config.warmups,
                 "interval_ns": config.interval_ns,

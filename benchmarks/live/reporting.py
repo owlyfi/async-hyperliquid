@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 import shutil
 import statistics
 from collections import Counter
@@ -11,7 +12,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from .models import BenchmarkFailure, LatencySummary, LiveBenchmarkReport
+from .models import (
+    BenchmarkFailure,
+    CONCURRENT_CANCEL_WORKLOAD,
+    LIVE_REPORT_SCHEMA_VERSION,
+    LatencySummary,
+    LiveBenchmarkReport,
+)
 from .results import assert_report_is_sanitized, summarize_ns, write_report
 
 
@@ -27,6 +34,41 @@ FIGURE_FILENAMES = (
 )
 _PUBLISH_FIGURE_FILENAMES = FIGURE_FILENAMES[:2]
 _PROVIDERS = ("async-hyperliquid", "sdk", "ccxt")
+_PUBLISH_ENVIRONMENT_FIELDS = ("network", "python", "platform")
+_PUBLISH_VERSION_FIELDS = ("async-hyperliquid", "sdk", "ccxt")
+_TOP_LEVEL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "valid",
+        "failure_reason",
+        "cleanup_ok",
+        "started_at",
+        "completed_at",
+        "config",
+        "environment",
+        "versions",
+        "git",
+        "samples",
+        "summaries",
+    }
+)
+_CONFIG_FIELDS = frozenset(
+    {
+        "workload",
+        "rounds",
+        "warmups",
+        "interval_ns",
+        "coin",
+        "target_notional",
+        "buy_multiplier",
+        "sell_multiplier",
+    }
+)
+_SUMMARY_FIELDS = frozenset(
+    {"count", "median_ns", "mad_ns", "p95_ns", "min_ns", "max_ns"}
+)
+_SAFE_SCALAR = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+()-]{0,99}\Z")
+_CANONICAL_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 _CSV_FIELDS = (
     "suite",
     "provider",
@@ -245,20 +287,76 @@ def _is_git_revision(value: object) -> bool:
     )
 
 
-def _is_safe_environment(environment: Mapping[str, object]) -> bool:
-    if set(environment) != {"network", "python", "platform"}:
+def _is_safe_scalar(value: object) -> bool:
+    return isinstance(value, str) and _SAFE_SCALAR.fullmatch(value) is not None
+
+
+def _parse_canonical_utc(value: object) -> datetime | None:
+    if not isinstance(value, str) or _CANONICAL_UTC.fullmatch(value) is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def _is_exact_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_exact_float(value: object) -> bool:
+    return isinstance(value, float) and math.isfinite(value)
+
+
+def _has_exact_keys(value: object, keys: frozenset[str]) -> bool:
+    return isinstance(value, Mapping) and set(value) == keys
+
+
+def _has_exact_summary_shape(summaries: object) -> bool:
+    if not isinstance(summaries, Mapping):
         return False
-    return all(
-        isinstance(value, str)
-        and 0 < len(value) <= 100
-        and all(character.isalnum() or character in ".-_" for character in value)
-        for value in environment.values()
-    )
+    summaries = cast(Mapping[Any, object], summaries)
+    if set(summaries) != {"cancel-id"}:
+        return False
+    suite = summaries.get("cancel-id")
+    if not isinstance(suite, Mapping) or set(suite) != {
+        "cancel_by_oid",
+        "cancel_by_cloid",
+    }:
+        return False
+    suite = cast(Mapping[str, object], suite)
+    for operation in ("cancel_by_oid", "cancel_by_cloid"):
+        providers = suite.get(operation)
+        if not isinstance(providers, Mapping) or set(providers) != {
+            "async-hyperliquid"
+        }:
+            return False
+        providers = cast(Mapping[str, object], providers)
+        summary = providers.get("async-hyperliquid")
+        if not isinstance(summary, Mapping) or not _has_exact_keys(
+            summary, _SUMMARY_FIELDS
+        ):
+            return False
+        summary = cast(Mapping[Any, object], summary)
+        if (
+            not _is_exact_int(summary.get("count"))
+            or not _is_exact_float(summary.get("median_ns"))
+            or not _is_exact_float(summary.get("mad_ns"))
+            or not _is_exact_float(summary.get("p95_ns"))
+            or not _is_exact_int(summary.get("min_ns"))
+            or not _is_exact_int(summary.get("max_ns"))
+        ):
+            return False
+    return True
 
 
 def validate_publishable(report: LiveBenchmarkReport) -> None:
     try:
         if not isinstance(report, Mapping):
+            raise BenchmarkFailure("report schema is not publishable")
+        if not _has_exact_keys(report, _TOP_LEVEL_FIELDS):
             raise BenchmarkFailure("report schema is not publishable")
         config = report["config"]
         versions = report["versions"]
@@ -286,30 +384,80 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
             )
         ):
             raise BenchmarkFailure("report schema is not publishable")
+        if report["schema_version"] != LIVE_REPORT_SCHEMA_VERSION:
+            raise BenchmarkFailure("report is not publishable")
+        started_at = _parse_canonical_utc(report["started_at"])
+        completed_at = _parse_canonical_utc(report["completed_at"])
         if (
-            report["schema_version"] != 1
-            or not report["valid"]
+            started_at is None
+            or completed_at is None
+            or started_at > completed_at
+            or not _has_exact_keys(config, _CONFIG_FIELDS)
+            or set(versions) != set(_PUBLISH_VERSION_FIELDS)
+            or set(git) != {"revision", "dirty"}
+            or set(environment) != set(_PUBLISH_ENVIRONMENT_FIELDS)
+            or not _has_exact_summary_shape(summaries)
+        ):
+            raise BenchmarkFailure("report schema is not publishable")
+        if (
+            not report["valid"]
             or report["failure_reason"] is not None
             or not report["cleanup_ok"]
-            or config
-            != {
-                "rounds": 30,
-                "warmups": 3,
-                "interval_ns": 250_000_000,
-                "coin": "BTC",
-                "target_notional": 11.0,
-                "buy_multiplier": 0.9,
-                "sell_multiplier": 1.1,
-            }
-            or versions.get("async-hyperliquid") != "1.0.0rc1"
-            or versions.get("sdk") != "0.24.0"
-            or versions.get("ccxt") != "4.5.71"
-            or not _is_safe_environment(environment)
+            or config.get("workload") != CONCURRENT_CANCEL_WORKLOAD
+            or not _is_exact_int(config.get("rounds"))
+            or config.get("rounds") != 30
+            or not _is_exact_int(config.get("warmups"))
+            or config.get("warmups") != 3
+            or not _is_exact_int(config.get("interval_ns"))
+            or config.get("interval_ns") != 250_000_000
+            or config.get("coin") != "BTC"
+            or not _is_exact_float(config.get("target_notional"))
+            or config.get("target_notional") != 11.0
+            or not _is_exact_float(config.get("buy_multiplier"))
+            or config.get("buy_multiplier") != 0.9
+            or not _is_exact_float(config.get("sell_multiplier"))
+            or config.get("sell_multiplier") != 1.1
+            or tuple(versions.get(key) for key in _PUBLISH_VERSION_FIELDS)
+            != ("1.0.0rc1", "0.24.0", "4.5.71")
+            or not all(_is_safe_scalar(value) for value in versions.values())
+            or not all(_is_safe_scalar(value) for value in environment.values())
             or environment.get("network") != "testnet"
             or git.get("dirty") is not False
             or not _is_git_revision(git.get("revision"))
         ):
             raise BenchmarkFailure("report is not publishable")
+        grouped: dict[tuple[str, str, str], list[int]] = {}
+        round_samples: dict[int, dict[str, list[dict[str, object]]]] = {}
+        for sample in samples:
+            if set(sample) != set(_CSV_FIELDS):
+                raise BenchmarkFailure("report sample schema is not publishable")
+            suite = sample["suite"]
+            provider = sample["provider"]
+            operation = sample["operation"]
+            round_index = sample["round_index"]
+            provider_order = sample["provider_order"]
+            duration_ns = sample["duration_ns"]
+            if (
+                suite != "cancel-id"
+                or provider != "async-hyperliquid"
+                or operation not in {"cancel_by_oid", "cancel_by_cloid"}
+                or isinstance(round_index, bool)
+                or not isinstance(round_index, int)
+                or isinstance(provider_order, bool)
+                or not isinstance(provider_order, int)
+                or provider_order < 0
+                or provider_order > 19
+                or isinstance(duration_ns, bool)
+                or not isinstance(duration_ns, int)
+                or duration_ns < 1
+            ):
+                raise BenchmarkFailure("report sample values are not publishable")
+            key = (suite, provider, operation)
+            grouped.setdefault(key, []).append(duration_ns)
+            round_samples.setdefault(round_index, {}).setdefault(operation, []).append(
+                cast(dict[str, object], sample)
+            )
+
         actual = Counter(
             (sample["suite"], sample["provider"], sample["operation"])
             for sample in samples
@@ -317,32 +465,10 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
         if actual != _expected_counts():
             raise BenchmarkFailure("report sample shape is not publishable")
 
-        grouped: dict[tuple[str, str, str], list[int]] = {}
-        round_samples: dict[int, dict[str, list[dict[str, object]]]] = {}
-        for sample in samples:
-            if set(sample) != set(_CSV_FIELDS):
-                raise BenchmarkFailure("report sample schema is not publishable")
-            key = (sample["suite"], sample["provider"], sample["operation"])
-            round_index = sample["round_index"]
-            provider_order = sample["provider_order"]
-            if (
-                isinstance(round_index, bool)
-                or not isinstance(round_index, int)
-                or isinstance(provider_order, bool)
-                or not isinstance(provider_order, int)
-                or provider_order < 0
-                or provider_order > 19
-            ):
-                raise BenchmarkFailure("report sample values are not publishable")
-            grouped.setdefault(key, []).append(sample["duration_ns"])
-            round_samples.setdefault(round_index, {}).setdefault(
-                sample["operation"], []
-            ).append(cast(dict[str, object], sample))
-
-        expected_rounds = set(range(cast(int, config["rounds"])))
+        expected_rounds = set(range(config["rounds"]))
         if set(round_samples) != expected_rounds:
             raise BenchmarkFailure("report measured rounds are not publishable")
-        warmups = cast(int, config["warmups"])
+        warmups = config["warmups"]
         for round_index, operations in round_samples.items():
             expected_oid_even = (warmups + round_index) % 2 == 0
             slots: set[int] = set()
@@ -431,9 +557,11 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
         "| Environment | Value |",
         "|---|---|",
     ]
-    for key, value in sorted(report["environment"].items()):
+    for key in _PUBLISH_ENVIRONMENT_FIELDS:
+        value = report["environment"][key]
         lines.append(f"| {key} | {value} |")
-    for key, value in sorted(report["versions"].items()):
+    for key in _PUBLISH_VERSION_FIELDS:
+        value = report["versions"][key]
         lines.append(f"| {key} | {value} |")
     lines.extend(
         [
