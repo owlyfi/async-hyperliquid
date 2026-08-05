@@ -74,3 +74,21 @@ def test_published_project_urls_use_current_repository() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     urls = project["urls"]
     assert all("github.com/owlyfi/async-hyperliquid" in url for url in urls.values())
+
+
+def test_release_runbook_covers_setup_and_recovery() -> None:
+    runbook = (ROOT / "docs" / "releasing.md").read_text()
+    required = {
+        "Trusted Publishing",
+        "owlyfi",
+        "release.yml",
+        "Environment `pypi`",
+        "Enable release immutability",
+        "git tag -a",
+        "git push origin",
+        "Re-run failed jobs",
+        "SHA256SUMS",
+        "yank",
+    }
+    for phrase in required:
+        assert phrase in runbook
