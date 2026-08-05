@@ -88,7 +88,7 @@ jobs:
           version: "0.11.32"
 
       - name: Install locked dependencies
-        run: uv sync --locked --dev
+        run: uv sync --locked --dev --group benchmark
 
       - name: Check formatting
         run: uv run ruff format --check

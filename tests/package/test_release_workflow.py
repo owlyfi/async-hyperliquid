@@ -70,6 +70,18 @@ def test_ci_runs_for_pull_requests_and_branch_pushes_only() -> None:
     assert "tags:" not in workflow
 
 
+def test_workflows_install_the_benchmark_group_before_type_checking_it() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    ci_test_job = ci.split("  test:", 1)[1].split("  package:", 1)[0]
+    release = _release_text()
+    release_build_job = release.split("  test_and_build:", 1)[1].split(
+        "  create_draft_release:", 1
+    )[0]
+    sync = "uv sync --locked --dev --group benchmark"
+    assert sync in ci_test_job
+    assert sync in release_build_job
+
+
 def test_published_project_urls_use_current_repository() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     urls = project["urls"]
