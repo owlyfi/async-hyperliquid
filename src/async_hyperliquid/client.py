@@ -47,7 +47,7 @@ def _coin_dex(coin: str) -> str:
     return coin.partition(":")[0] if ":" in coin else ""
 
 
-def _market_limit_price(
+def _market_price(
     mid: float, *, is_buy: bool, slippage: float, is_outcome: bool
 ) -> float:
     price = mid * (1 + slippage if is_buy else 1 - slippage)
@@ -104,14 +104,14 @@ def _validate_builder(builder: Builder | None, *, is_spot: bool) -> None:
         )
 
 
-def _market_limit_order(
+def _market_order(
     order: PlaceOrderRequest, mid: float, *, is_outcome: bool
 ) -> PlaceOrderRequest:
     limit: PlaceOrderRequest = {
         "coin": order["coin"],
         "is_buy": order["is_buy"],
         "sz": order["sz"],
-        "px": _market_limit_price(
+        "px": _market_price(
             mid,
             is_buy=order["is_buy"],
             slippage=order.get("slippage", 0.05),
@@ -292,7 +292,7 @@ class AsyncHyperliquid:
                 tuple(markets[index] for index in market_indexes)
             )
             for index, mid in zip(market_indexes, mids, strict=True):
-                normalized[index] = _market_limit_order(
+                normalized[index] = _market_order(
                     commands[index], mid, is_outcome=markets[index].coin.startswith("#")
                 )
 

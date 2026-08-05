@@ -6,7 +6,7 @@ import pytest
 
 from async_hyperliquid import AsyncHyperliquid, InfoClient
 from async_hyperliquid._internal.metadata import _MarketInfo
-from async_hyperliquid.client import _market_limit_price
+from async_hyperliquid.client import _market_order, _market_price
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import (
     Builder,
@@ -61,6 +61,18 @@ def _market_request() -> PlaceOrderRequest:
     return {"coin": "BTC", "is_buy": True, "sz": 0.01, "px": 0.0, "is_market": True}
 
 
+def test_market_order_normalizes_to_ioc_limit() -> None:
+    assert _market_order(_market_request(), 100_000.0, is_outcome=False) == {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": 0.01,
+        "px": 105_000.0,
+        "is_market": False,
+        "ro": False,
+        "order_type": limit_order_type(TimeInForce.IOC),
+    }
+
+
 def _trigger_request() -> PlaceOrderRequest:
     return {
         "coin": "BTC",
@@ -84,10 +96,10 @@ def _trigger_request() -> PlaceOrderRequest:
         (0.4, False, 0.38),
     ],
 )
-def test_outcome_market_limit_price_stays_in_domain(
+def test_outcome_market_price_stays_in_domain(
     mid: float, is_buy: bool, expected: float
 ) -> None:
-    assert _market_limit_price(
+    assert _market_price(
         mid, is_buy=is_buy, slippage=0.05, is_outcome=True
     ) == pytest.approx(expected)
 
