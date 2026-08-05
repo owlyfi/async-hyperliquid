@@ -862,6 +862,33 @@ def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
+def test_interrupt_after_mkdir_before_identity_handoff_leaves_no_orphan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    interruption = KeyboardInterrupt()
+
+    def interrupt_after_create(path: Path) -> None:
+        if path.name.endswith(".staging"):
+            raise interruption
+
+    monkeypatch.setattr(
+        reporting, "_after_directory_create", interrupt_after_create, raising=False
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        publish_report(report_path, repository)
+
+    assert raised.value is interruption
+    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+
+
 def test_final_destination_collision_fails_before_readme_mutation(
     tmp_path: Path,
 ) -> None:
@@ -969,6 +996,52 @@ def test_staging_namespace_swap_is_rejected_without_deleting_replacement(
     assert not (repository / "benchmarks" / "results" / "20260805T000100Z").exists()
 
 
+@pytest.mark.parametrize("kind", ["tree", "empty-directory", "file"])
+def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
+) -> None:
+    owned_path = tmp_path / "owned"
+    if kind == "file":
+        owned_path.write_text("owned\n")
+    else:
+        owned_path.mkdir()
+        if kind == "tree":
+            (owned_path / "owned.txt").write_text("owned\n")
+    owned = reporting._OwnedPath(
+        owned_path, reporting._require_kind(owned_path, directory=kind != "file")
+    )
+    moved = tmp_path / "moved-owned"
+    real_matches = reporting._matches_identity
+    swapped = False
+
+    def match_then_swap(path: Path, identity: Any) -> bool:
+        nonlocal swapped
+        matched = real_matches(path, identity)
+        if path == owned_path and matched and not swapped:
+            swapped = True
+            owned_path.rename(moved)
+            if kind == "file":
+                owned_path.write_text("foreign\n")
+            else:
+                owned_path.mkdir()
+                if kind == "tree":
+                    (owned_path / "foreign.txt").write_text("foreign\n")
+        return matched
+
+    monkeypatch.setattr(reporting, "_matches_identity", match_then_swap)
+
+    if kind == "tree":
+        reporting._remove_owned_directory(owned)
+        assert (owned_path / "foreign.txt").read_text() == "foreign\n"
+    elif kind == "empty-directory":
+        reporting._remove_owned_empty_directory(owned)
+        assert owned_path.is_dir()
+    else:
+        reporting._remove_owned_file(owned)
+        assert owned_path.read_text() == "foreign\n"
+    assert moved.exists()
+
+
 def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -976,20 +1049,18 @@ def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
         _prepare_publish_repository(tmp_path)
     )
     destination = repository / "benchmarks" / "results" / "20260805T000100Z"
-    real_rename = os.rename
+    real_move = reporting._atomic_move_noreplace
     interrupted = False
 
-    def rename_then_interrupt(
-        source: str | os.PathLike[str], target: str | os.PathLike[str]
-    ) -> None:
+    def rename_then_interrupt(source: Path, target: Path, **kwargs: Any) -> None:
         nonlocal interrupted
-        real_rename(source, target)
-        if Path(target) == destination and not interrupted:
+        real_move(source, target, **kwargs)
+        if target == destination and not interrupted:
             interrupted = True
             raise KeyboardInterrupt
 
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
-    monkeypatch.setattr(os, "rename", rename_then_interrupt)
+    monkeypatch.setattr(reporting, "_atomic_move_noreplace", rename_then_interrupt)
 
     with pytest.raises(KeyboardInterrupt):
         publish_report(report_path, repository)
@@ -998,7 +1069,7 @@ def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     assert not destination.exists()
 
-    monkeypatch.setattr(os, "rename", real_rename)
+    monkeypatch.setattr(reporting, "_atomic_move_noreplace", real_move)
     published = publish_report(report_path, repository)
     assert published == destination
 
@@ -1012,11 +1083,9 @@ def test_control_flow_during_compensation_is_re_raised_unchanged(
     repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
     destination = repository / "benchmarks" / "results" / "20260805T000100Z"
 
-    def fail_final_rename(
-        source: str | os.PathLike[str], target: str | os.PathLike[str]
-    ) -> None:
-        del source
-        assert Path(target) == destination
+    def fail_final_rename(source: Path, target: Path, **kwargs: Any) -> None:
+        del source, kwargs
+        assert target == destination
         raise OSError("final rename failed")
 
     def interrupt_rollback(path: Path, content: str) -> None:
@@ -1024,7 +1093,7 @@ def test_control_flow_during_compensation_is_re_raised_unchanged(
         raise control_flow
 
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
-    monkeypatch.setattr(os, "rename", fail_final_rename)
+    monkeypatch.setattr(reporting, "_atomic_move_noreplace", fail_final_rename)
     monkeypatch.setattr(reporting, "_atomic_text", interrupt_rollback)
 
     with pytest.raises(type(control_flow)) as raised:
@@ -1043,9 +1112,13 @@ def test_ordinary_lock_release_failure_does_not_mask_keyboard_interrupt(
     lock_fds: set[int] = set()
 
     def record_lock_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        fd = real_open(path, flags, mode)
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
         if Path(path).name == "benchmark-publication.lock":
             lock_fds.add(fd)
         return fd
@@ -1298,3 +1371,109 @@ def test_dangling_final_symlink_collides_before_readme_mutation(tmp_path: Path) 
     assert destination.is_symlink()
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+@pytest.mark.parametrize("collision_kind", ["empty-directory", "symlink", "file"])
+def test_late_final_collision_at_commit_boundary_is_not_overwritten(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, collision_kind: str
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+    outside = tmp_path / "outside-final-target"
+    outside.write_text("outside\n")
+    real_move = getattr(reporting, "_atomic_move_noreplace", None)
+    injected = False
+
+    def collide_at_commit(source: Path, target: Path, **kwargs: Any) -> None:
+        nonlocal injected
+        if target == destination and not injected:
+            injected = True
+            if collision_kind == "empty-directory":
+                target.mkdir()
+            elif collision_kind == "symlink":
+                target.symlink_to(outside)
+            else:
+                target.write_text("foreign\n")
+        if real_move is None:
+            os.rename(source, target)
+        else:
+            real_move(source, target, **kwargs)
+
+    monkeypatch.setattr(
+        reporting, "_atomic_move_noreplace", collide_at_commit, raising=False
+    )
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^published benchmark timestamp already exists$"
+    ):
+        publish_report(report_path, repository)
+
+    assert injected
+    if collision_kind == "empty-directory":
+        assert destination.is_dir()
+        assert list(destination.iterdir()) == []
+    elif collision_kind == "symlink":
+        assert destination.is_symlink()
+        assert outside.read_text() == "outside\n"
+    else:
+        assert destination.read_text() == "foreign\n"
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+
+
+@pytest.mark.parametrize(
+    "release_error", [OSError("close failed"), KeyboardInterrupt(), SystemExit(9)]
+)
+def test_lock_release_failure_after_final_rename_compensates_and_retry_succeeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, release_error: BaseException
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+    real_open = os.open
+    real_close = os.close
+    lock_fds: set[int] = set()
+
+    def record_lock_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path).name == "benchmark-publication.lock":
+            lock_fds.add(fd)
+        return fd
+
+    def close_then_fail(fd: int) -> None:
+        fail = fd in lock_fds
+        lock_fds.discard(fd)
+        real_close(fd)
+        if fail:
+            raise release_error
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(os, "open", record_lock_open)
+    monkeypatch.setattr(os, "close", close_then_fail)
+
+    if isinstance(release_error, Exception):
+        with pytest.raises(BenchmarkFailure, match="repository is not publishable"):
+            publish_report(report_path, repository)
+    else:
+        with pytest.raises(type(release_error)) as raised:
+            publish_report(report_path, repository)
+        assert raised.value is release_error
+
+    assert not destination.exists()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    monkeypatch.setattr(os, "close", real_close)
+    published = publish_report(report_path, repository)
+    assert published == destination

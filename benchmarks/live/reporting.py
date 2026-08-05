@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import ctypes
 import errno
 import fcntl
 import json
@@ -8,12 +9,14 @@ import math
 import os
 import re
 import shutil
+import signal
 import stat
 import statistics
 import subprocess
+import sys
 import uuid
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -161,6 +164,126 @@ def _matches_identity(path: Path, identity: _PathIdentity) -> bool:
     return current == identity
 
 
+def _rename_noreplace_at(
+    source_fd: int, source_name: str, destination_fd: int, destination_name: str
+) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    source_bytes = os.fsencode(source_name)
+    destination_bytes = os.fsencode(destination_name)
+    if sys.platform == "darwin":
+        rename = libc.renameatx_np
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(
+            source_fd, source_bytes, destination_fd, destination_bytes, 0x00000004
+        )
+    elif sys.platform.startswith("linux") and hasattr(libc, "renameat2"):
+        rename = libc.renameat2
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(
+            source_fd, source_bytes, destination_fd, destination_bytes, 0x00000001
+        )
+    else:
+        raise OSError(errno.ENOTSUP, "atomic no-replace rename is unavailable")
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+        raise FileExistsError(error_number, "destination already exists")
+    raise OSError(error_number, "atomic no-replace rename failed")
+
+
+def _open_pinned_directory(
+    path: Path, expected_identity: _PathIdentity | None
+) -> tuple[int, _PathIdentity]:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE) from None
+    try:
+        identity = _identity_from_stat(os.fstat(fd))
+        if (
+            not stat.S_ISDIR(identity.mode)
+            or (expected_identity is not None and identity != expected_identity)
+            or not _matches_identity(path, identity)
+        ):
+            raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
+    except BaseException as error:
+        cleanup = _CleanupOutcome()
+        _capture_cleanup(
+            cleanup, lambda: os.close(fd), "pinned directory descriptor cleanup failed"
+        )
+        _raise_with_cleanup(
+            error, cleanup, primary_message="pinned directory validation failed"
+        )
+        raise AssertionError("unreachable")
+    return fd, identity
+
+
+def _atomic_move_noreplace(
+    source: Path,
+    destination: Path,
+    *,
+    source_parent_identity: _PathIdentity | None = None,
+    destination_parent_identity: _PathIdentity | None = None,
+) -> None:
+    source_fd: int | None = None
+    destination_fd: int | None = None
+    primary: BaseException | None = None
+    cleanup = _CleanupOutcome()
+    try:
+        source_fd, source_parent = _open_pinned_directory(
+            source.parent, source_parent_identity
+        )
+        if source.parent == destination.parent:
+            if (
+                destination_parent_identity is not None
+                and source_parent != destination_parent_identity
+            ):
+                raise BenchmarkFailure(_PUBLICATION_REPOSITORY_FAILURE)
+            destination_fd = source_fd
+        else:
+            destination_fd, _ = _open_pinned_directory(
+                destination.parent, destination_parent_identity
+            )
+        _rename_noreplace_at(source_fd, source.name, destination_fd, destination.name)
+    except BaseException as error:
+        primary = error
+    descriptors = {fd for fd in (source_fd, destination_fd) if fd is not None}
+    for fd in descriptors:
+        _capture_cleanup(
+            cleanup,
+            lambda fd=fd: os.close(fd),
+            "atomic rename descriptor cleanup failed",
+        )
+    if primary is not None:
+        _raise_with_cleanup(
+            primary, cleanup, primary_message="atomic no-replace rename failed"
+        )
+    if cleanup.control_flow is not None:
+        raise cleanup.control_flow from _safe_exception_group(
+            "atomic rename cleanup failures", cleanup.ordinary
+        )
+    if cleanup.ordinary:
+        raise OSError("atomic rename descriptor cleanup failed") from (
+            _safe_exception_group("atomic rename cleanup failures", cleanup.ordinary)
+        )
+
+
 def _require_kind(path: Path, *, directory: bool) -> _PathIdentity:
     identity = _lexical_identity(path)
     expected = stat.S_ISDIR if directory else stat.S_ISREG
@@ -186,30 +309,99 @@ def _create_owned_directory(
 ) -> _OwnedPath:
     if _lexical_identity(path) is not None:
         raise FileExistsError
-    os.mkdir(path)
-    identity = _require_kind(path, directory=True)
-    owned = _OwnedPath(path=path, identity=identity)
-    if registry is not None:
+    created = False
+    with _defer_directory_creation_signals():
+        try:
+            os.mkdir(path)
+            created = True
+            _after_directory_create(path)
+            return _register_owned_directory(path, registry)
+        except BaseException as error:
+            if not created:
+                raise
+            cleanup = _CleanupOutcome()
+            try:
+                _register_owned_directory(path, registry)
+            except BaseException as handoff_error:
+                cleanup.capture(handoff_error, "directory ownership handoff failed")
+            _raise_with_cleanup(
+                error, cleanup, primary_message="directory creation handoff interrupted"
+            )
+            raise AssertionError("unreachable")
+
+
+def _after_directory_create(path: Path) -> None:
+    del path
+
+
+@contextmanager
+def _defer_directory_creation_signals() -> Iterator[None]:
+    blocked = {signal.SIGINT}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+    try:
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
+
+def _register_owned_directory(
+    path: Path, registry: list[_OwnedPath] | None
+) -> _OwnedPath:
+    owned = _OwnedPath(path=path, identity=_require_kind(path, directory=True))
+    if registry is not None and owned not in registry:
         registry.append(owned)
     return owned
 
 
-def _remove_owned_directory(owned: _OwnedPath) -> None:
+def _restore_foreign_quarantine(quarantine: Path, original: Path) -> None:
+    try:
+        _atomic_move_noreplace(quarantine, original)
+    except BaseException as error:
+        if not isinstance(error, Exception):
+            raise
+
+
+def _quarantine_owned(owned: _OwnedPath) -> _OwnedPath | None:
     if not _matches_identity(owned.path, owned.identity):
+        return None
+    quarantine = owned.path.with_name(f".{owned.path.name}.{uuid.uuid4().hex}.cleanup")
+    try:
+        _atomic_move_noreplace(owned.path, quarantine)
+    except FileNotFoundError:
+        return None
+    moved_identity = _lexical_identity(quarantine)
+    if moved_identity != owned.identity:
+        _restore_foreign_quarantine(quarantine, owned.path)
+        return None
+    return _OwnedPath(quarantine, owned.identity)
+
+
+def _remove_owned_directory(owned: _OwnedPath) -> None:
+    quarantined = _quarantine_owned(owned)
+    if quarantined is None:
         return
-    shutil.rmtree(owned.path)
+    shutil.rmtree(quarantined.path)
 
 
 def _remove_owned_empty_directory(owned: _OwnedPath) -> None:
-    if not _matches_identity(owned.path, owned.identity):
+    quarantined = _quarantine_owned(owned)
+    if quarantined is None:
         return
-    os.rmdir(owned.path)
+    try:
+        if any(quarantined.path.iterdir()):
+            _restore_foreign_quarantine(quarantined.path, owned.path)
+            return
+        os.rmdir(quarantined.path)
+    except OSError:
+        _restore_foreign_quarantine(quarantined.path, owned.path)
+        raise
 
 
 def _remove_owned_file(owned: _OwnedPath) -> None:
-    if not _matches_identity(owned.path, owned.identity):
+    quarantined = _quarantine_owned(owned)
+    if quarantined is None:
         return
-    os.unlink(owned.path)
+    os.unlink(quarantined.path)
 
 
 def _capture_cleanup(outcome: _CleanupOutcome, operation: Any, message: str) -> None:
@@ -366,7 +558,10 @@ def _close_lock(fd: int, primary: BaseException | None) -> None:
 
 
 @contextmanager
-def _publication_lock(repository_root: Path) -> Iterator[tuple[Path, Path]]:
+def _publication_lock(
+    repository_root: Path,
+    on_success_release_error: Callable[[BaseException], None] | None = None,
+) -> Iterator[tuple[Path, Path]]:
     resolved_root, git_dir = _resolve_repository_root(repository_root)
     lock_path = git_dir / _PUBLICATION_LOCK_FILENAME
     flags = os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
@@ -392,7 +587,12 @@ def _publication_lock(repository_root: Path) -> Iterator[tuple[Path, Path]]:
         _close_lock(lock_fd, error)
         raise
     else:
-        _close_lock(lock_fd, None)
+        try:
+            _close_lock(lock_fd, None)
+        except BaseException as error:
+            if on_success_release_error is not None:
+                on_success_release_error(error)
+            raise
 
 
 def _verify_repository(
@@ -1089,9 +1289,33 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
     if any(not (source_dir / filename).is_file() for filename in required):
         raise BenchmarkFailure("benchmark artifacts are not publishable")
     timestamp = _artifact_timestamp(report["completed_at"])
+    root_change: _AtomicTextChange | None = None
+    benchmark_change: _AtomicTextChange | None = None
+    destination: Path | None = None
+    results_owned: _OwnedPath | None = None
+    staging: _OwnedPath | None = None
+    results_registry: list[_OwnedPath] = []
+    staging_registry: list[_OwnedPath] = []
 
-    with _publication_lock(repository_root) as (locked_root, git_dir):
+    def compensate_successful_release(error: BaseException) -> None:
+        assert root_change is not None
+        assert benchmark_change is not None
+        assert destination is not None
+        cleanup = _compensate_publication(
+            root_change=root_change,
+            benchmark_change=benchmark_change,
+            staging=staging or next(iter(staging_registry), None),
+            destination=destination,
+            results=results_owned or next(iter(results_registry), None),
+        )
+        _raise_publication_failure(error, cleanup)
+
+    with _publication_lock(repository_root, compensate_successful_release) as (
+        locked_root,
+        git_dir,
+    ):
         _verify_repository(locked_root, git_dir, report)
+        git_dir_identity = _require_kind(git_dir, directory=True)
         benchmarks_dir_path = locked_root / "benchmarks"
         benchmarks_dir = _OwnedPath(
             benchmarks_dir_path, _require_kind(benchmarks_dir_path, directory=True)
@@ -1126,10 +1350,6 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
         if _lexical_identity(destination) is not None:
             raise BenchmarkFailure("published benchmark timestamp already exists")
 
-        results_owned: _OwnedPath | None = None
-        staging: _OwnedPath | None = None
-        results_registry: list[_OwnedPath] = []
-        staging_registry: list[_OwnedPath] = []
         try:
             if results_identity is None:
                 results_owned = _create_owned_directory(results_path, results_registry)
@@ -1192,7 +1412,17 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
                 report,
                 allowed_status=frozenset({" M README.md", " M benchmarks/README.md"}),
             )
-            os.rename(staging.path, destination)
+            try:
+                _atomic_move_noreplace(
+                    staging.path,
+                    destination,
+                    source_parent_identity=git_dir_identity,
+                    destination_parent_identity=results_dir.identity,
+                )
+            except FileExistsError:
+                raise BenchmarkFailure(
+                    "published benchmark timestamp already exists"
+                ) from None
         except BaseException as error:
             cleanup = _compensate_publication(
                 root_change=root_change,
