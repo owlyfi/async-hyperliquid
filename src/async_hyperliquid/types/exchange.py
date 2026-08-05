@@ -201,13 +201,13 @@ class EncodedTwapOrder(TypedDict):
 
 
 class EncodedTwapTrigger(TypedDict):
-    a: bool
     p: str
+    a: bool
 
 
 class EncodedTwapDetails(TypedDict):
-    s: str | None
     t: EncodedTwapTrigger | None
+    s: str | None
 
 
 class TwapOrderAction(TypedDict):

@@ -13,6 +13,7 @@
 - Public argument names are exactly `trigger_px` and `stop_px`, both keyword-only `float | None` values defaulting to `None`.
 - When both arguments are `None`, omit `details` entirely so legacy payload bytes and signatures do not change.
 - Within an emitted `details`, a missing stop price is `"s": null` and a missing trigger price is `"t": null`.
+- Preserve the official MessagePack insertion order: `details` is `t, s`, and a non-null trigger is `p, a`; key sorting is disabled and changing either order changes the recovered signer.
 - Compute trigger `a` from the final encoded trigger price: `float(encoded_trigger_px) > mark_price`; equality is `false`.
 - Reject invalid prices and mark-price failures before nonce consumption, signing, or transport.
 - Use the existing order-price precision and outcome-market rules; add no dependencies and perform no unrelated refactor.

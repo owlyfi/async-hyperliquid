@@ -445,7 +445,7 @@ async def test_place_twap_advanced_prices(
         response = await sub_hl.place_twap(
             "BTC", True, order["sz"], 5, trigger_px=trigger_px, stop_px=stop_px
         )
-        assert response["status"] == "ok"
+        assert response["status"] == "ok", response
         status = cast(JsonObject, response["response"]["data"]["status"])
         running = cast(JsonObject, status["running"])
         value = running["twapId"]
@@ -454,11 +454,14 @@ async def test_place_twap_advanced_prices(
 
         assert len(captured_actions) == 1
         details = cast(JsonObject, captured_actions[0]["details"])
+        assert tuple(details) == ("t", "s")
         assert details["s"] == (None if stop_value is None else str(stop_value))
         if trigger_value is None:
             assert details["t"] is None
         else:
-            assert details["t"] == {"a": False, "p": str(trigger_value)}
+            trigger = cast(JsonObject, details["t"])
+            assert tuple(trigger) == ("p", "a")
+            assert trigger == {"p": str(trigger_value), "a": False}
     finally:
         try:
             if twap_id is not None:

@@ -50,10 +50,11 @@ each parameter case.
 
 The test asserts exactly one captured TWAP action. It checks:
 
+- the signed `details` map preserves insertion order `t, s`;
 - `details.s` equals the requested stop wire string or is `None`;
 - `details.t` equals `None` when trigger is absent;
 - when trigger exists, `details.t.p` equals the requested trigger wire string
-  and `details.t.a is False`.
+  and `details.t.a is False`, with trigger insertion order `p, a`.
 
 These assertions ensure the live success cannot be satisfied by silently
 falling back to an ordinary TWAP without `details`.

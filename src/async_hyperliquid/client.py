@@ -476,11 +476,13 @@ class AsyncHyperliquid:
                     raise ProtocolError(
                         "mark price must be finite and greater than zero"
                     )
+                # MessagePack signing preserves map insertion order. Match the
+                # official frontend's advanced-TWAP order exactly.
                 trigger = {
-                    "a": float(encoded_trigger_px) > mark_px,
                     "p": encoded_trigger_px,
+                    "a": float(encoded_trigger_px) > mark_px,
                 }
-            details = EncodedTwapDetails(s=encoded_stop_px, t=trigger)
+            details = EncodedTwapDetails(t=trigger, s=encoded_stop_px)
         twap = EncodedTwapOrder(
             a=market.asset,
             b=is_buy,

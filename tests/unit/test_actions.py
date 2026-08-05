@@ -64,14 +64,14 @@ async def test_twap_action_attaches_advanced_details(
     )
     client = build_exchange(transport)
     monkeypatch.setattr(exchange_module, "time_ns", lambda: NONCE * 1_000_000)
-    details = EncodedTwapDetails(s="65000", t={"a": False, "p": "63000"})
+    details = EncodedTwapDetails(t={"p": "63000", "a": False}, s="65000")
 
     await client._submit_twap(TWAP, details=details)
 
     assert transport.requests[0]["action"] == {
         "type": "twapOrder",
         "twap": TWAP,
-        "details": {"s": "65000", "t": {"a": False, "p": "63000"}},
+        "details": {"t": {"p": "63000", "a": False}, "s": "65000"},
     }
 
 

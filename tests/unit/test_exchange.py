@@ -570,10 +570,10 @@ async def test_twap_methods_accept_their_exact_response_kinds(
 @pytest.mark.parametrize(
     ("trigger_px", "stop_px", "expected_details", "expected_mark_calls"),
     [
-        (63_000.0, 65_000.0, {"s": "65000", "t": {"a": False, "p": "63000"}}, ["BTC"]),
-        (101_000.0, None, {"s": None, "t": {"a": True, "p": "101000"}}, ["BTC"]),
-        (100_000.0, None, {"s": None, "t": {"a": False, "p": "100000"}}, ["BTC"]),
-        (None, 99_000.0, {"s": "99000", "t": None}, []),
+        (63_000.0, 65_000.0, {"t": {"p": "63000", "a": False}, "s": "65000"}, ["BTC"]),
+        (101_000.0, None, {"t": {"p": "101000", "a": True}, "s": None}, ["BTC"]),
+        (100_000.0, None, {"t": {"p": "100000", "a": False}, "s": None}, ["BTC"]),
+        (None, 99_000.0, {"t": None, "s": "99000"}, []),
     ],
 )
 async def test_twap_advanced_prices_encode_exact_details(
@@ -597,6 +597,11 @@ async def test_twap_advanced_prices_encode_exact_details(
         "twap": {"a": 0, "b": True, "s": "0.01", "r": False, "m": 5, "t": False},
         "details": expected_details,
     }
+    details = cast(JsonObject, action["details"])
+    assert tuple(details) == ("t", "s")
+    trigger = details["t"]
+    if trigger is not None:
+        assert tuple(cast(JsonObject, trigger)) == ("p", "a")
     assert cast(StubInfo, client._info).mark_price_calls == expected_mark_calls
 
 

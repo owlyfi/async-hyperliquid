@@ -12,6 +12,7 @@
 
 - Cover trigger+stop, trigger-only, and stop-only as three parameter cases.
 - Capture only the action; never retain or print signatures, envelopes, nonces, keys, addresses, or environment values.
+- Assert the signature-sensitive frontend insertion order `details: t, s` and trigger `p, a` in every applicable case.
 - Forward captured calls to the real testnet transport; this is not a mocked HTTP test.
 - Choose a rounded trigger approximately 5% below current BTC mark and a rounded stop approximately 5% above it.
 - Parse `twapId` before payload assertions, cancel that exact id in `finally`, and always close the BTC position in an inner `finally`.

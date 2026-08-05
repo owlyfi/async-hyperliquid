@@ -23,8 +23,8 @@ The optional fields belong in an action-level `details` object beside `twap`:
   "type": "twapOrder",
   "twap": {"a": 3, "b": true, "s": "0.00311", "r": false, "m": 5, "t": false},
   "details": {
-    "s": "65000",
-    "t": {"a": false, "p": "63000"}
+    "t": {"p": "63000", "a": false},
+    "s": "65000"
   }
 }
 ```
@@ -34,12 +34,19 @@ The four supported combinations are:
 | `trigger_px` | `stop_px` | Wire representation |
 |---|---|---|
 | `None` | `None` | Omit `details` entirely |
-| value | `None` | `details={"s": null, "t": {"a": ..., "p": "..."}}` |
-| `None` | value | `details={"s": "...", "t": null}` |
+| value | `None` | `details={"t": {"p": "...", "a": ...}, "s": null}` |
+| `None` | value | `details={"t": null, "s": "..."}` |
 | value | value | Encode both fields |
 
 The explicit JSON `null` values are protocol-significant. Omitting a missing
 member inside an existing `details` object is not equivalent.
+
+Unlike ordinary JSON semantics, insertion order is also signature-significant:
+the current official frontend passes the action maps directly to a MessagePack
+encoder with key sorting disabled. The advanced object must therefore be built
+as `details: t, s`, and its non-null trigger as `p, a`. The surrounding action
+and `twap` map retain their historical construction order. Tests assert these
+orders explicitly so refactoring cannot silently change the recovered signer.
 
 ## Encoding and Market Data
 
