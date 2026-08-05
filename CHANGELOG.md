@@ -48,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and TESTNET. Retry an initial HTTP 429 once after 60 seconds, skip after a
   second 429, and warn then skip when TESTNET returns a 5xx response.
 - Restrict signed Exchange integration to testnet with `IS_MAINNET=false` as
-  its only suite-level execution setting; `IS_MAINNET=true` hard-fails.
+  its only suite-level execution setting; missing, empty, true, and malformed
+  values hard-fail before credential validation or client construction.
 - Replace the duplicate order dataclass hierarchy with one
   `PlaceOrderRequest`/`ModifyOrderRequest` `TypedDict` vocabulary using
   `is_buy`, `cloid`, singular order option names, and `Builder`.

@@ -2,7 +2,6 @@ from decimal import Decimal
 from time import time
 from typing import cast
 from collections.abc import Sequence
-from uuid import uuid4
 
 import pytest
 
@@ -13,7 +12,6 @@ from async_hyperliquid.types import (
     Builder,
     JsonObject,
     CancelOrder,
-    CancelOrderResponse,
     TimeInForce,
     TriggerKind,
     CancelByCloid,
@@ -24,94 +22,10 @@ from async_hyperliquid.types import (
     limit_order_type,
     trigger_order_type,
 )
-from async_hyperliquid.types.info import OrderStatus
+
+from .order_support import _resting_oid, assert_subaccount_order
 
 pytestmark = [pytest.mark.exchange, pytest.mark.asyncio(loop_scope="session")]
-
-
-_RESTING_RESPONSE = cast(
-    PlaceOrderResponse,
-    {
-        "status": "ok",
-        "response": {"type": "order", "data": {"statuses": [{"resting": {"oid": 1}}]}},
-    },
-)
-_CANCEL_SUCCESS = cast(
-    CancelOrderResponse,
-    {"status": "ok", "response": {"type": "cancel", "data": {"statuses": ["success"]}}},
-)
-_OPEN_ORDER_STATUS = cast(OrderStatus, {"status": "order", "order": {"status": "open"}})
-_UNKNOWN_ORDER_STATUS = cast(OrderStatus, {"status": "unknownOid"})
-_FILLED_ORDER_STATUS = cast(
-    OrderStatus, {"status": "order", "order": {"status": "filled"}}
-)
-_CANCELED_ORDER_STATUS = cast(
-    OrderStatus, {"status": "order", "order": {"status": "canceled"}}
-)
-
-
-class _SubaccountOrderInfoStub:
-    def __init__(self, statuses: Sequence[OrderStatus | Exception]) -> None:
-        self._statuses = list(statuses)
-        self.order_status_calls = 0
-
-    async def mid_price(self, coin: str) -> float:
-        return 100_000.0
-
-    async def size_decimals(self, coin: str) -> int:
-        return 5
-
-    async def order_status(
-        self, account_address: str, order_id: int | str
-    ) -> OrderStatus:
-        self.order_status_calls += 1
-        if not self._statuses:
-            raise AssertionError("unexpected order-status reconciliation")
-        result = self._statuses.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
-
-
-class _SubaccountOrderClientStub:
-    def __init__(
-        self,
-        submit: PlaceOrderResponse | Exception,
-        cancels: Sequence[CancelOrderResponse | Exception],
-        statuses: Sequence[OrderStatus | Exception],
-    ) -> None:
-        self.info = _SubaccountOrderInfoStub(statuses)
-        self._submit = submit
-        self._cancels = list(cancels)
-        self.submitted_cloid: Cloid | None = None
-        self.cancelled_cloids: list[Cloid] = []
-        self.mass_cancel_calls = 0
-
-    async def place_limit_order(self, order: PlaceOrderRequest) -> PlaceOrderResponse:
-        self.submitted_cloid = order.get("cloid")
-        if isinstance(self._submit, Exception):
-            raise self._submit
-        return self._submit
-
-    async def cancel_by_cloid(self, order: CancelByCloid) -> CancelOrderResponse:
-        self.cancelled_cloids.append(order.cloid)
-        result = self._cancels.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result
-
-    async def cancel_orders(self, orders: Sequence[CancelOrder]) -> CancelOrderResponse:
-        self.mass_cancel_calls += 1
-        raise AssertionError("subaccount cleanup must be targeted by cloid")
-
-
-def _resting_oid(response: PlaceOrderResponse) -> int:
-    assert response["status"] == "ok"
-    status = cast(JsonObject, response["response"]["data"]["statuses"][0])
-    resting = cast(JsonObject, status["resting"])
-    oid = resting["oid"]
-    assert isinstance(oid, int)
-    return oid
 
 
 def _grouped_order_cancels(
@@ -172,77 +86,6 @@ async def _cancel(client: AsyncHyperliquid, orders: Sequence[CancelOrder]) -> No
         assert response["status"] == "ok"
 
 
-def _assert_targeted_cancel_succeeded(response: CancelOrderResponse) -> None:
-    if response["status"] != "ok":
-        raise AssertionError("targeted test-order cleanup request failed")
-    if response["response"]["data"]["statuses"] != ["success"]:
-        raise AssertionError("targeted test-order cleanup was not confirmed")
-
-
-async def _cleanup_subaccount_order(
-    client: AsyncHyperliquid, subaccount_address: str, cloid: Cloid
-) -> None:
-    failures: list[Exception] = []
-    for attempt in range(2):
-        try:
-            response = await client.cancel_by_cloid(CancelByCloid("BTC", cloid))
-            _assert_targeted_cancel_succeeded(response)
-            return
-        except Exception as error:
-            failures.append(error)
-
-        try:
-            status = await client.info.order_status(subaccount_address, cloid)
-        except Exception as error:
-            failures.append(error)
-            continue
-
-        if status["status"] == "unknownOid":
-            if attempt == 1:
-                failures.append(
-                    AssertionError("test order status remains unknown after cleanup")
-                )
-                break
-            continue
-        order_status = status["order"]["status"]
-        if order_status == "filled":
-            failures.append(AssertionError("test order filled before cleanup"))
-            break
-        if order_status != "open":
-            return
-        failures.append(AssertionError("test order remains open after cleanup"))
-
-    raise ExceptionGroup("targeted subaccount order cleanup failed", failures)
-
-
-async def _assert_subaccount_order(
-    client: AsyncHyperliquid, subaccount_address: str
-) -> None:
-    order = await _limit_request(client, "BTC")
-    cloid = Cloid.from_int(uuid4().int)
-    order["cloid"] = cloid
-    failure: BaseException | None = None
-    try:
-        response = await client.place_limit_order(order)
-        _resting_oid(response)
-        status = await client.info.order_status(subaccount_address, cloid)
-        assert status["status"] == "order"
-    except BaseException as error:
-        failure = error
-    finally:
-        try:
-            await _cleanup_subaccount_order(client, subaccount_address, cloid)
-        except BaseException as cleanup_error:
-            if failure is not None:
-                raise BaseExceptionGroup(
-                    "subaccount order test and cleanup both failed",
-                    [failure, cleanup_error],
-                ) from None
-            raise
-    if failure is not None:
-        raise failure
-
-
 async def _assert_resting_price(
     client: AsyncHyperliquid, coin: str, expected_px: Decimal
 ) -> None:
@@ -299,117 +142,17 @@ async def test_place_limit_order(hl: AsyncHyperliquid) -> None:
 async def test_master_address_subaccount_order(
     hl: AsyncHyperliquid, subaccount_address: str
 ) -> None:
-    await _assert_subaccount_order(hl, subaccount_address)
+    await assert_subaccount_order(
+        hl, subaccount_address, await _limit_request(hl, "BTC")
+    )
 
 
 async def test_subaccount_address_order(
     sub_hl: AsyncHyperliquid, subaccount_address: str
 ) -> None:
-    await _assert_subaccount_order(sub_hl, subaccount_address)
-
-
-async def test_subaccount_cleanup_handles_ambiguous_submit_by_cloid() -> None:
-    submit_error = ConnectionError("ambiguous submit")
-    client = _SubaccountOrderClientStub(submit_error, (_CANCEL_SUCCESS,), ())
-
-    with pytest.raises(ConnectionError) as raised:
-        await _assert_subaccount_order(
-            cast(AsyncHyperliquid, client), "test-subaccount"
-        )
-
-    assert raised.value is submit_error
-    assert isinstance(client.submitted_cloid, Cloid)
-    assert client.cancelled_cloids == [client.submitted_cloid]
-    assert client.mass_cancel_calls == 0
-
-
-async def test_subaccount_cleanup_retries_once_after_inconclusive_failure() -> None:
-    client = _SubaccountOrderClientStub(
-        _RESTING_RESPONSE,
-        (ConnectionError("first cleanup failed"), _CANCEL_SUCCESS),
-        (_OPEN_ORDER_STATUS, _OPEN_ORDER_STATUS),
+    await assert_subaccount_order(
+        sub_hl, subaccount_address, await _limit_request(sub_hl, "BTC")
     )
-
-    await _assert_subaccount_order(cast(AsyncHyperliquid, client), "test-subaccount")
-
-    assert isinstance(client.submitted_cloid, Cloid)
-    assert client.cancelled_cloids == [client.submitted_cloid, client.submitted_cloid]
-    assert client.info.order_status_calls == 2
-    assert client.mass_cancel_calls == 0
-
-
-async def test_subaccount_cleanup_preserves_original_and_cleanup_failures() -> None:
-    submit_error = ValueError("submit failed")
-    client = _SubaccountOrderClientStub(
-        submit_error,
-        (ConnectionError("cleanup failed"), ConnectionError("retry failed")),
-        (_OPEN_ORDER_STATUS, _OPEN_ORDER_STATUS),
-    )
-
-    with pytest.raises(BaseExceptionGroup) as raised:
-        await _assert_subaccount_order(
-            cast(AsyncHyperliquid, client), "test-subaccount"
-        )
-
-    original, cleanup = raised.value.exceptions
-    assert original is submit_error
-    assert isinstance(cleanup, ExceptionGroup)
-    assert sum(isinstance(error, ConnectionError) for error in cleanup.exceptions) == 2
-    assert client.cancelled_cloids == [client.submitted_cloid, client.submitted_cloid]
-    assert client.info.order_status_calls == 2
-    assert client.mass_cancel_calls == 0
-
-
-async def test_subaccount_cleanup_second_unknown_is_inconclusive() -> None:
-    submit_error = ConnectionError("ambiguous submit")
-    client = _SubaccountOrderClientStub(
-        submit_error,
-        (ConnectionError("cleanup failed"), ConnectionError("retry failed")),
-        (_UNKNOWN_ORDER_STATUS, _UNKNOWN_ORDER_STATUS),
-    )
-
-    with pytest.raises(BaseExceptionGroup) as raised:
-        await _assert_subaccount_order(
-            cast(AsyncHyperliquid, client), "test-subaccount"
-        )
-
-    original, cleanup = raised.value.exceptions
-    assert original is submit_error
-    assert isinstance(cleanup, ExceptionGroup)
-    assert sum(isinstance(error, ConnectionError) for error in cleanup.exceptions) == 2
-    assert any(isinstance(error, AssertionError) for error in cleanup.exceptions)
-    assert len(client.cancelled_cloids) == 2
-    assert client.info.order_status_calls == 2
-
-
-async def test_subaccount_cleanup_filled_status_is_failure() -> None:
-    client = _SubaccountOrderClientStub(
-        _RESTING_RESPONSE,
-        (ConnectionError("cleanup failed"),),
-        (_OPEN_ORDER_STATUS, _FILLED_ORDER_STATUS),
-    )
-
-    with pytest.raises(ExceptionGroup) as raised:
-        await _assert_subaccount_order(
-            cast(AsyncHyperliquid, client), "test-subaccount"
-        )
-
-    assert any(isinstance(error, AssertionError) for error in raised.value.exceptions)
-    assert len(client.cancelled_cloids) == 1
-    assert client.info.order_status_calls == 2
-
-
-async def test_subaccount_cleanup_non_open_terminal_status_is_complete() -> None:
-    client = _SubaccountOrderClientStub(
-        _RESTING_RESPONSE,
-        (ConnectionError("cleanup failed"),),
-        (_OPEN_ORDER_STATUS, _CANCELED_ORDER_STATUS),
-    )
-
-    await _assert_subaccount_order(cast(AsyncHyperliquid, client), "test-subaccount")
-
-    assert len(client.cancelled_cloids) == 1
-    assert client.info.order_status_calls == 2
 
 
 async def test_outcome_minimum_notional_is_exchange_owned(hl: AsyncHyperliquid) -> None:

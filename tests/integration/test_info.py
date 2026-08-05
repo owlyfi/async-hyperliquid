@@ -23,8 +23,19 @@ class Markets:
 HYPE_SPOT = {Network.MAINNET: ("@107", 10_107), Network.TESTNET: ("@1035", 11_035)}
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def markets(info: IntegrationInfoClient) -> Markets:
+@pytest.fixture(scope="session")
+def markets_cache() -> dict[Network, Markets]:
+    return {}
+
+
+@pytest_asyncio.fixture(scope="function", loop_scope="session")
+async def markets(
+    info: IntegrationInfoClient, markets_cache: dict[Network, Markets]
+) -> Markets:
+    cached = markets_cache.get(info.network)
+    if cached is not None:
+        return cached
+
     await info.refresh_metadata()
     perp_meta = await info.perp_meta()
     spot_meta = await info.spot_meta()
@@ -34,12 +45,14 @@ async def markets(info: IntegrationInfoClient) -> Markets:
     spot = spot_meta["universe"][0]
     base_token = spot["tokens"][0]
     token = next(token for token in spot_meta["tokens"] if token["index"] == base_token)
-    return Markets(
+    loaded = Markets(
         perp=perp_meta["universe"][0]["name"],
         spot=spot["name"],
         token_id=token["tokenId"],
         dexs=dexs,
     )
+    markets_cache[info.network] = loaded
+    return loaded
 
 
 def _start_time() -> int:

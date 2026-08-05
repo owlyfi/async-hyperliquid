@@ -16,7 +16,7 @@ def require_env(name: str, environ: Mapping[str, str]) -> str:
 
 
 def require_testnet(environ: Mapping[str, str]) -> None:
-    if environ.get("IS_MAINNET", "false").lower() == "true":
+    if environ.get("IS_MAINNET", "").strip().lower() != "false":
         raise pytest.UsageError("Exchange integration is restricted to testnet")
 
 

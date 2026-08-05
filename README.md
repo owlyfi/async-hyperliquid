@@ -404,7 +404,8 @@ MAINNET failure remains a test failure.
 
 Signed Exchange integration is testnet-only and uses `IS_MAINNET` as its only
 network safety gate. Set it explicitly to `false` when running the suite;
-`IS_MAINNET=true` hard-fails before credentials or orders are used:
+missing, empty, `true`, or malformed values hard-fail before credentials or
+clients are used:
 
 ```bash
 IS_MAINNET=false uv run pytest -q tests/integration/exchange

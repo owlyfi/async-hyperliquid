@@ -82,15 +82,23 @@ def test_required_env_names_only_the_missing_variable() -> None:
         require_env("HL_PK", {})
 
 
-def test_mainnet_exchange_configuration_fails_instead_of_downgrading_to_skip() -> None:
+@pytest.mark.parametrize(
+    "value",
+    (None, "", "true", " TRUE ", "flase"),
+    ids=("missing", "empty", "true", "normalized-true", "typo"),
+)
+def test_exchange_configuration_requires_explicit_testnet(value: str | None) -> None:
+    environ = {} if value is None else {"IS_MAINNET": value}
+
     with pytest.raises(
         pytest.UsageError, match=r"^Exchange integration is restricted to testnet$"
     ):
-        require_testnet({"IS_MAINNET": "true"})
+        require_testnet(environ)
 
 
-def test_testnet_configuration_is_accepted_case_insensitively() -> None:
-    require_testnet({"IS_MAINNET": "FALSE"})
+@pytest.mark.parametrize("value", ("false", "FALSE", " false "))
+def test_explicit_testnet_configuration_is_normalized(value: str) -> None:
+    require_testnet({"IS_MAINNET": value})
 
 
 @pytest.mark.parametrize(
