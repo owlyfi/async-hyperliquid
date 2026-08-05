@@ -378,11 +378,11 @@ On an Apple M5 with Python 3.12.13 and CoinCurve 21.0.0, three independent
 complete runs produced this equal-weight, geometric-mean throughput across all
 five measured operations:
 
-| Library | Overall throughput | Relative to SDK | Relative to fastest |
-|---|---:|---:|---:|
-| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x | 100.0% |
-| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x | 68.5% |
-| CCXT 4.5.71 | 803 ops/s | 0.0476x | 3.3% |
+| Library | Overall throughput | Relative to SDK |
+|---|---:|---:|
+| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x |
+| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x |
+| CCXT 4.5.71 | 803 ops/s | 0.0476x |
 
 Higher is better. This is a synthetic signing/payload-construction score, not
 end-to-end order latency. Every report used seven measured rounds after one

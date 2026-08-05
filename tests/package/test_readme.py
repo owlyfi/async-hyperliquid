@@ -25,6 +25,19 @@ def test_readme_links_the_benchmark_manual() -> None:
     assert (ROOT / "benchmarks" / "README.md").is_file()
 
 
+def test_signing_benchmark_uses_sdk_as_its_only_relative_baseline() -> None:
+    readmes = (
+        (ROOT / "README.md").read_text(),
+        (ROOT / "benchmarks" / "README.md").read_text(),
+    )
+
+    for readme in readmes:
+        assert "Relative to fastest" not in readme
+        assert "hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x" in readme or (
+            "Official SDK | 16,874 ops/s | 1.000x" in readme
+        )
+
+
 def test_readme_documents_live_integration_commands_without_run_flags() -> None:
     readme = (ROOT / "README.md").read_text()
 

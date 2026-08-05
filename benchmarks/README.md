@@ -307,11 +307,11 @@ divided by the provider aggregate median, so higher is better.
 The overall score gives each of the five operations equal weight. It is the
 geometric mean of their aggregate throughputs:
 
-| Library | Geometric-mean throughput | Relative to SDK | Relative to fastest |
-|---|---:|---:|---:|
-| async-hyperliquid | 24,641 ops/s | 1.460x | 100.0% |
-| Official SDK | 16,874 ops/s | 1.000x | 68.5% |
-| CCXT | 803 ops/s | 0.0476x | 3.3% |
+| Library | Geometric-mean throughput | Relative to SDK |
+|---|---:|---:|
+| async-hyperliquid | 24,641 ops/s | 1.460x |
+| Official SDK | 16,874 ops/s | 1.000x |
+| CCXT | 803 ops/s | 0.0476x |
 
 The geometric mean prevents the much faster `action_hash` workload from
 dominating the result merely because it has a larger absolute ops/s value. The
