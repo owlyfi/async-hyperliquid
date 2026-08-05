@@ -89,6 +89,27 @@ def test_order_and_close_workflows_have_one_clear_owner() -> None:
     assert not hasattr(ExchangeClient, "close_positions")
 
 
+def test_place_twap_exposes_optional_advanced_prices() -> None:
+    parameters = signature(AsyncHyperliquid.place_twap).parameters
+
+    assert tuple(parameters) == (
+        "self",
+        "coin",
+        "is_buy",
+        "size",
+        "minutes",
+        "reduce_only",
+        "randomize",
+        "trigger_px",
+        "stop_px",
+        "expires_after",
+    )
+    assert parameters["trigger_px"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["trigger_px"].default is None
+    assert parameters["stop_px"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["stop_px"].default is None
+
+
 def test_exchange_constructor_has_no_info_dependency() -> None:
     assert tuple(signature(ExchangeClient).parameters) == (
         "transport",

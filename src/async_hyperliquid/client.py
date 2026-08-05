@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._internal.encoding import _round_size, _wire_float, encode_order
+from ._internal.encoding import _normalize_price, _round_size, _wire_float, encode_order
 from ._internal.http import _HttpTransport
 from ._internal.metadata import _MarketInfo
 from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE
@@ -36,7 +36,9 @@ from .types.exchange import (
     EncodedCancelByCloid,
     EncodedModify,
     EncodedOrder,
+    EncodedTwapDetails,
     EncodedTwapOrder,
+    EncodedTwapTrigger,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +56,14 @@ def _market_price(
     if not is_outcome:
         return price
     return min(max(price, OUTCOME_MIN_PRICE), OUTCOME_MAX_PRICE)
+
+
+def _encode_twap_price(value: float, market: _MarketInfo) -> str:
+    max_decimals = (8 if market.is_spot else 6) - market.size_decimals
+    normalized = _normalize_price(
+        value, max_decimals=max_decimals, is_outcome=market.coin.startswith("#")
+    )
+    return _wire_float(normalized)
 
 
 def _is_trigger_order(order: PlaceOrderRequest) -> bool:
@@ -439,6 +449,8 @@ class AsyncHyperliquid:
         *,
         reduce_only: bool = False,
         randomize: bool = False,
+        trigger_px: float | None = None,
+        stop_px: float | None = None,
         expires_after: int | None = None,
     ) -> PlaceTwapResponse:
         if minutes <= 0:
@@ -449,6 +461,22 @@ class AsyncHyperliquid:
         rounded_size = _round_size(size, market.size_decimals)
         if rounded_size == 0:
             raise ValueError("size is below market precision")
+        details: EncodedTwapDetails | None = None
+        if trigger_px is not None or stop_px is not None:
+            encoded_trigger_px = (
+                None if trigger_px is None else _encode_twap_price(trigger_px, market)
+            )
+            encoded_stop_px = (
+                None if stop_px is None else _encode_twap_price(stop_px, market)
+            )
+            trigger: EncodedTwapTrigger | None = None
+            if encoded_trigger_px is not None:
+                mark_px = await self._info.mark_price(coin)
+                trigger = {
+                    "a": float(encoded_trigger_px) > mark_px,
+                    "p": encoded_trigger_px,
+                }
+            details = EncodedTwapDetails(s=encoded_stop_px, t=trigger)
         twap = EncodedTwapOrder(
             a=market.asset,
             b=is_buy,
@@ -457,7 +485,9 @@ class AsyncHyperliquid:
             m=minutes,
             t=randomize,
         )
-        return await self._exchange._submit_twap(twap, expires_after=expires_after)
+        return await self._exchange._submit_twap(
+            twap, details=details, expires_after=expires_after
+        )
 
     async def cancel_twap(
         self, coin: str, twap_id: int, *, expires_after: int | None = None

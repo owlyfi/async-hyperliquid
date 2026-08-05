@@ -17,6 +17,7 @@ from async_hyperliquid._internal.signing import (
     _sign_user_action,
     sign_exchange_action,
 )
+from async_hyperliquid.errors import ProtocolError
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.info import InfoClient
 from async_hyperliquid.types import (
@@ -88,8 +89,10 @@ class RecordingTransport:
 class StubInfo:
     def __init__(self) -> None:
         self.mids = {"BTC": 100_000.0, "ETH": 2_000.0}
+        self.mark_prices = {"BTC": 100_000.0, "ETH": 2_000.0}
         self.open_positions: list[Position] = []
         self.market_info_calls = 0
+        self.mark_price_calls: list[str] = []
         self.mid_price_batches: list[tuple[str, ...]] = []
         self.mid_price_calls = 0
         self.position_accounts: list[str] = []
@@ -112,6 +115,10 @@ class StubInfo:
     async def mid_price(self, coin: str) -> float:
         self.mid_price_calls += 1
         return self.mids[coin]
+
+    async def mark_price(self, coin: str) -> float:
+        self.mark_price_calls.append(coin)
+        return self.mark_prices[coin]
 
     async def _mid_prices(self, markets: tuple[_MarketInfo, ...]) -> tuple[float, ...]:
         coins = tuple(market.coin for market in markets)
@@ -550,11 +557,92 @@ async def test_twap_methods_accept_their_exact_response_kinds(
     placed = await client.place_twap("BTC", True, 0.01, 5)
 
     assert placed == load_exchange_response("twap_order_running")
+    action = cast(JsonObject, transport.requests[0][1]["action"])
+    assert "details" not in action
+    assert cast(StubInfo, client._info).mark_price_calls == []
     transport.response = load_exchange_response("twap_cancel_success")
 
     cancelled = await client.cancel_twap("BTC", 77738308)
 
     assert cancelled == load_exchange_response("twap_cancel_success")
+
+
+@pytest.mark.parametrize(
+    ("trigger_px", "stop_px", "expected_details", "expected_mark_calls"),
+    [
+        (63_000.0, 65_000.0, {"s": "65000", "t": {"a": False, "p": "63000"}}, ["BTC"]),
+        (101_000.0, None, {"s": None, "t": {"a": True, "p": "101000"}}, ["BTC"]),
+        (100_000.0, None, {"s": None, "t": {"a": False, "p": "100000"}}, ["BTC"]),
+        (None, 99_000.0, {"s": "99000", "t": None}, []),
+    ],
+)
+async def test_twap_advanced_prices_encode_exact_details(
+    monkeypatch: pytest.MonkeyPatch,
+    trigger_px: float | None,
+    stop_px: float | None,
+    expected_details: JsonObject,
+    expected_mark_calls: list[str],
+) -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+    monkeypatch.setattr(exchange_module, "time_ns", lambda: NONCE * 1_000_000)
+
+    await client.place_twap(
+        "BTC", True, 0.01, 5, trigger_px=trigger_px, stop_px=stop_px
+    )
+
+    action = cast(JsonObject, transport.requests[0][1]["action"])
+    assert action == {
+        "type": "twapOrder",
+        "twap": {"a": 0, "b": True, "s": "0.01", "r": False, "m": 5, "t": False},
+        "details": expected_details,
+    }
+    assert cast(StubInfo, client._info).mark_price_calls == expected_mark_calls
+
+
+@pytest.mark.parametrize(
+    ("trigger_px", "stop_px"),
+    [
+        (float("nan"), None),
+        (-1.0, None),
+        (0.01, None),
+        (None, float("inf")),
+        (None, -1.0),
+        (None, 0.01),
+    ],
+)
+async def test_twap_invalid_advanced_price_fails_before_signing(
+    trigger_px: float | None, stop_px: float | None
+) -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+
+    with pytest.raises(ValueError):
+        await client.place_twap(
+            "BTC", True, 0.01, 5, trigger_px=trigger_px, stop_px=stop_px
+        )
+
+    assert client.exchange._last_nonce == 0
+    assert cast(StubInfo, client._info).mark_price_calls == []
+    assert transport.requests == []
+
+
+async def test_twap_mark_price_failure_prevents_signing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+
+    async def fail_mark_price(_coin: str) -> float:
+        raise ProtocolError("mark unavailable")
+
+    monkeypatch.setattr(client._info, "mark_price", fail_mark_price)
+
+    with pytest.raises(ProtocolError, match="mark unavailable"):
+        await client.place_twap("BTC", True, 0.01, 5, trigger_px=100_000.0)
+
+    assert client.exchange._last_nonce == 0
+    assert transport.requests == []
 
 
 async def test_twap_below_market_precision_fails_before_signing(
