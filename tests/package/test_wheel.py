@@ -13,11 +13,11 @@ WHEELS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.whl"))
 SDISTS = tuple(WHEEL_DIR.glob("async_hyperliquid-*.tar.gz"))
 
 
-def test_project_uses_only_the_uv_python_pin() -> None:
+def test_project_declares_python_compatibility() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     classifiers = pyproject["project"]["classifiers"]
 
-    assert "requires-python" not in pyproject["project"]
+    assert pyproject["project"]["requires-python"] == ">=3.12"
     assert (ROOT / ".python-version").read_text().strip() == "3.12"
     assert not any(
         classifier.startswith("Programming Language :: Python :: 3.")
@@ -55,7 +55,7 @@ def test_v1_source_tree_has_no_legacy_topology_or_embedded_evm_dependency() -> N
 @pytest.mark.skipif(
     not WHEELS, reason="build a wheel or set ASYNC_HYPERLIQUID_WHEEL_DIR"
 )
-def test_built_wheel_contains_inline_typing_marker() -> None:
+def test_built_wheel_contract() -> None:
     assert len(WHEELS) == 1
     with zipfile.ZipFile(WHEELS[0]) as wheel:
         assert "async_hyperliquid/py.typed" in wheel.namelist()
@@ -64,7 +64,7 @@ def test_built_wheel_contains_inline_typing_marker() -> None:
         )
         metadata = wheel.read(metadata_path).decode()
 
-    assert "\nRequires-Python:" not in metadata
+    assert "\nRequires-Python: >=3.12\n" in metadata
 
 
 @pytest.mark.skipif(

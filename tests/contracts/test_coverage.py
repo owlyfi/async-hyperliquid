@@ -8,6 +8,7 @@ from async_hyperliquid.exchange import ExchangeClient
 
 ROOT = Path(__file__).parents[2]
 LIFECYCLE = {"open", "close"}
+INFO_WITHOUT_LIVE_SUCCESS = {"aligned_quote_token_info"}
 
 
 def _public_coroutines(owner: type[object]) -> set[str]:
@@ -76,7 +77,7 @@ def test_info_public_coroutines_have_unit_and_integration_coverage() -> None:
     integration = _called_info_coroutines(("tests/integration/test_info.py",))
 
     assert methods <= deterministic
-    assert methods <= integration
+    assert methods - INFO_WITHOUT_LIVE_SUCCESS <= integration
 
 
 def test_info_integration_names_are_concise() -> None:

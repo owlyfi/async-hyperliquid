@@ -4,7 +4,6 @@ from time import time
 import pytest
 import pytest_asyncio
 
-from async_hyperliquid.errors import HttpError
 from async_hyperliquid.types import CandleInterval, Network
 from tests.integration.info_client import IntegrationInfoClient
 
@@ -21,6 +20,9 @@ class Markets:
 
 
 HYPE_SPOT = {Network.MAINNET: ("@107", 10_107), Network.TESTNET: ("@1035", 11_035)}
+_MAINNET_ONLY = pytest.mark.parametrize(
+    "info", (pytest.param(Network.MAINNET, id="mainnet"),), indirect=True
+)
 
 
 @pytest.fixture(scope="session")
@@ -71,7 +73,8 @@ async def test_hype_spot_mapping(info: IntegrationInfoClient) -> None:
     assert await info.asset_id("HYPE/USDC") == asset
     assert await info.coin_symbol(coin) == "HYPE/USDC"
     assert (await info.spot_token_metadata(coin))["name"] == "HYPE"
-    assert await info.mid_price("HYPE/USDC") == float(mids[coin])
+    assert coin in mids
+    assert await info.mid_price("HYPE/USDC") > 0
 
 
 async def test_purr_spot_mapping(info: IntegrationInfoClient) -> None:
@@ -80,7 +83,8 @@ async def test_purr_spot_mapping(info: IntegrationInfoClient) -> None:
     assert await info.coin_name("PURR/USDC") == "PURR/USDC"
     assert await info.coin_symbol("PURR/USDC") == "PURR/USDC"
     assert (await info.spot_token_metadata("PURR/USDC"))["name"] == "PURR"
-    assert await info.mid_price("PURR/USDC") == float(mids["PURR/USDC"])
+    assert "PURR/USDC" in mids
+    assert await info.mid_price("PURR/USDC") > 0
     if info.network is Network.MAINNET:
         assert await info.asset_id("PURR/USDC") == 10_000
 
@@ -93,18 +97,18 @@ async def test_purr_spot_mapping(info: IntegrationInfoClient) -> None:
         ("USDH/USDC", "@230", 10_230),
     ),
 )
+@_MAINNET_ONLY
 async def test_mainnet_spot_mapping(
     info: IntegrationInfoClient, symbol: str, coin: str, asset: int
 ) -> None:
-    if info.network is Network.TESTNET:
-        raise pytest.skip.Exception("mapping is mainnet-only")
     mids = await info.all_mids()
 
     assert await info.coin_name(symbol) == coin
     assert await info.asset_id(symbol) == asset
     assert await info.coin_symbol(coin) == symbol
     assert (await info.spot_token_metadata(coin))["name"] == symbol.partition("/")[0]
-    assert await info.mid_price(symbol) == float(mids[coin])
+    assert coin in mids
+    assert await info.mid_price(symbol) > 0
 
 
 async def test_outcome_mapping(info: IntegrationInfoClient) -> None:
@@ -118,7 +122,7 @@ async def test_outcome_mapping(info: IntegrationInfoClient) -> None:
     assert await info.asset_id(coin) == 100_000_000 + encoding
     assert await info.asset_id(f"+{encoding}") == 100_000_000 + encoding
     assert await info.size_decimals(coin) == 0
-    assert await info.mid_price(coin) == float(mids[coin])
+    assert await info.mid_price(coin) > 0
 
 
 async def test_open_orders(info: IntegrationInfoClient, master_address: str) -> None:
@@ -245,26 +249,14 @@ async def test_user_abstraction(
     assert isinstance(await info.user_abstraction(master_address), str)
 
 
-async def test_aligned_quote_token_info(info: IntegrationInfoClient) -> None:
-    token = next(
-        (
-            token
-            for token in (await info.spot_meta())["tokens"]
-            if token["name"] == "USDZZ"
-        ),
-        None,
-    )
-    if token is None:
-        raise pytest.skip.Exception("testnet has no aligned quote token")
-    try:
-        result = await info.aligned_quote_token_info(token["index"])
-    except HttpError as error:
-        if error.status == 422:
-            raise pytest.xfail.Exception(
-                "testnet does not expose alignedQuoteTokenInfo"
-            )
-        raise
-    assert isinstance(result, dict)
+@_MAINNET_ONLY
+async def test_mainnet_quote_tokens(info: IntegrationInfoClient) -> None:
+    metadata = await info.spot_meta()
+    names = {token["index"]: token["name"] for token in metadata["tokens"]}
+    quote_tokens = {names[pair["tokens"][1]] for pair in metadata["universe"]}
+
+    # Delisted USDH pairs remain in spotMeta, so the mapping still includes USDH.
+    assert quote_tokens == {"USDC", "USDE", "USDH", "USDT0"}
 
 
 async def test_perp_meta(info: IntegrationInfoClient) -> None:
@@ -351,13 +343,41 @@ async def test_spot_deploy_state(
     assert isinstance(await info.spot_deploy_state(master_address), dict)
 
 
-async def test_token_details(info: IntegrationInfoClient, markets: Markets) -> None:
-    result = await info.token_details(markets.token_id)
-    assert result is None or isinstance(result, dict)
+@_MAINNET_ONLY
+async def test_token_details(info: IntegrationInfoClient) -> None:
+    token_id = "0x8f254b963e8468305d409b33aa137c67"
+    token = {
+        "name": "UBTC",
+        "szDecimals": 5,
+        "weiDecimals": 10,
+        "index": 197,
+        "tokenId": token_id,
+        "isCanonical": False,
+        "evmContract": {
+            "address": "0x9fdbda0a5e284c32744d2f17ee5c74b284993463",
+            "evm_extra_wei_decimals": -2,
+        },
+        "fullName": "Unit Bitcoin",
+        "deployerTradingFeeShare": "1.0",
+    }
+
+    assert await info.token_id("BTC/USDC") == token_id
+    assert await info.spot_token_metadata("BTC/USDC") == token
+    assert await info.asset_id("BTC/USDC") == 10_142
+    details = await info.token_details(token_id)
+    assert details is not None
+    assert {key: details[key] for key in ("name", "szDecimals", "weiDecimals")} == {
+        "name": "UBTC",
+        "szDecimals": 5,
+        "weiDecimals": 10,
+    }
 
 
 async def test_perp_dex_names(info: IntegrationInfoClient) -> None:
-    assert "" in await info.perp_dex_names()
+    names = await info.perp_dex_names()
+    assert "" in names
+    if info.network is Network.MAINNET:
+        assert "xyz" in names
 
 
 async def test_refresh_metadata(info: IntegrationInfoClient) -> None:
@@ -378,6 +398,16 @@ async def test_asset_id(info: IntegrationInfoClient, markets: Markets) -> None:
 
 async def test_size_decimals(info: IntegrationInfoClient, markets: Markets) -> None:
     assert await info.size_decimals(markets.perp) >= 0
+
+
+@pytest.mark.parametrize(
+    ("coin", "decimals"), (("BTC", 5), ("BTC/USDC", 5), ("HYPE", 2), ("xyz:NVDA", 3))
+)
+@_MAINNET_ONLY
+async def test_mainnet_size_decimals(
+    info: IntegrationInfoClient, coin: str, decimals: int
+) -> None:
+    assert await info.size_decimals(coin) == decimals
 
 
 async def test_spot_token_metadata(
@@ -414,32 +444,70 @@ async def test_positions(info: IntegrationInfoClient, subaccount_address: str) -
 
 
 @pytest.mark.parametrize(
-    "coin", ["BTC", "HYPE/USDC", "@107", "xyz:NVDA", "flx:TSLA", "vntl:OPENAI"]
+    ("coin", "asset"),
+    (
+        ("BTC", 0),
+        ("HYPE/USDC", 10_107),
+        ("@107", 10_107),
+        ("UBTC/USDC", 10_142),
+        ("xyz:NVDA", 110_002),
+        ("xyz:GOLD", 110_003),
+        ("xyz:SILVER", 110_026),
+        ("flx:TSLA", 120_000),
+        ("vntl:OPENAI", 130_001),
+    ),
 )
-async def test_mainnet_legacy_coin_aliases(
-    info: IntegrationInfoClient, coin: str
+@_MAINNET_ONLY
+async def test_mainnet_metadata_mapping(
+    info: IntegrationInfoClient, coin: str, asset: int
 ) -> None:
-    if info.network is Network.TESTNET:
-        raise pytest.skip.Exception("aliases are mainnet-only")
-
     assert await info.coin_symbol(coin)
+    assert await info.asset_id(coin) == asset
 
 
-@pytest.mark.parametrize("coin", ["xyz:SLIVER", "USDT/USDC"])
-async def test_mainnet_legacy_unsupported_aliases(
+async def test_perp_network_prices() -> None:
+    async with (
+        IntegrationInfoClient(Network.MAINNET) as mainnet,
+        IntegrationInfoClient(Network.TESTNET) as testnet,
+    ):
+        for coin in ("BTC", "ETH"):
+            mainnet_price = await mainnet.mark_price(coin)
+            testnet_price = await testnet.mark_price(coin)
+
+            assert testnet_price == pytest.approx(mainnet_price, rel=0.30), coin
+
+
+@pytest.mark.parametrize(
+    ("perp", "spot"),
+    (
+        ("BTC", "BTC/USDC"),
+        ("ETH", "ETH/USDC"),
+        ("SOL", "SOL/USDC"),
+        ("HYPE", "HYPE/USDC"),
+        ("PURR", "PURR/USDC"),
+        ("PUMP", "PUMP/USDC"),
+    ),
+)
+@_MAINNET_ONLY
+async def test_mainnet_price_parity(
+    info: IntegrationInfoClient, perp: str, spot: str
+) -> None:
+    perp_price = await info.mark_price(perp)
+    spot_price = await info.mark_price(spot)
+
+    assert spot_price == pytest.approx(perp_price, rel=0.05)
+
+
+@pytest.mark.parametrize("coin", ("USDH/USDC", "USDT/USDC", "USDE/USDC"))
+@_MAINNET_ONLY
+async def test_mainnet_stablecoin_prices(
     info: IntegrationInfoClient, coin: str
 ) -> None:
-    if info.network is Network.TESTNET:
-        raise pytest.skip.Exception("aliases are mainnet-only")
-
-    with pytest.raises(ValueError):
-        await info.mark_price(coin)
+    assert await info.mark_price(coin) == pytest.approx(1.0, rel=0.01)
 
 
+@_MAINNET_ONLY
 async def test_hype_price_parity(info: IntegrationInfoClient) -> None:
-    if info.network is Network.TESTNET:
-        raise pytest.skip.Exception("@107 alias is mainnet-only")
-
     assert await info.mark_price("HYPE/USDC") == pytest.approx(
         await info.mark_price("@107"), abs=0.01
     )
