@@ -174,6 +174,29 @@ async def test_provider_suite_rotates_order_and_uses_unique_live_cloids() -> Non
     assert pacer.weights == [2, 1, 1, 1, 1, 1, 1] * 3
 
 
+async def test_provider_suite_uses_reported_price_multipliers() -> None:
+    config = BenchmarkConfig(
+        rounds=1, warmups=0, buy_multiplier=0.80, sell_multiplier=1.20
+    )
+    clock = TickClock()
+    events: list[tuple[str, str, OrderPair]] = []
+    provider = ProviderStub("async-hyperliquid", clock, events)
+
+    await run_provider_suite(
+        cast(Any, (provider,)),
+        cast(Any, RecoveryStub()),
+        cast(Any, MarketSourceStub()),
+        cast(Any, PacerStub(clock)),
+        config,
+        _recorder(config),
+        clock_ns=clock.now,
+        cloid_factory=_cloid_factory(),
+    )
+
+    placed = next(pair for operation, _, pair in events if operation == "place")
+    assert (placed.buy.price, placed.sell.price) == (80_000.0, 120_000.0)
+
+
 async def test_provider_cancel_failure_cleans_both_cloids_without_retry() -> None:
     config = BenchmarkConfig(rounds=1, warmups=0)
     clock = TickClock()

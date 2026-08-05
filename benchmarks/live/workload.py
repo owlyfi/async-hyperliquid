@@ -22,7 +22,13 @@ def _canonical_size(
 
 
 def build_order_pair(
-    mid: float, size_decimals: int, *, target_notional: float, cloids: tuple[str, str]
+    mid: float,
+    size_decimals: int,
+    *,
+    target_notional: float,
+    cloids: tuple[str, str],
+    buy_multiplier: float = 0.90,
+    sell_multiplier: float = 1.10,
 ) -> OrderPair:
     if not math.isfinite(mid) or mid <= 0:
         raise ValueError("mid must be positive and finite")
@@ -30,10 +36,14 @@ def build_order_pair(
         raise ValueError("size_decimals must be between 0 and 6")
     if not math.isfinite(target_notional) or target_notional <= 0:
         raise ValueError("target_notional must be positive and finite")
+    if not math.isfinite(buy_multiplier) or not 0 < buy_multiplier < 1:
+        raise ValueError("buy_multiplier must be between zero and one")
+    if not math.isfinite(sell_multiplier) or sell_multiplier <= 1:
+        raise ValueError("sell_multiplier must be greater than one")
 
     buy_cloid, sell_cloid = (str(Cloid(value)) for value in cloids)
-    buy_price = _canonical_price(mid, 0.90, size_decimals)
-    sell_price = _canonical_price(mid, 1.10, size_decimals)
+    buy_price = _canonical_price(mid, buy_multiplier, size_decimals)
+    sell_price = _canonical_price(mid, sell_multiplier, size_decimals)
     return OrderPair(
         buy=CanonicalOrder(
             is_buy=True,

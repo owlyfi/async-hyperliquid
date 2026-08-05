@@ -136,6 +136,10 @@ def _failure_reason(error: Exception, phase: str) -> str:
         ("providers cleanup failed",),
     ):
         return "order_cleanup_failed"
+    if phase == "cancel-id":
+        return "cancel_id_failed"
+    if phase == "providers":
+        return "provider_suite_failed"
     return "benchmark_failed"
 
 
@@ -147,6 +151,19 @@ def _secret_values(environ: Mapping[str, str]) -> tuple[str, ...]:
     )
 
 
+def _prepare_output_directory(path: Path) -> None:
+    try:
+        if path.exists():
+            if not path.is_dir() or any(path.iterdir()):
+                raise BenchmarkFailure("output directory must be empty")
+            return
+        path.mkdir(parents=True)
+    except BenchmarkFailure:
+        raise
+    except OSError as error:
+        raise BenchmarkFailure("output directory is not usable") from error
+
+
 async def run_live(
     args: argparse.Namespace,
     *,
@@ -156,12 +173,13 @@ async def run_live(
     clock_ns: Callable[[], int] = perf_counter_ns,
     versions: Mapping[str, str] | None = None,
 ) -> LiveRunOutcome:
+    output_dir = args.output_dir
+    _prepare_output_directory(output_dir)
     config = BenchmarkConfig(
         rounds=args.rounds,
         warmups=args.warmups,
         interval_ns=args.interval_ms * 1_000_000,
     )
-    output_dir = args.output_dir
     recorder = SampleRecorder(
         config=config,
         environment={
@@ -185,6 +203,7 @@ async def run_live(
         phase = "benchmark"
         pacer = pacer_factory(config.interval_ns)
         if args.command in ("cancel-id", "all"):
+            phase = "cancel-id"
             async_candidates = tuple(
                 provider
                 for provider in providers.measured
@@ -204,6 +223,7 @@ async def run_live(
                 clock_ns=clock_ns,
             )
         if args.command in ("providers", "all"):
+            phase = "providers"
             await run_provider_suite(
                 providers.measured,
                 providers.recovery,

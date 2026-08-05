@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 
-from benchmarks.live.models import CanonicalOrder, OrderPair
+from benchmarks.live.models import BenchmarkFailure, CanonicalOrder, OrderPair
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import ProviderSet, WireOrder
@@ -18,9 +18,10 @@ ROOT = Path(__file__).parents[2]
 
 
 class FakeProvider:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, fail_place: bool = False) -> None:
         self.name = name
         self.closed = False
+        self.fail_place = fail_place
         self._next_oid = 100
 
     def wire_orders(self, pair: OrderPair) -> tuple[WireOrder, WireOrder]:
@@ -43,6 +44,8 @@ class FakeProvider:
 
     async def place(self, pair: OrderPair) -> tuple[int, int]:
         del pair
+        if self.fail_place:
+            raise TimeoutError("raw-response-secret")
         self._next_oid += 2
         return (self._next_oid - 1, self._next_oid)
 
@@ -130,6 +133,20 @@ async def test_missing_credentials_fail_before_provider_construction(
 
 
 @pytest.mark.asyncio
+async def test_nonempty_output_directory_is_rejected_before_preflight(
+    tmp_path: Path,
+) -> None:
+    stale = tmp_path / "report.json"
+    stale.write_text("old valid report\n")
+
+    with pytest.raises(BenchmarkFailure, match="output directory must be empty"):
+        await run_live(parse_args(["all", "--output-dir", str(tmp_path)]), environ={})
+
+    assert stale.read_text() == "old valid report\n"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["report.json"]
+
+
+@pytest.mark.asyncio
 async def test_all_runs_offline_through_injected_providers(tmp_path: Path) -> None:
     providers = tuple(
         FakeProvider(name) for name in ("ccxt", "sdk", "async-hyperliquid")
@@ -197,3 +214,52 @@ def test_documented_script_entrypoint_can_render_help() -> None:
     assert "cancel-id" in completed.stdout
     assert "providers" in completed.stdout
     assert "publish" in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("command", "failing_provider", "expected_reason"),
+    [
+        ("cancel-id", "async-hyperliquid", "cancel_id_failed"),
+        ("providers", "ccxt", "provider_suite_failed"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_invalid_report_preserves_safe_suite_failure_context(
+    command: str, failing_provider: str, expected_reason: str, tmp_path: Path
+) -> None:
+    providers = tuple(
+        FakeProvider(name, fail_place=name == failing_provider)
+        for name in ("ccxt", "sdk", "async-hyperliquid")
+    )
+    recovery = FakeProvider("recovery")
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=providers,
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(*providers, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [command, "--output-dir", str(tmp_path), "--rounds", "1", "--warmups", "0"]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        clock_ns=IncrementingClock(1_000_000),
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    assert not outcome.valid
+    rendered = outcome.report_path.read_text()
+    assert json.loads(rendered)["failure_reason"] == expected_reason
+    assert "raw-response-secret" not in rendered

@@ -49,6 +49,8 @@ async def run_cancel_id_suite(
             size_decimals,
             target_notional=config.target_notional,
             cloids=(cloid_factory(), cloid_factory()),
+            buy_multiplier=config.buy_multiplier,
+            sell_multiplier=config.sell_multiplier,
         )
         pending = {order.cloid: order for order in pair.as_tuple()}
         failure: BaseException | None = None
@@ -132,6 +134,8 @@ async def run_provider_suite(
             size_decimals,
             target_notional=config.target_notional,
             cloids=(cloid_factory(), cloid_factory()),
+            buy_multiplier=config.buy_multiplier,
+            sell_multiplier=config.sell_multiplier,
         )
         validate_provider_wire_parity(tuple(providers), parity_pair)
 
@@ -145,6 +149,8 @@ async def run_provider_suite(
                 size_decimals,
                 target_notional=config.target_notional,
                 cloids=(cloid_factory(), cloid_factory()),
+                buy_multiplier=config.buy_multiplier,
+                sell_multiplier=config.sell_multiplier,
             )
             pending = {order.cloid: order for order in pair.as_tuple()}
             failure: BaseException | None = None

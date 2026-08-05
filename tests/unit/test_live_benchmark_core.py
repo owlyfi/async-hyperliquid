@@ -97,6 +97,14 @@ def test_order_pair_applies_hyperliquid_price_precision() -> None:
             lambda: BenchmarkConfig(target_notional=0.0),
             "target_notional must be positive",
         ),
+        (
+            lambda: BenchmarkConfig(buy_multiplier=1.0),
+            "buy_multiplier must be between zero and one",
+        ),
+        (
+            lambda: BenchmarkConfig(sell_multiplier=1.0),
+            "sell_multiplier must be greater than one",
+        ),
     ],
 )
 def test_benchmark_config_rejects_unsafe_values(

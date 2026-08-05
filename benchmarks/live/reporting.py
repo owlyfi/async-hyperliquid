@@ -26,6 +26,7 @@ FIGURE_FILENAMES = (
     "providers-latency.svg",
 )
 _PROVIDERS = ("async-hyperliquid", "sdk", "ccxt")
+_ROTATION_PROVIDERS = ("ccxt", "sdk", "async-hyperliquid")
 _CSV_FIELDS = (
     "suite",
     "provider",
@@ -214,10 +215,43 @@ def _expected_counts() -> Counter[tuple[str, str, str]]:
     return expected
 
 
+def _expected_provider_order(
+    key: tuple[str, str, str], round_index: int, warmups: int
+) -> int:
+    suite, provider, operation = key
+    logical_round = warmups + round_index
+    if suite == "cancel-id":
+        oid_order = 0 if logical_round % 2 == 0 else 1
+        return oid_order if operation == "cancel_by_oid" else 1 - oid_order
+    offset = logical_round % len(_ROTATION_PROVIDERS)
+    rotated = _ROTATION_PROVIDERS[offset:] + _ROTATION_PROVIDERS[:offset]
+    return rotated.index(provider)
+
+
+def _is_git_revision(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _is_safe_environment(environment: Mapping[str, object]) -> bool:
+    if set(environment) != {"network", "python", "platform"}:
+        return False
+    return all(
+        isinstance(value, str)
+        and 0 < len(value) <= 100
+        and all(character.isalnum() or character in ".-_" for character in value)
+        for value in environment.values()
+    )
+
+
 def validate_publishable(report: LiveBenchmarkReport) -> None:
     try:
         config = report["config"]
         versions = report["versions"]
+        git = report["git"]
         if (
             report["schema_version"] != 1
             or not report["valid"]
@@ -236,6 +270,10 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
             or versions.get("async-hyperliquid") != "1.0.0rc1"
             or versions.get("sdk") != "0.24.0"
             or versions.get("ccxt") != "4.5.71"
+            or not _is_safe_environment(report["environment"])
+            or report["environment"].get("network") != "testnet"
+            or git.get("dirty") is not False
+            or not _is_git_revision(git.get("revision"))
         ):
             raise BenchmarkFailure("report is not publishable")
         actual = Counter(
@@ -260,6 +298,10 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
                 or not isinstance(provider_order, int)
                 or provider_order < 0
                 or provider_order > (1 if key[0] == "cancel-id" else 2)
+                or provider_order
+                != _expected_provider_order(
+                    key, round_index, cast(int, config["warmups"])
+                )
             ):
                 raise BenchmarkFailure("report sample values are not publishable")
             grouped.setdefault(key, []).append(sample["duration_ns"])
@@ -493,12 +535,40 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
     destination = repository_root / "benchmarks" / "results" / timestamp
     try:
         destination.mkdir(parents=True, exist_ok=False)
-        for filename in sorted(required):
-            shutil.copy2(source_dir / filename, destination / filename)
-        _atomic_text(benchmark_readme, rendered_benchmark)
-        _atomic_text(root_readme, rendered_root)
     except FileExistsError as error:
         raise BenchmarkFailure(
             "published benchmark timestamp already exists"
         ) from error
+
+    benchmark_replaced = False
+    root_replaced = False
+    try:
+        shutil.copy2(report_path, destination / "report.json")
+        write_csv(report, destination)
+        write_figures(report, destination)
+        _atomic_text(benchmark_readme, rendered_benchmark)
+        benchmark_replaced = True
+        _atomic_text(root_readme, rendered_root)
+        root_replaced = True
+    except Exception as error:
+        rollback_failures: list[Exception] = []
+        for replaced, path, original in (
+            (root_replaced, root_readme, root_text),
+            (benchmark_replaced, benchmark_readme, benchmark_text),
+        ):
+            if not replaced:
+                continue
+            try:
+                _atomic_text(path, original)
+            except Exception as rollback_error:
+                rollback_failures.append(rollback_error)
+        try:
+            shutil.rmtree(destination)
+        except Exception as rollback_error:
+            rollback_failures.append(rollback_error)
+        if rollback_failures:
+            raise BenchmarkFailure(
+                "benchmark publication failed and rollback was incomplete"
+            ) from ExceptionGroup("publication rollback failures", rollback_failures)
+        raise BenchmarkFailure("benchmark publication failed") from error
     return destination

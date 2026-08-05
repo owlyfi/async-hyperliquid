@@ -27,6 +27,7 @@ from .results import (
 
 
 WireOrder = dict[str, object]
+_REQUEST_TIMEOUT_SECONDS = 15.0
 
 
 class LiveProvider(Protocol):
@@ -63,7 +64,13 @@ class _AsyncClient(Protocol):
     async def close(self) -> None: ...
 
 
+class _SyncSession(Protocol):
+    def close(self) -> None: ...
+
+
 class _SdkClient(Protocol):
+    session: _SyncSession
+
     def bulk_orders(self, orders: object) -> object: ...
 
     def bulk_cancel(self, orders: object) -> object: ...
@@ -243,7 +250,7 @@ class SdkProvider:
         parse_cancel_success(response, expected=len(orders), provider=self.name)
 
     async def close(self) -> None:
-        return None
+        self._client.session.close()
 
 
 def _ccxt_order(order: CanonicalOrder, *, symbol: str) -> dict[str, object]:
@@ -456,6 +463,7 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
             TESTNET_API_URL,
             vault_address=credentials.subaccount_address,
             account_address=credentials.master_address,
+            timeout=_REQUEST_TIMEOUT_SECONDS,
         )
         sdk_asset = sdk_client.info.name_to_asset("BTC")
         sdk_size_decimals = sdk_client.info.asset_to_sz_decimals[sdk_asset]
@@ -474,6 +482,7 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
                 "walletAddress": credentials.api_wallet_address,
                 "privateKey": credentials.signing_key,
                 "enableRateLimit": False,
+                "timeout": round(_REQUEST_TIMEOUT_SECONDS * 1_000),
             }
         )
         try:

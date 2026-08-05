@@ -31,10 +31,10 @@ class BenchmarkConfig:
             raise ValueError(f"interval_ns must be at least {MIN_INTERVAL_NS}")
         if not math.isfinite(self.target_notional) or self.target_notional <= 0:
             raise ValueError("target_notional must be positive and finite")
-        if not math.isfinite(self.buy_multiplier) or self.buy_multiplier <= 0:
-            raise ValueError("buy_multiplier must be positive and finite")
-        if not math.isfinite(self.sell_multiplier) or self.sell_multiplier <= 0:
-            raise ValueError("sell_multiplier must be positive and finite")
+        if not math.isfinite(self.buy_multiplier) or not 0 < self.buy_multiplier < 1:
+            raise ValueError("buy_multiplier must be between zero and one")
+        if not math.isfinite(self.sell_multiplier) or self.sell_multiplier <= 1:
+            raise ValueError("sell_multiplier must be greater than one")
 
 
 @dataclass(frozen=True, slots=True)

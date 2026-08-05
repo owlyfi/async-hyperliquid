@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 
+import benchmarks.live.reporting as reporting
 from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
@@ -42,16 +43,17 @@ def _valid_report() -> LiveBenchmarkReport:
             "platform": "darwin-arm64",
         },
         versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
-        git=GitMetadata(revision="abc123", dirty=False),
+        git=GitMetadata(revision="a" * 40, dirty=False),
     )
     for round_index in range(30):
+        oid_order = 0 if (round_index + 3) % 2 == 0 else 1
         recorder.record(
             LatencySample(
                 suite="cancel-id",
                 provider="async-hyperliquid",
                 operation="cancel_by_oid",
                 round_index=round_index,
-                provider_order=0,
+                provider_order=oid_order,
                 duration_ns=10_000_000 + round_index,
             )
         )
@@ -61,11 +63,14 @@ def _valid_report() -> LiveBenchmarkReport:
                 provider="async-hyperliquid",
                 operation="cancel_by_cloid",
                 round_index=round_index,
-                provider_order=1,
+                provider_order=1 - oid_order,
                 duration_ns=20_000_000 + round_index,
             )
         )
-        for provider_order, provider in enumerate(PROVIDERS):
+        offset = round_index % len(PROVIDERS)
+        ordered_providers = PROVIDERS[offset:] + PROVIDERS[:offset]
+        for provider in PROVIDERS:
+            provider_order = ordered_providers.index(provider)
             base = {
                 "ccxt": 100_000_000,
                 "sdk": 110_000_000,
@@ -139,6 +144,14 @@ def test_csv_contains_only_safe_sample_columns(tmp_path: Path) -> None:
         lambda report: report.update(valid=False),
         lambda report: report.update(cleanup_ok=False),
         lambda report: report.update(schema_version=2),
+        lambda report: cast(dict[str, str], report["environment"]).update(
+            network="mainnet"
+        ),
+        lambda report: cast(dict[str, str], report["environment"]).update(
+            note="| injected\nREADME text"
+        ),
+        lambda report: cast(dict[str, Any], report["git"]).update(dirty=True),
+        lambda report: cast(dict[str, Any], report["git"]).update(revision="unknown"),
         lambda report: cast(dict[str, object], report["config"]).update(rounds=29),
         lambda report: cast(dict[str, str], report["versions"]).update(ccxt="new"),
         lambda report: cast(dict[str, Any], report["samples"][0]).update(
@@ -164,6 +177,14 @@ def test_publication_rejects_invalid_or_non_default_reports(
 def test_publication_rejects_duplicate_measured_rounds() -> None:
     report = _valid_report()
     report["samples"][8]["round_index"] = 0
+
+    with pytest.raises(BenchmarkFailure, match="publish"):
+        validate_publishable(report)
+
+
+def test_publication_rejects_unbalanced_provider_order() -> None:
+    report = _valid_report()
+    report["samples"][0]["provider_order"] = 0
 
     with pytest.raises(BenchmarkFailure, match="publish"):
         validate_publishable(report)
@@ -210,6 +231,7 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     source.mkdir()
     report_path = write_report(_valid_report(), source, forbidden_values=())
     write_csv(_valid_report(), source)
+    (source / "samples.csv").write_text("tampered source CSV\n")
     for filename in FIGURE_FILENAMES:
         (source / filename).write_bytes(b"safe benchmark figure")
 
@@ -228,6 +250,13 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     assert sorted(path.name for path in published.iterdir()) == sorted(
         ("report.json", "samples.csv", *FIGURE_FILENAMES)
     )
+    assert (
+        (published / "samples.csv")
+        .read_text()
+        .startswith("suite,provider,operation,round_index,provider_order,duration_ns\n")
+    )
+    assert (published / "cancel-id-latency.png").read_bytes().startswith(b"\x89PNG")
+    assert b"<svg" in (published / "providers-latency.svg").read_bytes()[:1000]
     root_readme = (tmp_path / "README.md").read_text()
     detail_readme = (benchmarks / "README.md").read_text()
     assert root_readme.startswith("root before\n")
@@ -259,3 +288,39 @@ def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:
         publish_report(report_path, tmp_path)
 
     assert (tmp_path / "README.md").read_text() == "missing markers\n"
+
+
+def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("matplotlib")
+    source = tmp_path / "source"
+    source.mkdir()
+    report_path = write_report(_valid_report(), source, forbidden_values=())
+    write_csv(_valid_report(), source)
+    for filename in FIGURE_FILENAMES:
+        (source / filename).write_bytes(b"source figure")
+    original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
+    original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
+    (tmp_path / "README.md").write_text(original_root)
+    benchmarks = tmp_path / "benchmarks"
+    benchmarks.mkdir()
+    (benchmarks / "README.md").write_text(original_detail)
+    real_atomic_text = reporting._atomic_text
+    calls = 0
+
+    def fail_second_replace(path: Path, content: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated second replacement failure")
+        real_atomic_text(path, content)
+
+    monkeypatch.setattr(reporting, "_atomic_text", fail_second_replace)
+
+    with pytest.raises(BenchmarkFailure, match="publication failed"):
+        publish_report(report_path, tmp_path)
+
+    assert (tmp_path / "README.md").read_text() == original_root
+    assert (benchmarks / "README.md").read_text() == original_detail
+    assert not (benchmarks / "results" / "20260805T000100Z").exists()

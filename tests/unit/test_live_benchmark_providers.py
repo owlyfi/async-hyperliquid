@@ -98,11 +98,20 @@ async def test_async_provider_uses_public_batch_methods() -> None:
     assert client.closed is True
 
 
+class SyncCloseStub:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class SdkClientStub:
     def __init__(self) -> None:
         self.placed: object = None
         self.cancelled_oids: object = None
         self.cancelled_cloids: object = None
+        self.session = SyncCloseStub()
 
     def bulk_orders(self, orders: object) -> object:
         self.placed = orders
@@ -127,6 +136,7 @@ async def test_sdk_provider_uses_public_batch_methods() -> None:
     assert await provider.place(pair) == (101, 202)
     await provider.cancel_oids(pair.as_tuple(), (101, 202))
     await provider.cancel_cloids((pair.sell,))
+    await provider.close()
 
     placed = cast(list[dict[str, object]], client.placed)
     assert [order["is_buy"] for order in placed] == [True, False]
@@ -144,6 +154,7 @@ async def test_sdk_provider_uses_public_batch_methods() -> None:
     ]
     cloid_cancel = cast(list[dict[str, object]], client.cancelled_cloids)
     assert cast(Any, cloid_cancel[0]["cloid"]).to_raw() == pair.sell.cloid
+    assert client.session.closed is True
 
 
 class CcxtClientStub:
@@ -347,3 +358,91 @@ async def test_factory_builds_recovery_first_and_closes_partial_clients(
 
     assert len(clients) == 2
     assert all(client.closed for client in clients)
+
+
+async def test_factory_sets_finite_timeouts_and_closes_failed_ccxt_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ccxt
+    import hyperliquid.exchange as sdk_exchange
+
+    master = "0x1111111111111111111111111111111111111111"
+    api_wallet = "0x2222222222222222222222222222222222222222"
+    subaccount = "0x3333333333333333333333333333333333333333"
+    async_clients: list[Any] = []
+    sdk_timeouts: list[float] = []
+    sdk_sessions: list[SyncCloseStub] = []
+    ccxt_configs: list[dict[str, object]] = []
+    ccxt_clients: list[Any] = []
+
+    class FakeInfo:
+        async def refresh_metadata(self) -> None:
+            return None
+
+        async def _market_info(self, coin: str) -> object:
+            assert coin == "BTC"
+            return SimpleNamespace(asset=0, size_decimals=5)
+
+        async def user_role(self, address: str) -> object:
+            if address == api_wallet:
+                return {"role": "agent", "data": {"user": master}}
+            assert address == subaccount
+            return {"role": "subAccount", "data": {"master": master}}
+
+    class FakeAsyncHyperliquid:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            self.info = FakeInfo()
+            self.closed = False
+            async_clients.append(self)
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FakeSdkInfo:
+        asset_to_sz_decimals = {0: 5}
+
+        def name_to_asset(self, coin: str) -> int:
+            assert coin == "BTC"
+            return 0
+
+    class FakeExchange:
+        def __init__(self, *args: object, timeout: float, **kwargs: object) -> None:
+            del args, kwargs
+            sdk_timeouts.append(timeout)
+            self.info = FakeSdkInfo()
+            self.session = SyncCloseStub()
+            sdk_sessions.append(self.session)
+
+    class FakeCcxt:
+        def __init__(self, config: dict[str, object]) -> None:
+            ccxt_configs.append(config)
+            ccxt_clients.append(self)
+            self.closed = False
+
+        def set_sandbox_mode(self, enabled: bool) -> None:
+            assert enabled is True
+
+        def load_markets(self) -> object:
+            raise RuntimeError("ccxt metadata failed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(provider_module, "AsyncHyperliquid", FakeAsyncHyperliquid)
+    monkeypatch.setattr(sdk_exchange, "Exchange", FakeExchange)
+    monkeypatch.setattr(ccxt, "hyperliquid", FakeCcxt)
+    credentials = Credentials(
+        master_address=master,
+        api_wallet_address=api_wallet,
+        signing_key="0x" + "11" * 32,
+        subaccount_address=subaccount,
+    )
+
+    with pytest.raises(RuntimeError, match="ccxt metadata failed"):
+        await provider_module.build_providers(credentials)
+
+    assert sdk_timeouts == [15.0]
+    assert ccxt_configs[0]["timeout"] == 15_000
+    assert all(session.closed for session in sdk_sessions)
+    assert all(client.closed for client in (*async_clients, *ccxt_clients))
