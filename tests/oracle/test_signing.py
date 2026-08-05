@@ -470,7 +470,6 @@ async def test_local_three_route_order_signing_matches_official_sdk_without_netw
     master_address, subaccount_address = _normalize_distinct_root_addresses(
         master_address, subaccount_address
     )
-    api_address = to_normalized_address(api_address)
     sdk_orders: list[SdkOrderRequest] = [
         {
             "coin": "ASSET-0",
@@ -495,7 +494,12 @@ async def test_local_three_route_order_signing_matches_official_sdk_without_netw
     routes = (
         ("master-target", master_address, None),
         ("subaccount-from-master", master_address, subaccount_address),
-        ("subaccount-from-agent", api_address, subaccount_address),
+        ("subaccount-from-subaccount", subaccount_address, subaccount_address),
+    )
+    assert tuple(account_address for _, account_address, _ in routes) == (
+        master_address,
+        master_address,
+        subaccount_address,
     )
     sdk_payloads: list[JsonObject] = []
     async_payloads: list[JsonObject] = []
