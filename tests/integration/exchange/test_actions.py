@@ -9,11 +9,7 @@ from async_hyperliquid.types import (
     DefaultActionResponse,
 )
 
-pytestmark = [
-    pytest.mark.exchange,
-    pytest.mark.destructive_exchange,
-    pytest.mark.asyncio(loop_scope="session"),
-]
+pytestmark = [pytest.mark.exchange, pytest.mark.asyncio(loop_scope="session")]
 
 
 def _capability(name: str) -> str:

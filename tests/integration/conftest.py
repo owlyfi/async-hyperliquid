@@ -1,6 +1,7 @@
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import cast
 
 from dotenv import load_dotenv
 import pytest
@@ -10,16 +11,12 @@ from async_hyperliquid import AsyncHyperliquid, InfoClient
 from async_hyperliquid.types import Network
 
 from .config import require_env, require_testnet, validate_credentials, validate_roles
+from .info_client import IntegrationInfoClient
 
 
 load_dotenv(Path(".env.local"), override=False)
 
 _DEXS = ("",)
-
-
-def _require_opt_in(name: str) -> None:
-    if os.environ.get(name) != "true":
-        raise pytest.skip.Exception(f"set {name}=true to run this integration suite")
 
 
 @pytest.fixture(scope="session")
@@ -37,16 +34,20 @@ def subaccount_address() -> str:
     return require_env("HL_SUB", os.environ)
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def info() -> AsyncIterator[InfoClient]:
-    _require_opt_in("RUN_INFO_TESTS")
-    async with InfoClient(network=Network.TESTNET) as client:
+@pytest_asyncio.fixture(
+    scope="session",
+    loop_scope="session",
+    params=(Network.MAINNET, Network.TESTNET),
+    ids=("mainnet", "testnet"),
+)
+async def info(request: pytest.FixtureRequest) -> AsyncIterator[IntegrationInfoClient]:
+    network = cast(Network, request.param)
+    async with IntegrationInfoClient(network) as client:
         yield client
 
 
 def _prepare_exchange() -> None:
     require_testnet(os.environ)
-    _require_opt_in("RUN_EXCHANGE_TESTS")
     validate_credentials(os.environ)
 
 
@@ -56,17 +57,6 @@ async def _validate_exchange_roles(info: InfoClient) -> None:
         await info.user_role(require_env("HL_AK", os.environ)),
         await info.user_role(require_env("HL_SUB", os.environ)),
     )
-
-
-@pytest.fixture(autouse=True)
-def _require_destructive_opt_in(request: pytest.FixtureRequest) -> None:
-    if (
-        request.node.get_closest_marker("destructive_exchange") is not None
-        and os.environ.get("RUN_DESTRUCTIVE_EXCHANGE_TESTS") != "true"
-    ):
-        raise pytest.skip.Exception(
-            "set RUN_DESTRUCTIVE_EXCHANGE_TESTS=true to run destructive Exchange cases"
-        )
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

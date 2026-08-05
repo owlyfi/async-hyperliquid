@@ -79,8 +79,6 @@ addopts = "--verbose"
 asyncio_default_fixture_loop_scope = "session"
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
-    "info: opt-in testnet Info integration",
-    "exchange: opt-in testnet Exchange integration",
-    "destructive_exchange: Exchange action that mutates funds or authority",
-    "mainnet_info: retained Info scenario that is not enabled by the testnet suite",
+    "info: Info integration",
+    "exchange: testnet Exchange integration",
 ]
