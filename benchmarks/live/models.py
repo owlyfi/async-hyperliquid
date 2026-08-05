@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TypedDict
 
 
 MIN_INTERVAL_NS = 250_000_000
@@ -53,3 +54,59 @@ class OrderPair:
 
     def as_tuple(self) -> tuple[CanonicalOrder, CanonicalOrder]:
         return (self.buy, self.sell)
+
+
+@dataclass(frozen=True, slots=True)
+class LatencySample:
+    suite: str
+    provider: str
+    operation: str
+    round_index: int
+    provider_order: int
+    duration_ns: int
+
+    def __post_init__(self) -> None:
+        if self.round_index < 0:
+            raise ValueError("round_index must not be negative")
+        if self.provider_order < 0:
+            raise ValueError("provider_order must not be negative")
+        if isinstance(self.duration_ns, bool) or self.duration_ns < 1:
+            raise ValueError("duration_ns must be a positive integer")
+
+
+class LatencySummary(TypedDict):
+    count: int
+    median_ns: float
+    mad_ns: float
+    p95_ns: float
+    min_ns: int
+    max_ns: int
+
+
+class SampleRecord(TypedDict):
+    suite: str
+    provider: str
+    operation: str
+    round_index: int
+    provider_order: int
+    duration_ns: int
+
+
+class GitMetadata(TypedDict):
+    revision: str
+    dirty: bool
+
+
+class LiveBenchmarkReport(TypedDict):
+    schema_version: int
+    valid: bool
+    failure_reason: str | None
+    cleanup_ok: bool
+    started_at: str
+    completed_at: str
+    config: dict[str, str | int | float]
+    environment: dict[str, str]
+    versions: dict[str, str]
+    git: GitMetadata
+    samples: list[SampleRecord]
+    summaries: dict[str, dict[str, dict[str, LatencySummary]]]
