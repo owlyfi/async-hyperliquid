@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import inspect
 import math
 from dataclasses import dataclass
-from typing import Final, Literal, TypedDict
+from typing import Final, Literal, TypedDict, cast
 
-from async_hyperliquid.errors import IndeterminateActionError, ProtocolError
+from async_hyperliquid.errors import HttpError, IndeterminateActionError, ProtocolError
 
 
 MIN_INTERVAL_NS = 250_000_000
@@ -105,8 +104,15 @@ COMBINED_DIAGNOSTIC_WORKLOAD: Final[WorkloadName] = (
 class BenchmarkFailure(RuntimeError):
     """The live benchmark cannot produce trustworthy comparable results."""
 
+    __slots__ = ("category",)
+    category: FailureCategory
+
     def __init__(self, message: str, *, category: FailureCategory = "internal") -> None:
-        self.category = category
+        self.category = (
+            category
+            if type(category) is str and category in _FAILURE_CATEGORIES
+            else "internal"
+        )
         super().__init__(message)
 
 
@@ -126,8 +132,7 @@ class FailureContextRecord(TypedDict):
 
 def _bounded_int(value: object, *, minimum: int, maximum: int | None = None) -> bool:
     return (
-        not isinstance(value, bool)
-        and isinstance(value, int)
+        type(value) is int
         and value >= minimum
         and (maximum is None or value <= maximum)
     )
@@ -157,17 +162,20 @@ class FailureContext:
             and not (self.logical_round is None and self.measured_round is not None)
         )
         valid_recovery = (
-            self.recovery_attempted
+            self.recovery_attempted is True
             and _bounded_int(self.recovery_count, minimum=1, maximum=20)
-            and isinstance(self.recovery_ok, bool)
+            and type(self.recovery_ok) is bool
         ) or (
             self.recovery_attempted is False
-            and self.recovery_count == 0
+            and _bounded_int(self.recovery_count, minimum=0, maximum=0)
             and self.recovery_ok is None
         )
         if (
-            self.phase not in _FAILURE_PHASES
+            type(self.phase) is not str
+            or self.phase not in _FAILURE_PHASES
+            or type(self.operation) is not str
             or self.operation not in _FAILURE_OPERATIONS
+            or type(self.category) is not str
             or self.category not in _FAILURE_CATEGORIES
             or not valid_rounds
             or (
@@ -176,7 +184,7 @@ class FailureContext:
             )
             or not _bounded_int(self.failed_count, minimum=1, maximum=20)
             or not _bounded_int(self.successful_count, minimum=0, maximum=20)
-            or not isinstance(self.recovery_attempted, bool)
+            or type(self.recovery_attempted) is not bool
             or not valid_recovery
         ):
             raise ValueError("failure context is outside the safe contract")
@@ -200,33 +208,38 @@ class FailureContext:
 class BenchmarkRunFailure(BenchmarkFailure):
     """A runtime failure with a report-safe, bounded diagnostic context."""
 
+    __slots__ = ("failure_context",)
+    failure_context: FailureContext
+
     def __init__(self, message: str, failure_context: FailureContext) -> None:
         self.failure_context = failure_context
         super().__init__(message, category=failure_context.category)
 
 
-def _safe_status(error: BaseException) -> int | None:
-    try:
-        attributes = BaseException.__getattribute__(error, "__dict__")
-    except BaseException:
-        return None
-    if not isinstance(attributes, dict):
-        return None
-    for name in ("status", "status_code"):
-        value = attributes.get(name, inspect.getattr_static(error, name, None))
-        if not isinstance(value, bool) and isinstance(value, int):
-            return value
-    return None
+_BENCHMARK_CATEGORY_SLOT = BenchmarkFailure.__dict__["category"]
+_TRUSTED_LINK_TYPES = (
+    Exception,
+    RuntimeError,
+    TimeoutError,
+    OSError,
+    ConnectionError,
+    ValueError,
+    TypeError,
+    HttpError,
+    ProtocolError,
+    IndeterminateActionError,
+    BenchmarkFailure,
+    BenchmarkRunFailure,
+    ExceptionGroup,
+    BaseExceptionGroup,
+)
 
 
-def _safe_link(
-    error: BaseException, name: Literal["__cause__", "__context__"]
-) -> BaseException | None:
-    try:
-        linked = BaseException.__getattribute__(error, name)
-    except BaseException:
-        return None
-    return linked if isinstance(linked, BaseException) else None
+def _trusted_benchmark_category(error: BaseException) -> FailureCategory:
+    value = _BENCHMARK_CATEGORY_SLOT.__get__(error, BenchmarkFailure)
+    if type(value) is str and value in _FAILURE_CATEGORIES:
+        return cast(FailureCategory, value)
+    return "internal"
 
 
 def classify_failure(error: BaseException) -> FailureCategory:
@@ -240,31 +253,28 @@ def classify_failure(error: BaseException) -> FailureCategory:
         if identity in seen:
             continue
         seen.add(identity)
-        if _safe_status(current) == 429:
-            categories.add("rate_limited")
-        if isinstance(current, IndeterminateActionError):
+        current_type = type(current)
+        if current_type is HttpError:
+            status = cast(HttpError, current).status
+            if type(status) is int and status == 429:
+                categories.add("rate_limited")
+        if current_type is IndeterminateActionError:
             categories.add("indeterminate_action")
-        elif isinstance(current, TimeoutError):
+        elif current_type is TimeoutError:
             categories.add("timeout")
-        elif isinstance(current, ProtocolError):
+        elif current_type is ProtocolError:
             categories.add("protocol")
-        elif isinstance(current, BenchmarkFailure):
-            categories.add(current.category)
+        elif current_type is BenchmarkFailure or current_type is BenchmarkRunFailure:
+            categories.add(_trusted_benchmark_category(current))
         if depth >= 4:
             continue
-        if isinstance(current, BaseExceptionGroup):
-            try:
-                children = BaseExceptionGroup.__getattribute__(current, "exceptions")
-            except BaseException:
-                children = ()
-            pending.extend(
-                (child, depth + 1)
-                for child in children[:20]
-                if isinstance(child, BaseException)
-            )
-        for name in ("__cause__", "__context__"):
-            if (linked := _safe_link(current, name)) is not None:
-                pending.append((linked, depth + 1))
+        if current_type is ExceptionGroup or current_type is BaseExceptionGroup:
+            children = cast(BaseExceptionGroup, current).exceptions
+            pending.extend((child, depth + 1) for child in children[:20])
+        if any(current_type is trusted for trusted in _TRUSTED_LINK_TYPES):
+            for linked in (current.__cause__, current.__context__):
+                if linked is not None:
+                    pending.append((linked, depth + 1))
     for category in (
         "rate_limited",
         "indeterminate_action",

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import pytest
 
 import benchmarks.live.models as live_models
-from async_hyperliquid.errors import IndeterminateActionError, ProtocolError
+from async_hyperliquid.errors import HttpError, IndeterminateActionError, ProtocolError
 from benchmarks.live.models import (
     BenchmarkConfig,
     BenchmarkFailure,
@@ -298,30 +298,74 @@ def test_report_sanitizer_rejects_sensitive_keys_and_values() -> None:
         )
 
 
-class _HostileStatusError(RuntimeError):
-    attribute_reads = 0
+_HOSTILE_READS: list[str] = []
 
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.status_code = 429
 
-    def __getattribute__(self, name: str) -> object:
-        if name in {"status", "status_code", "__cause__", "__context__"}:
-            type(self).attribute_reads += 1
-        return super().__getattribute__(name)
+class _ExplodingDescriptor:
+    def __init__(self, name: str) -> None:
+        self.name = name
 
-    def __str__(self) -> str:
-        raise AssertionError("classification must not render exceptions")
+    def __get__(self, instance: object, owner: type[object]) -> object:
+        del instance, owner
+        _HOSTILE_READS.append(self.name)
+        raise AssertionError(f"classifier executed {self.name}")
+
+    def __set__(self, instance: object, value: object) -> None:
+        del instance, value
+        _HOSTILE_READS.append(self.name)
+        raise AssertionError(f"classifier wrote {self.name}")
+
+
+class _HostileBenchmarkFailure(BenchmarkFailure):
+    __dict__ = _ExplodingDescriptor("__dict__")
+    __cause__ = _ExplodingDescriptor("__cause__")
+    __context__ = _ExplodingDescriptor("__context__")
+    category = _ExplodingDescriptor("category")
+    status = _ExplodingDescriptor("status")
+    status_code = _ExplodingDescriptor("status_code")
+
+
+class _HostileExceptionGroup(ExceptionGroup):
+    __dict__ = _ExplodingDescriptor("group.__dict__")
+    __cause__ = _ExplodingDescriptor("group.__cause__")
+    __context__ = _ExplodingDescriptor("group.__context__")
+    exceptions = _ExplodingDescriptor("exceptions")
+
+
+class _HostileInt(int):
+    comparisons = 0
+
+    def _explode(self) -> bool:
+        type(self).comparisons += 1
+        raise AssertionError("integer subclass comparison executed")
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return self._explode()
+
+    def __ge__(self, other: object) -> bool:
+        del other
+        return self._explode()
+
+    def __le__(self, other: object) -> bool:
+        del other
+        return self._explode()
+
+
+class _HostileTruth:
+    evaluations = 0
+
+    def __bool__(self) -> bool:
+        type(self).evaluations += 1
+        raise AssertionError("truthiness executed")
 
 
 def test_failure_classifier_uses_only_bounded_typed_exception_state() -> None:
-    _HostileStatusError.attribute_reads = 0
-    status_error = _HostileStatusError("secret body")
+    status_error = HttpError(429)
     outer = RuntimeError("secret wrapper")
     outer.__cause__ = status_error
 
     assert classify_failure(outer) == "rate_limited"
-    assert _HostileStatusError.attribute_reads == 0
     assert classify_failure(TimeoutError("secret timeout")) == "timeout"
     assert classify_failure(ProtocolError("secret response")) == "protocol"
     assert (
@@ -334,6 +378,82 @@ def test_failure_classifier_uses_only_bounded_typed_exception_state() -> None:
         )
         == "unsuccessful_response"
     )
+    assert classify_failure(ExceptionGroup("safe", [TimeoutError()])) == "timeout"
+
+
+def test_failure_classifier_never_reads_unknown_subclass_descriptors() -> None:
+    _HOSTILE_READS.clear()
+    hostile = RuntimeError.__new__(_HostileBenchmarkFailure)
+    RuntimeError.__init__(hostile, "secret body")
+    hostile_group = _HostileExceptionGroup("secret group", [TimeoutError()])
+
+    assert classify_failure(hostile) == "internal"
+    assert classify_failure(hostile_group) == "internal"
+    assert _HOSTILE_READS == []
+
+
+def test_integer_subclasses_are_rejected_without_comparison() -> None:
+    _HostileInt.comparisons = 0
+    status_error = HttpError(None)
+    status_error.status = _HostileInt(429)
+
+    assert classify_failure(status_error) == "internal"
+    with pytest.raises(ValueError, match="failure context"):
+        live_models.FailureContext(
+            phase="cancel_id",
+            logical_round=_HostileInt(0),
+            measured_round=None,
+            operation="placement",
+            launch_slot=None,
+            category="internal",
+            failed_count=1,
+            successful_count=0,
+            recovery_attempted=False,
+            recovery_count=0,
+            recovery_ok=None,
+        )
+    with pytest.raises(ValueError, match="failure context"):
+        live_models.FailureContext(
+            phase="cancel_id",
+            logical_round=0,
+            measured_round=None,
+            operation="placement",
+            launch_slot=None,
+            category="internal",
+            failed_count=1,
+            successful_count=0,
+            recovery_attempted=False,
+            recovery_count=_HostileInt(0),
+            recovery_ok=None,
+        )
+    assert _HostileInt.comparisons == 0
+
+
+def test_failure_context_rejects_unknown_truth_value_without_execution() -> None:
+    _HostileTruth.evaluations = 0
+
+    with pytest.raises(ValueError, match="failure context"):
+        live_models.FailureContext(
+            phase="cancel_id",
+            logical_round=0,
+            measured_round=None,
+            operation="placement",
+            launch_slot=None,
+            category="internal",
+            failed_count=1,
+            successful_count=0,
+            recovery_attempted=_HostileTruth(),  # type: ignore[arg-type]
+            recovery_count=0,
+            recovery_ok=None,
+        )
+    assert _HostileTruth.evaluations == 0
+
+
+def test_failure_classifier_is_cycle_safe_for_trusted_links() -> None:
+    error = RuntimeError("safe")
+    error.__cause__ = error
+
+    assert classify_failure(error) == "internal"
 
 
 def test_failure_classifier_does_not_guess_rate_limit_after_status_is_lost() -> None:

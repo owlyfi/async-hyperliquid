@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 import benchmarks.live_exchange as live_exchange
+from async_hyperliquid.errors import HttpError
 from benchmarks.live.models import (
     BenchmarkFailure,
     CanonicalOrder,
@@ -462,10 +463,6 @@ async def test_invalid_report_preserves_safe_suite_failure_context(
     assert "raw-response-secret" not in rendered
 
 
-class HostileRateLimitError(RuntimeError):
-    status_code = 429
-
-
 @pytest.mark.asyncio
 async def test_invalid_report_excludes_hostile_exception_values_and_classifies_429(
     tmp_path: Path,
@@ -481,7 +478,8 @@ async def test_invalid_report_excludes_hostile_exception_values_and_classifies_4
         "signature": "0xsensitive-signature",
         "body": "signed-request-response-body",
     }
-    hostile = HostileRateLimitError(" ".join(forbidden.values()))
+    hostile = RuntimeError(" ".join(forbidden.values()))
+    hostile.__cause__ = HttpError(429)
     provider = FakeProvider("async-hyperliquid", place_error=hostile)
     recovery = FakeProvider("recovery")
 
