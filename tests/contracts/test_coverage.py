@@ -31,6 +31,19 @@ def _called_methods(paths: tuple[str, ...]) -> set[str]:
     }
 
 
+def _called_info_coroutines(paths: tuple[str, ...]) -> set[str]:
+    return {
+        node.value.func.attr
+        for tree in _trees(paths)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Await)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and isinstance(node.value.func.value, ast.Name)
+        and node.value.func.value.id == "info"
+    }
+
+
 def _test_names(paths: tuple[str, ...]) -> set[str]:
     return {
         node.name
@@ -41,12 +54,26 @@ def _test_names(paths: tuple[str, ...]) -> set[str]:
     }
 
 
+def test_info_calls_require_awaited_info_receiver(tmp_path: Path) -> None:
+    source = tmp_path / "info_calls.py"
+    source.write_text(
+        """
+async def scenario(info, fake):
+    await info.all_mids()
+    info.user_role()
+    await fake.user_role()
+"""
+    )
+
+    assert _called_info_coroutines((str(source),)) == {"all_mids"}
+
+
 def test_info_public_coroutines_have_unit_and_integration_coverage() -> None:
     methods = _public_coroutines(InfoClient)
     deterministic = _called_methods(
         ("tests/unit/test_info.py", "tests/unit/test_metadata.py")
     )
-    integration = _called_methods(("tests/integration/test_info.py",))
+    integration = _called_info_coroutines(("tests/integration/test_info.py",))
 
     assert methods <= deterministic
     assert methods <= integration
