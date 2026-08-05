@@ -180,13 +180,14 @@ def _sdk_order_payload(
     account: LocalAccount,
     orders: list[SdkOrderRequest],
     *,
+    account_address: str,
     vault_address: str | None,
     expires_after: int | None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> JsonObject:
     client = object.__new__(SdkExchange)
     client.wallet = account
-    client.account_address = account.address
+    client.account_address = account_address
     client.vault_address = vault_address
     client.expires_after = expires_after
     client.base_url = TESTNET_API_URL
@@ -210,7 +211,8 @@ def _sdk_order_payload(
 
 
 async def _async_order_payload(
-    account: LocalAccount,
+    account_address: str,
+    signing_key: str,
     orders: tuple[PlaceOrderRequest, ...],
     *,
     vault_address: str | None,
@@ -219,7 +221,10 @@ async def _async_order_payload(
 ) -> JsonObject:
     transport = RecordingTransport()
     client = AsyncHyperliquid(
-        account.address, TEST_KEY, vault_address=vault_address, network=Network.TESTNET
+        account_address,
+        signing_key,
+        vault_address=vault_address,
+        network=Network.TESTNET,
     )
     client._transport = cast(_HttpTransport, transport)
     client._info = cast(InfoClient, AsyncInfo())
@@ -333,12 +338,14 @@ async def test_native_order_builders_produce_the_same_final_payload(
     expected = _sdk_order_payload(
         account,
         sdk_orders,
+        account_address=account.address,
         vault_address=vault_address,
         expires_after=expires_after,
         monkeypatch=monkeypatch,
     )
     actual = await _async_order_payload(
-        account,
+        account.address,
+        TEST_KEY,
         async_orders,
         vault_address=vault_address,
         expires_after=expires_after,
@@ -379,12 +386,14 @@ async def test_trigger_order_payload_matches_official_sdk_exactly(
     expected = _sdk_order_payload(
         account,
         [sdk_order],
+        account_address=account.address,
         vault_address=VAULT_ADDRESS,
         expires_after=None,
         monkeypatch=monkeypatch,
     )
     actual = await _async_order_payload(
-        account,
+        account.address,
+        TEST_KEY,
         (async_order,),
         vault_address=VAULT_ADDRESS,
         expires_after=None,
@@ -416,6 +425,86 @@ def _local_account(private_key_name: str, address_name: str) -> LocalAccount:
     if not is_address(address) or not is_same_address(account.address, address):
         raise AssertionError(f"{private_key_name} does not match {address_name}")
     return account
+
+
+async def test_subaccount_account_address_payload_matches_official_sdk_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    signing_key = _local_value("HL_SK")
+    api_address = _local_value("HL_AK")
+    master_address = _local_value("HL_ADDR")
+    subaccount_address = _local_value("HL_SUB")
+    if (
+        not signing_key
+        or not api_address
+        or not master_address
+        or not subaccount_address
+    ):
+        raise pytest.skip.Exception("HL_SK, HL_AK, HL_ADDR, and HL_SUB are required")
+
+    try:
+        account = Account.from_key(signing_key)
+    except (TypeError, ValueError):
+        raise AssertionError("HL_SK is not a valid private key") from None
+    if not is_address(api_address) or not is_same_address(account.address, api_address):
+        raise AssertionError("HL_SK does not match HL_AK")
+    if not is_address(master_address) or not is_address(subaccount_address):
+        raise AssertionError("HL_ADDR and HL_SUB must be Ethereum addresses")
+
+    sdk_orders: list[SdkOrderRequest] = [
+        {
+            "coin": "ASSET-0",
+            "is_buy": True,
+            "sz": 0.01,
+            "limit_px": 100_000.0,
+            "order_type": {"limit": {"tif": "Gtc"}},
+            "reduce_only": False,
+        }
+    ]
+    async_orders: tuple[PlaceOrderRequest, ...] = (
+        {
+            "coin": "ASSET-0",
+            "is_buy": True,
+            "sz": 0.01,
+            "px": 100_000.0,
+            "is_market": False,
+            "ro": False,
+            "order_type": limit_order_type(TimeInForce.GTC),
+        },
+    )
+    sdk_payloads: list[JsonObject] = []
+    async_payloads: list[JsonObject] = []
+
+    for account_address in (master_address, subaccount_address):
+        sdk_payloads.append(
+            _sdk_order_payload(
+                account,
+                sdk_orders,
+                account_address=account_address,
+                vault_address=subaccount_address,
+                expires_after=None,
+                monkeypatch=monkeypatch,
+            )
+        )
+        async_payloads.append(
+            await _async_order_payload(
+                account_address,
+                signing_key,
+                async_orders,
+                vault_address=subaccount_address,
+                expires_after=None,
+                monkeypatch=monkeypatch,
+            )
+        )
+
+    if async_payloads != sdk_payloads:
+        raise AssertionError("async payloads differ from official SDK payloads")
+    if async_payloads[0] != async_payloads[1]:
+        raise AssertionError("master-root and subaccount-root payloads differ")
+    if not all(
+        payload.get("vaultAddress") == subaccount_address for payload in async_payloads
+    ):
+        raise AssertionError("payload vault address differs from HL_SUB")
 
 
 @pytest.mark.parametrize(
