@@ -392,31 +392,18 @@ throughput, aggregation formula, and exact reproduction command.
 
 ### Live Exchange benchmark
 
-The repository also includes a rate-controlled testnet benchmark for
-async-hyperliquid OID versus CLOID cancellation and for end-to-end batch place
-and cancel latency across async-hyperliquid, the official SDK, and CCXT. Each
-workload places two BTC perpetual ALO orders at 90% and 110% of mid with
-approximately 11 USDC notional per order. See the
+The repository also includes a rate-controlled BTC perpetual testnet benchmark
+for concurrent async-hyperliquid cancellation by order ID (OID) and client
+order ID (CLOID). Each logical round places 20 ALO orders in one batch: ten
+buys at 90% of mid and ten sells at 110%, approximately 11 USDC each. It then
+releases ten OID and ten CLOID independent single-order cancellations through a
+shared start gate. See the
 [live benchmark safety and reproduction manual](https://github.com/traderfiapp/async-hyperliquid/blob/master/benchmarks/README.md#live-exchange-benchmark)
 before running it because it submits real testnet orders.
 
 <!-- live-exchange-benchmark:overall:start -->
-#### Published live Exchange result
-
-On the validated testnet run, CLOID cancellation had the lower median; the slower identifier was 1.009x the faster median.
-
-| Operation | Provider | Median (ms) | p95 (ms) |
-|---|---|---:|---:|
-| place_batch_2 | ccxt | 569.62 | 713.90 |
-| place_batch_2 | async-hyperliquid | 572.98 | 725.07 |
-| place_batch_2 | sdk | 573.03 | 816.82 |
-| cancel_batch_2_by_oid | ccxt | 868.22 | 1004.00 |
-| cancel_batch_2_by_oid | async-hyperliquid | 872.36 | 956.99 |
-| cancel_batch_2_by_oid | sdk | 872.88 | 985.23 |
-
-Overall equal-weight ranking: 1. ccxt (703.25 ms), 2. async-hyperliquid (707.00 ms), 3. sdk (707.24 ms).
-
-See the [detailed methodology, distributions, and artifacts](benchmarks/README.md#published-live-exchange-benchmark).
+No validated concurrent OID/CLOID result has been published yet. Provider
+diagnostic reports are not eligible for this section.
 <!-- live-exchange-benchmark:overall:end -->
 
 The credential-free Info command always runs the complete suite against both

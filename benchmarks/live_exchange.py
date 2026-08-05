@@ -69,9 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name, help_text in (
-        ("cancel-id", "compare async-hyperliquid OID and CLOID cancellation"),
-        ("providers", "compare batch placement and cancellation across providers"),
-        ("all", "run both live benchmark suites"),
+        ("cancel-id", "run the publishable 20-request OID/CLOID benchmark"),
+        ("providers", "run the unpublishable provider diagnostic suite"),
+        ("all", "run both suites for diagnostics; output is not publishable"),
     ):
         command = commands.add_parser(name, help=help_text)
         _add_live_arguments(command)

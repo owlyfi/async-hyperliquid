@@ -2,24 +2,25 @@
 
 ## Live Exchange benchmark
 
-This benchmark submits real orders to Hyperliquid testnet. It compares
-`async-hyperliquid` cancellation by order ID (OID) with cancellation by client
-order ID (CLOID), then compares `async-hyperliquid`,
-`hyperliquid-python-sdk==0.24.0`, and `ccxt==4.5.71` for batch placement and
-batch cancellation. It never targets mainnet, but it does require a funded
-testnet subaccount and should be treated as a live trading program.
+This benchmark submits real BTC perpetual orders to Hyperliquid testnet. The
+publishable suite measures concurrent `async-hyperliquid` cancellation by
+order ID (OID) and client order ID (CLOID). It never targets mainnet, but it
+requires a funded testnet subaccount and should be treated as a live trading
+program. The `providers` and `all` commands remain available only for
+diagnostics; their reports are unpublishable.
 
-Every logical workload uses the BTC perpetual and submits exactly two ALO
-orders with unique CLOIDs:
+Each logical round fetches one mid-price snapshot and places 20 unique ALO
+orders in one batch: ten buys at `mid * 0.90` and ten sells at `mid * 1.10`,
+each approximately 11 USDC after exchange size rounding. All 20 responses must
+be `resting`. The runner splits them into balanced ten-order OID and CLOID
+groups, creates 20 independent single-order cancellation tasks (ten per
+method), and releases them simultaneously through a shared async start gate.
+Each method receives five buys and five sells; pair assignment and task launch
+slots swap every logical round for fairness.
 
-- buy price: `mid * 0.90`;
-- sell price: `mid * 1.10`;
-- target notional: approximately 11 USDC for each order after exchange size
-  rounding.
-
-Both orders must return a `resting` status. A fill, rejection, malformed
-response, rate-limit response, or unsuccessful cancellation invalidates the
-whole run; measured failures are never retried or dropped.
+A fill, rejection, malformed response, rate-limit response, unsuccessful
+cancellation, or cleanup failure invalidates the whole run. Measured failures
+are never retried or dropped.
 
 ### Safety prerequisites
 
@@ -57,11 +58,12 @@ three untallied warmups followed by 30 measured rounds with 250 ms reserved per
 REST weight:
 
 ```bash
-uv run --frozen --group benchmark python benchmarks/live_exchange.py all \
+uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
   --output-dir /tmp/hl-live-default
 ```
 
-The suites can also be run separately for diagnostics:
+The provider commands are retained for diagnostics, but their reports cannot
+be published:
 
 ```bash
 uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
@@ -72,20 +74,22 @@ uv run --frozen --group benchmark python benchmarks/live_exchange.py providers \
 ```
 
 `--rounds`, `--warmups`, and `--interval-ms` may be changed for smoke runs;
-`--interval-ms` cannot be lower than 250. Only a complete `all` report with
-the exact defaults and locked library versions can update the committed
-results.
+`--interval-ms` cannot be lower than 250. Only a complete `cancel-id` report
+with the exact defaults, clean revision, locked library versions, successful
+cleanup, and exactly 300 samples for each method can update committed results.
 
 ### Rate-limit budget
 
-Hyperliquid documents a 1,200 REST-weight/minute IP limit. An Exchange batch
-containing two orders or two cancellations has weight
-`1 + floor(batch_length / 40) = 1`. The global pacer reserves at least 250 ms
-for every unit of request weight, limiting the controlled workload to 240
-weight/minute, or 20% of the documented IP allowance. Market snapshots are
-reserved at their documented weight as well. Metadata and role validation
-happen before timing and use the remaining headroom; avoid any other traffic
-from the same public IP while collecting a report. See the
+Hyperliquid documents a 1,200 REST-weight/minute IP limit. One round reserves
+weight 2 for the mid snapshot, weight 1 for the one 20-order placement batch,
+and weight 20 once before the concurrent cancellation burst: 23 weight total.
+The global pacer reserves at least 250 ms for every unit of request weight,
+limiting the controlled workload to 240 weight/minute, or 20% of the documented
+IP allowance. The default 33-round run reserves 759 weight, with a theoretical
+pacing floor of about 189.75 seconds excluding initialization and network time.
+It places about 660 testnet orders including warmups. Metadata and role
+validation happen before timing and use the remaining headroom; avoid any other
+traffic from the same public IP while collecting a report. See the
 [official rate-limit documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits).
 
 Address-based cumulative limits still apply. The benchmark does not claim
@@ -94,31 +98,25 @@ or execution account.
 
 ### Timing and fairness
 
-A measured sample begins immediately before the provider's public batch method
-and ends after encoding, signing, HTTP transport, response receipt, response
-parsing, and strict success validation. Imports, client construction, metadata,
-role checks, mid lookup, pacing sleep, recovery cleanup, report serialization,
-and chart generation are outside the measured interval.
-
-Provider order rotates every round. OID/CLOID cancellation order and the order
-side assigned to each identifier alternate by round. All providers first build
-an unsubmitted canonical probe and must produce identical wire orders. Each
-real provider placement then receives a different pair of CLOIDs so one
-provider can never cancel another provider's orders.
-
-CCXT's default Hyperliquid initialization may submit builder/referrer setup
-actions and attach builder parameters. After sandbox market initialization,
-the adapter explicitly disables that initialization path and builder fee so
-the measured Exchange action matches the other two providers exactly.
+Each request sample starts after the shared gate opens, immediately before its
+public single-order cancel method, and ends after encoding, signing, HTTP
+transport, response parsing, and strict success validation. Imports, client
+construction, metadata, role checks, mid lookup, pacing sleep, recovery,
+serialization, and chart generation are outside the interval. The default run
+records 600 request samples: 300 OID and 300 CLOID. Reporting also derives 30
+per-round maxima per method, one maximum across that method's ten requests per
+round. Request distributions report median, MAD, p95, minimum, and maximum;
+round-max distributions report median and p95.
 
 ### Cleanup, artifacts, and publication
 
-Each successful measured placement is cancelled immediately. If placement,
-parsing, or measured cancellation fails, the recovery client attempts a
-targeted batch cancellation using the two unique CLOIDs before the error is
-propagated. An explicit successful cancel response is required. Any recovery
-or client-close failure sets `cleanup_ok=false`; inspect the testnet subaccount
-manually before another run whenever the command exits nonzero.
+Each successful placement is tracked by CLOID until its cancellation has an
+explicit success response. All launched tasks are awaited, even after a
+failure. Failed, timed-out, malformed, or indeterminate requests invalidate
+the round and report; recovery then sends a targeted CLOID batch cancellation
+for the remaining orders. Any recovery or client-close failure sets
+`cleanup_ok=false`; inspect the testnet subaccount manually before another run
+whenever the command exits nonzero.
 
 A valid selected-suite run writes sanitized `report.json`, `samples.csv`, and
 the applicable PNG/SVG figures. An invalid run writes
@@ -126,7 +124,7 @@ the applicable PNG/SVG figures. An invalid run writes
 publish figures or CSV as a successful result. Exit status zero means all
 selected suites, cleanup, report, CSV, and figures completed.
 
-After inspecting a default-shape `all` run, publish it explicitly:
+After inspecting a valid default-shape `cancel-id` run, publish it explicitly:
 
 ```bash
 uv run --frozen --group benchmark python benchmarks/live_exchange.py publish \
@@ -134,62 +132,14 @@ uv run --frozen --group benchmark python benchmarks/live_exchange.py publish \
 ```
 
 Publication recomputes and validates the exact sample shape and summaries,
-requires clean completion and pinned versions, copies JSON/CSV/PNG/SVG into
-`benchmarks/results/<UTC timestamp>/`, then updates the detailed block below
-and the overall block in the repository README from the same report.
+requires clean completion, cleanup, revision, and pinned versions, copies the
+sanitized report, 600-sample CSV, and cancel-id PNG/SVG into
+`benchmarks/results/<UTC timestamp>/`, then updates the marker blocks below
+and in the repository README. Provider diagnostic reports are ineligible.
 
 <!-- live-exchange-benchmark:detail:start -->
-## Published live Exchange benchmark
-
-Validated testnet run completed `2026-08-05T11:21:27.452390Z`. The runner used
-three warmup rounds, 30 measured rounds, and a maximum controlled rate of
-240 weight/minute. Initialization, market metadata, mid lookup, pacing, and
-cleanup are excluded from measured latency.
-
-| Environment | Value |
-|---|---|
-| network | testnet |
-| platform | Darwin-arm64 |
-| python | 3.12.13 |
-| async-hyperliquid | 1.0.0rc1 |
-| ccxt | 4.5.71 |
-| sdk | 0.24.0 |
-
-### OID versus CLOID cancellation
-
-CLOID had the lower median latency; the slower median was 1.009x the faster median.
-
-| Identifier | Median (ms) | MAD (ms) | p95 (ms) | Min (ms) | Max (ms) |
-|---|---:|---:|---:|---:|---:|
-| OID | 876.84 | 46.04 | 1028.63 | 804.35 | 1141.53 |
-| CLOID | 869.04 | 25.14 | 978.29 | 818.43 | 995.77 |
-
-![OID and CLOID latency](results/20260805T112127Z/cancel-id-latency.svg)
-
-### Provider comparison
-
-| Operation | Provider | Median (ms) | MAD (ms) | p95 (ms) |
-|---|---|---:|---:|---:|
-| place_batch_2 | async-hyperliquid | 572.98 | 31.34 | 725.07 |
-| place_batch_2 | sdk | 573.03 | 44.03 | 816.82 |
-| place_batch_2 | ccxt | 569.62 | 35.76 | 713.90 |
-| cancel_batch_2_by_oid | async-hyperliquid | 872.36 | 41.34 | 956.99 |
-| cancel_batch_2_by_oid | sdk | 872.88 | 37.18 | 985.23 |
-| cancel_batch_2_by_oid | ccxt | 868.22 | 33.71 | 1004.00 |
-
-![Provider place and cancel latency](results/20260805T112127Z/providers-latency.svg)
-
-### Equal-weight overall latency
-
-| Rank | Provider | Geometric mean of place/cancel medians (ms) |
-|---:|---|---:|
-| 1 | ccxt | 703.25 |
-| 2 | async-hyperliquid | 707.00 |
-| 3 | sdk | 707.24 |
-
-Artifacts: [sanitized JSON](results/20260805T112127Z/report.json), [sample CSV](results/20260805T112127Z/samples.csv).
-
-These measurements describe one testnet run, not exchange capacity. Shared-IP traffic, geography, testnet load, dependency versions, and network conditions can change results.
+No validated concurrent OID/CLOID result has been published yet. Provider
+diagnostic reports are not eligible for this section.
 <!-- live-exchange-benchmark:detail:end -->
 
 ## Signing benchmark

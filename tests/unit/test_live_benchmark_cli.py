@@ -11,7 +11,7 @@ from benchmarks.live.models import BenchmarkFailure, CanonicalOrder, OrderPair
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import ProviderSet, WireOrder
-from benchmarks.live_exchange import parse_args, run_live
+from benchmarks.live_exchange import build_parser, parse_args, run_live
 
 
 ROOT = Path(__file__).parents[2]
@@ -42,9 +42,7 @@ class FakeProvider:
         )
         return cast(tuple[WireOrder, WireOrder], orders)
 
-    async def place_many(
-        self, orders: Sequence[CanonicalOrder]
-    ) -> tuple[int, ...]:
+    async def place_many(self, orders: Sequence[CanonicalOrder]) -> tuple[int, ...]:
         if self.fail_place:
             raise TimeoutError("raw-response-secret")
         first_oid = self._next_oid
@@ -106,6 +104,18 @@ def test_live_cli_defaults_and_required_paths(tmp_path: Path) -> None:
         parse_args(["providers"])
     with pytest.raises(SystemExit):
         parse_args(["publish"])
+
+
+def test_cancel_id_is_the_only_publishable_live_suite(tmp_path: Path) -> None:
+    args = parse_args(["cancel-id", "--output-dir", str(tmp_path)])
+
+    assert args.command == "cancel-id"
+    assert args.rounds == 30
+    assert args.warmups == 3
+    assert args.interval_ms == 250
+    help_text = build_parser().format_help()
+    assert "publishable 20-request OID/CLOID benchmark" in help_text
+    assert "unpublishable provider diagnostic suite" in help_text
 
 
 def test_live_cli_rejects_interval_below_rate_limit_floor(tmp_path: Path) -> None:
@@ -206,6 +216,50 @@ async def test_all_runs_offline_through_injected_providers(tmp_path: Path) -> No
     assert (tmp_path / "samples.csv").is_file()
     assert (tmp_path / "cancel-id-latency.svg").is_file()
     assert (tmp_path / "providers-latency.png").is_file()
+
+
+@pytest.mark.asyncio
+async def test_default_cancel_id_run_records_600_request_samples(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider("async-hyperliquid")
+    recovery = FakeProvider("recovery")
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=FakeMarketSource(),
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(["cancel-id", "--output-dir", str(tmp_path)]),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        clock_ns=IncrementingClock(1_000_000),
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    report = json.loads(outcome.report_path.read_text())
+    assert outcome.valid
+    assert len(report["samples"]) == 600
+    assert (
+        sum(sample["operation"] == "cancel_by_oid" for sample in report["samples"])
+        == 300
+    )
+    assert (
+        sum(sample["operation"] == "cancel_by_cloid" for sample in report["samples"])
+        == 300
+    )
 
 
 def test_documented_script_entrypoint_can_render_help() -> None:
