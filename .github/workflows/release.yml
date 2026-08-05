@@ -127,13 +127,13 @@ jobs:
         run: |
           uv venv .wheel-venv
           uv pip install --python .wheel-venv/bin/python dist/*.whl
-          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrderType, Network"
 
       - name: Smoke-test installed source distribution public API
         run: |
           uv venv .sdist-venv
           uv pip install --python .sdist-venv/bin/python dist/*.tar.gz
-          .sdist-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+          .sdist-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrderType, Network"
 
       - name: Validate distribution metadata
         env:
@@ -358,7 +358,7 @@ jobs:
         run: |
           uv venv --python 3.12 .verify-venv
           uv pip install --python .verify-venv/bin/python --no-cache "async-hyperliquid==${VERSION}"
-          .verify-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+          .verify-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrderType, Network"
 
       - name: Verify immutable GitHub Release
         env:

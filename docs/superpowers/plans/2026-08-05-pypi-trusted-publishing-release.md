@@ -174,8 +174,8 @@ ASYNC_HYPERLIQUID_WHEEL_DIR=dist uv run pytest -q tests/package
 ```
 
 Create isolated wheel and sdist virtual environments, install each local file,
-and import `AsyncHyperliquid`, `HyperliquidError`, `InfoClient`, `LimitOrder`, and
-`Network`. Validate that exactly one wheel and one sdist exist and that wheel
+and import `AsyncHyperliquid`, `HyperliquidError`, `InfoClient`,
+`LimitOrderType`, and `Network`. Validate that exactly one wheel and one sdist exist and that wheel
 `METADATA` contains name `async-hyperliquid` and the validated version. Then run:
 
 ```bash

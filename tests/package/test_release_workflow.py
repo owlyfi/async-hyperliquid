@@ -82,6 +82,18 @@ def test_workflows_install_the_benchmark_group_before_type_checking_it() -> None
     assert sync in release_build_job
 
 
+def test_workflow_smoke_tests_import_the_current_public_types() -> None:
+    workflows = "\n".join(
+        (ROOT / ".github" / "workflows" / name).read_text()
+        for name in ("ci.yml", "release.yml")
+    )
+    assert "from async_hyperliquid.types import LimitOrder, Network" not in workflows
+    assert (
+        workflows.count("from async_hyperliquid.types import LimitOrderType, Network")
+        == 5
+    )
+
+
 def test_published_project_urls_use_current_repository() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     urls = project["urls"]
