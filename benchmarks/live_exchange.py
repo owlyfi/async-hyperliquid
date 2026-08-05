@@ -131,7 +131,9 @@ def _git_metadata(repository_root: Path) -> GitMetadata:
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
 
 
 def _default_pacer(interval_ns: int) -> WeightedPacer:

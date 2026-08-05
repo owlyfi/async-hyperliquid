@@ -119,7 +119,7 @@ def parse_ccxt_resting_oids(orders: object) -> tuple[int, int]:
             if oid is None or parsed_id != oid:
                 break
             oids.append(oid)
-    if len(oids) != 2:
+    if len(oids) != 2 or len(set(oids)) != 2:
         raise BenchmarkFailure("ccxt produced a non-resting placement result")
     return (oids[0], oids[1])
 

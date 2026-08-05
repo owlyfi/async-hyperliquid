@@ -7,10 +7,18 @@ from typing import cast
 
 import pytest
 
-from benchmarks.live.models import BenchmarkFailure, CanonicalOrder, OrderPair
+import benchmarks.live_exchange as live_exchange
+from benchmarks.live.models import (
+    BenchmarkFailure,
+    CanonicalOrder,
+    GitMetadata,
+    LiveBenchmarkReport,
+    OrderPair,
+)
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import ProviderSet, WireOrder
+from benchmarks.live.reporting import validate_publishable
 from benchmarks.live_exchange import build_parser, parse_args, run_live
 
 
@@ -302,7 +310,7 @@ async def test_cancel_id_rejects_async_provider_without_concurrent_placement(
 
 @pytest.mark.asyncio
 async def test_default_cancel_id_run_records_600_request_samples(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     provider = FakeProvider("async-hyperliquid")
     recovery = FakeProvider("recovery")
@@ -315,6 +323,12 @@ async def test_default_cancel_id_run_records_600_request_samples(
             mid_source=FakeMarketSource(),
             owned=(provider, recovery),
         )
+
+    monkeypatch.setattr(
+        live_exchange,
+        "_git_metadata",
+        lambda _: GitMetadata(revision="a" * 40, dirty=False),
+    )
 
     outcome = await run_live(
         parse_args(["cancel-id", "--output-dir", str(tmp_path)]),
@@ -333,6 +347,7 @@ async def test_default_cancel_id_run_records_600_request_samples(
 
     report = json.loads(outcome.report_path.read_text())
     assert outcome.valid
+    validate_publishable(cast(LiveBenchmarkReport, report))
     assert report["config"]["workload"] == (
         "cancel-id-concurrent-batch20-singles20-10-per-method-v1"
     )

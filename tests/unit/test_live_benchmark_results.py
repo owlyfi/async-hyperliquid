@@ -105,6 +105,20 @@ def test_ccxt_place_parser_requires_resting_info_and_ids() -> None:
         parse_ccxt_resting_oids(orders)
 
 
+def test_ccxt_place_parser_rejects_duplicate_oid_identity_without_value() -> None:
+    orders = [
+        {"id": "777", "status": None, "info": {"resting": {"oid": 777}}},
+        {"id": "777", "status": None, "info": {"resting": {"oid": 777}}},
+    ]
+
+    with pytest.raises(
+        BenchmarkFailure, match="^ccxt produced a non-resting placement result$"
+    ) as raised:
+        parse_ccxt_resting_oids(orders)
+
+    assert "777" not in str(raised.value)
+
+
 def test_ccxt_cancel_parser_requires_success_info() -> None:
     parse_ccxt_cancel_success(
         [
