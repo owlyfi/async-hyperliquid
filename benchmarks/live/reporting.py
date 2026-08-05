@@ -534,11 +534,11 @@ def _load_report(path: Path) -> LiveBenchmarkReport:
 def _artifact_timestamp(completed_at: str) -> str:
     try:
         parsed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
-    except ValueError as error:
+        if parsed.tzinfo is None:
+            raise ValueError("completion time must include a timezone")
+        return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    except (ValueError, OverflowError) as error:
         raise BenchmarkFailure("report completion time is not publishable") from error
-    if parsed.tzinfo is None:
-        raise BenchmarkFailure("report completion time is not publishable")
-    return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def publish_report(report_path: Path, repository_root: Path) -> Path:

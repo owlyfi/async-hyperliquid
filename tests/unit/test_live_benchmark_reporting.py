@@ -373,6 +373,33 @@ def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:
     assert (tmp_path / "README.md").read_text() == "missing markers\n"
 
 
+def test_publish_sanitizes_overflowing_completion_timestamp_before_mutation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    report = _valid_report()
+    report["completed_at"] = "0001-01-01T00:00:00+23:59"
+    validate_publishable(report)
+    report_path = write_report(report, source, forbidden_values=())
+    write_csv(report, source)
+    for filename in FIGURE_FILENAMES[:2]:
+        (source / filename).write_bytes(b"safe benchmark figure")
+    original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
+    original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
+    (tmp_path / "README.md").write_text(original_root)
+    benchmarks = tmp_path / "benchmarks"
+    benchmarks.mkdir()
+    (benchmarks / "README.md").write_text(original_detail)
+
+    with pytest.raises(BenchmarkFailure, match="^report completion time is not publishable$"):
+        publish_report(report_path, tmp_path)
+
+    assert (tmp_path / "README.md").read_text() == original_root
+    assert (benchmarks / "README.md").read_text() == original_detail
+    assert not (benchmarks / "results").exists()
+
+
 def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
