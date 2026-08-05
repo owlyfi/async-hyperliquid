@@ -50,7 +50,11 @@ dev = [
     "hyperliquid-python-sdk>=0.24.0,<0.25.0",
     "ty>=0.0.22",
 ]
-benchmark = ["ccxt==4.5.71", "coincurve==21.0.0"]
+benchmark = [
+    "ccxt==4.5.71",
+    "coincurve==21.0.0",
+    "matplotlib>=3.10,<4",
+]
 
 [project.urls]
 Homepage = "https://github.com/traderfiapp/async-hyperliquid"
