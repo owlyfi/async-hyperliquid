@@ -21,6 +21,7 @@ def test_exchange_tests_are_collected_by_default() -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "test_place_limit_order" in result.stdout
+    assert "test_routes_orders_to_expected_owner" in result.stdout
 
 
 def test_info_tests_collect_both_networks() -> None:

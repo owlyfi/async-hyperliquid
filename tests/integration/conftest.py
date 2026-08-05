@@ -60,7 +60,7 @@ async def _validate_exchange_roles(info: InfoClient) -> None:
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def master_hl() -> AsyncIterator[AsyncHyperliquid]:
+async def master_key_hl() -> AsyncIterator[AsyncHyperliquid]:
     _prepare_exchange()
     async with AsyncHyperliquid(
         require_env("HL_ADDR", os.environ),
@@ -74,12 +74,11 @@ async def master_hl() -> AsyncIterator[AsyncHyperliquid]:
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def hl() -> AsyncIterator[AsyncHyperliquid]:
+async def master_hl() -> AsyncIterator[AsyncHyperliquid]:
     _prepare_exchange()
     async with AsyncHyperliquid(
         require_env("HL_ADDR", os.environ),
         require_env("HL_SK", os.environ),
-        vault_address=require_env("HL_SUB", os.environ),
         network=Network.TESTNET,
         dexs=_DEXS,
     ) as client:
@@ -91,11 +90,10 @@ async def hl() -> AsyncIterator[AsyncHyperliquid]:
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def sub_hl() -> AsyncIterator[AsyncHyperliquid]:
     _prepare_exchange()
-    subaccount = require_env("HL_SUB", os.environ)
     async with AsyncHyperliquid(
-        subaccount,
+        require_env("HL_ADDR", os.environ),
         require_env("HL_SK", os.environ),
-        vault_address=subaccount,
+        vault_address=require_env("HL_SUB", os.environ),
         network=Network.TESTNET,
         dexs=_DEXS,
     ) as client:
