@@ -1,7 +1,9 @@
 import asyncio
 import csv
+import errno
 import fcntl
 import os
+import signal
 import subprocess
 from pathlib import Path
 from collections.abc import Callable
@@ -889,6 +891,100 @@ def test_interrupt_after_mkdir_before_identity_handoff_leaves_no_orphan(
     _assert_no_publication_debris(repository)
 
 
+@pytest.mark.parametrize("directory_kind", ["results", "staging"])
+def test_sigterm_after_real_mkdir_is_deferred_until_ownership_handoff(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, directory_kind: str
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    real_mkdir = os.mkdir
+    delivered: list[int] = []
+    sent = False
+
+    def raises_system_exit(signum: int, frame: object) -> None:
+        del frame
+        delivered.append(signum)
+        raise SystemExit(15)
+
+    def mkdir_then_sigterm(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal sent
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        candidate = Path(path)
+        matches = (
+            candidate.name == "results"
+            if directory_kind == "results"
+            else candidate.name.endswith(".staging")
+        )
+        if matches and not sent:
+            sent = True
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    previous_handler = signal.signal(signal.SIGTERM, raises_system_exit)
+    monkeypatch.setattr(os, "mkdir", mkdir_then_sigterm)
+    try:
+        with pytest.raises(SystemExit) as raised:
+            publish_report(report_path, repository)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert raised.value.code == 15
+    assert sent
+    assert delivered == [signal.SIGTERM]
+    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+    assert not (repository / "benchmarks" / "results").exists()
+
+
+@pytest.mark.parametrize("directory_kind", ["results", "staging"])
+@pytest.mark.parametrize("control_flow", [KeyboardInterrupt(), SystemExit(23)])
+def test_injected_control_flow_after_real_mkdir_registers_owned_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    directory_kind: str,
+    control_flow: BaseException,
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    real_mkdir = os.mkdir
+    injected = False
+
+    def mkdir_then_interrupt(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal injected
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        candidate = Path(path)
+        matches = (
+            candidate.name == "results"
+            if directory_kind == "results"
+            else candidate.name.endswith(".staging")
+        )
+        if matches and not injected:
+            injected = True
+            raise control_flow
+
+    monkeypatch.setattr(os, "mkdir", mkdir_then_interrupt)
+
+    with pytest.raises(type(control_flow)) as raised:
+        publish_report(report_path, repository)
+
+    assert raised.value is control_flow
+    assert injected
+    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+    assert not (repository / "benchmarks" / "results").exists()
+
+
 def test_final_destination_collision_fails_before_readme_mutation(
     tmp_path: Path,
 ) -> None:
@@ -1011,13 +1107,14 @@ def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
         owned_path, reporting._require_kind(owned_path, directory=kind != "file")
     )
     moved = tmp_path / "moved-owned"
-    real_matches = reporting._matches_identity
+    real_rename_noreplace_at = reporting._rename_noreplace_at
     swapped = False
 
-    def match_then_swap(path: Path, identity: Any) -> bool:
+    def swap_then_rename(
+        source_fd: int, source_name: str, destination_fd: int, destination_name: str
+    ) -> None:
         nonlocal swapped
-        matched = real_matches(path, identity)
-        if path == owned_path and matched and not swapped:
+        if source_name == owned_path.name and not swapped:
             swapped = True
             owned_path.rename(moved)
             if kind == "file":
@@ -1026,9 +1123,11 @@ def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
                 owned_path.mkdir()
                 if kind == "tree":
                     (owned_path / "foreign.txt").write_text("foreign\n")
-        return matched
+        real_rename_noreplace_at(
+            source_fd, source_name, destination_fd, destination_name
+        )
 
-    monkeypatch.setattr(reporting, "_matches_identity", match_then_swap)
+    monkeypatch.setattr(reporting, "_rename_noreplace_at", swap_then_rename)
 
     if kind == "tree":
         reporting._remove_owned_directory(owned)
@@ -1040,6 +1139,128 @@ def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
         reporting._remove_owned_file(owned)
         assert owned_path.read_text() == "foreign\n"
     assert moved.exists()
+
+
+@pytest.mark.parametrize("kind", ["tree", "empty-directory", "file"])
+def test_cleanup_swap_after_quarantine_verification_preserves_foreign_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
+) -> None:
+    owned_path = tmp_path / "owned"
+    if kind == "file":
+        owned_path.write_text("owned\n")
+    else:
+        owned_path.mkdir()
+        if kind == "tree":
+            (owned_path / "owned.txt").write_text("owned\n")
+    owned = reporting._OwnedPath(
+        owned_path, reporting._require_kind(owned_path, directory=kind != "file")
+    )
+    real_identity_from_stat = reporting._identity_from_stat
+    swapped: list[tuple[Path, Path]] = []
+
+    def identify_then_swap(value: os.stat_result) -> Any:
+        identity = real_identity_from_stat(value)
+        if identity == owned.identity and not swapped:
+            candidates = [
+                candidate
+                for candidate in tmp_path.rglob("*")
+                if ".cleanup" in str(candidate.relative_to(tmp_path))
+                and candidate.lstat().st_dev == owned.identity.device
+                and candidate.lstat().st_ino == owned.identity.inode
+            ]
+            if candidates:
+                quarantine = candidates[0]
+                moved = quarantine.with_name(f"{quarantine.name}.moved-owned")
+                quarantine.rename(moved)
+                if kind == "file":
+                    quarantine.write_text("foreign\n")
+                else:
+                    quarantine.mkdir()
+                    if kind == "tree":
+                        (quarantine / "foreign.txt").write_text("foreign\n")
+                swapped.append((quarantine, moved))
+        return identity
+
+    monkeypatch.setattr(reporting, "_identity_from_stat", identify_then_swap)
+
+    if kind == "tree":
+        reporting._remove_owned_directory(owned)
+    elif kind == "empty-directory":
+        reporting._remove_owned_empty_directory(owned)
+    else:
+        reporting._remove_owned_file(owned)
+
+    assert len(swapped) == 1
+    quarantine, moved = swapped[0]
+    if kind == "tree":
+        assert (quarantine / "foreign.txt").read_text() == "foreign\n"
+    elif kind == "empty-directory":
+        assert quarantine.is_dir()
+    else:
+        assert quarantine.read_text() == "foreign\n"
+    assert moved.exists()
+
+
+@pytest.mark.parametrize("kind", ["tree", "empty-directory", "file"])
+@pytest.mark.parametrize("close_error", [OSError("close failed"), KeyboardInterrupt()])
+def test_cleanup_finishes_committed_quarantine_before_parent_close_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kind: str,
+    close_error: BaseException,
+) -> None:
+    owned_path = tmp_path / "owned"
+    if kind == "file":
+        owned_path.write_text("owned\n")
+    else:
+        owned_path.mkdir()
+        if kind == "tree":
+            (owned_path / "owned.txt").write_text("owned\n")
+    owned = reporting._OwnedPath(
+        owned_path, reporting._require_kind(owned_path, directory=kind != "file")
+    )
+    real_open = os.open
+    real_close = os.close
+    parent_fds: set[int] = set()
+    injected = False
+
+    def record_parent_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if dir_fd is None and Path(path) == tmp_path:
+            parent_fds.add(fd)
+        return fd
+
+    def close_parent_then_raise(fd: int) -> None:
+        nonlocal injected
+        should_raise = fd in parent_fds and not injected
+        parent_fds.discard(fd)
+        real_close(fd)
+        if should_raise:
+            injected = True
+            raise close_error
+
+    monkeypatch.setattr(os, "open", record_parent_open)
+    monkeypatch.setattr(os, "close", close_parent_then_raise)
+
+    with pytest.raises(type(close_error)) as raised:
+        if kind == "tree":
+            reporting._remove_owned_directory(owned)
+        elif kind == "empty-directory":
+            reporting._remove_owned_empty_directory(owned)
+        else:
+            reporting._remove_owned_file(owned)
+
+    if not isinstance(close_error, Exception):
+        assert raised.value is close_error
+    assert injected
+    assert not owned_path.exists()
+    assert list(tmp_path.glob(".*.cleanup*")) == []
 
 
 def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
@@ -1080,21 +1301,25 @@ def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
 def test_control_flow_during_compensation_is_re_raised_unchanged(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, control_flow: BaseException
 ) -> None:
-    repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
     destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+    real_atomic_text_if_unchanged = reporting._atomic_text_if_unchanged
 
     def fail_final_rename(source: Path, target: Path, **kwargs: Any) -> None:
         del source, kwargs
         assert target == destination
         raise OSError("final rename failed")
 
-    def interrupt_rollback(path: Path, content: str) -> None:
-        del path, content
-        raise control_flow
+    def interrupt_rollback(change: reporting._AtomicTextChange) -> None:
+        if change.replacement in {original_root, original_detail}:
+            raise control_flow
+        real_atomic_text_if_unchanged(change)
 
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
     monkeypatch.setattr(reporting, "_atomic_move_noreplace", fail_final_rename)
-    monkeypatch.setattr(reporting, "_atomic_text", interrupt_rollback)
+    monkeypatch.setattr(reporting, "_atomic_text_if_unchanged", interrupt_rollback)
 
     with pytest.raises(type(control_flow)) as raised:
         publish_report(report_path, repository)
@@ -1171,6 +1396,240 @@ def test_readme_change_during_prepared_temp_window_is_not_overwritten(
     assert (repository / "README.md").read_text() == original_root
 
 
+@pytest.mark.parametrize("readme_kind", ["benchmark", "root"])
+@pytest.mark.parametrize("foreign_kind", ["file", "dangling-symlink"])
+def test_readme_target_swap_at_exchange_is_restored_and_publication_aborts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, readme_kind: str, foreign_kind: str
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    root_readme = repository / "README.md"
+    benchmark_readme = repository / "benchmarks" / "README.md"
+    target = benchmark_readme if readme_kind == "benchmark" else root_readme
+    original_target = original_detail if readme_kind == "benchmark" else original_root
+    original_aside = target.with_name(f".{target.name}.concurrent-original")
+    missing_target = target.with_name("missing-foreign-target")
+    real_exchange = reporting._rename_exchange_at
+    desired_commit = 1 if readme_kind == "benchmark" else 2
+    commit_count = 0
+    injected = False
+
+    def swap_target_then_exchange(
+        source_fd: int, source_name: str, destination_fd: int, destination_name: str
+    ) -> None:
+        nonlocal commit_count, injected
+        if source_name.endswith(".tmp") and destination_name == "README.md":
+            commit_count += 1
+            if commit_count == desired_commit:
+                injected = True
+                target.rename(original_aside)
+                if foreign_kind == "file":
+                    target.write_text("foreign README\n")
+                else:
+                    target.symlink_to(missing_target)
+        real_exchange(source_fd, source_name, destination_fd, destination_name)
+
+    monkeypatch.setattr(reporting, "_rename_exchange_at", swap_target_then_exchange)
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert injected
+    assert original_aside.read_text() == original_target
+    if foreign_kind == "file":
+        assert target.read_text() == "foreign README\n"
+    else:
+        assert target.is_symlink()
+        assert os.readlink(target) == str(missing_target)
+    other = root_readme if readme_kind == "benchmark" else benchmark_readme
+    other_original = original_root if readme_kind == "benchmark" else original_detail
+    assert other.read_text() == other_original
+
+
+@pytest.mark.parametrize("parent_kind", ["root", "benchmark"])
+def test_readme_parent_swap_at_exchange_uses_pinned_parent_and_aborts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, parent_kind: str
+) -> None:
+    repository = tmp_path / "repository"
+    benchmark_parent = repository / "benchmarks"
+    benchmark_parent.mkdir(parents=True)
+    parent = repository if parent_kind == "root" else benchmark_parent
+    target = parent / "README.md"
+    target.write_text("original\n")
+    target_identity = reporting._require_kind(target, directory=False)
+    change = reporting._AtomicTextChange(
+        path=target,
+        snapshot="original\n",
+        snapshot_identity=target_identity,
+        replacement="replacement\n",
+    )
+    moved_parent = parent.with_name(f"{parent.name}.moved-original")
+    real_exchange = reporting._rename_exchange_at
+    injected = False
+
+    def swap_parent_then_exchange(
+        source_fd: int, source_name: str, destination_fd: int, destination_name: str
+    ) -> None:
+        nonlocal injected
+        if source_name.endswith(".tmp") and not injected:
+            injected = True
+            parent.rename(moved_parent)
+            parent.mkdir(parents=True)
+            (parent / "README.md").write_text("foreign parent README\n")
+        real_exchange(source_fd, source_name, destination_fd, destination_name)
+
+    monkeypatch.setattr(reporting, "_rename_exchange_at", swap_parent_then_exchange)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        reporting._atomic_text_if_unchanged(change)
+
+    assert injected
+    assert (parent / "README.md").read_text() == "foreign parent README\n"
+    assert (moved_parent / "README.md").read_text() == "original\n"
+    expected_names = (
+        {"README.md", "benchmarks"} if parent_kind == "root" else {"README.md"}
+    )
+    assert {path.name for path in moved_parent.iterdir()} == expected_names
+
+
+def test_atomic_text_fails_closed_when_exchange_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "README.md"
+    target.write_text("original\n")
+    identity = reporting._require_kind(target, directory=False)
+    change = reporting._AtomicTextChange(
+        path=target,
+        snapshot="original\n",
+        snapshot_identity=identity,
+        replacement="replacement\n",
+    )
+
+    def unsupported_exchange(*args: object) -> None:
+        del args
+        raise OSError(errno.ENOTSUP, "exchange unavailable")
+
+    monkeypatch.setattr(reporting, "_rename_exchange_at", unsupported_exchange)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        reporting._atomic_text_if_unchanged(change)
+
+    assert target.read_text() == "original\n"
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_atomic_text_prepares_temporary_relative_to_pinned_parent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "README.md"
+    target.write_text("original\n")
+    identity = reporting._require_kind(target, directory=False)
+    change = reporting._AtomicTextChange(
+        path=target,
+        snapshot="original\n",
+        snapshot_identity=identity,
+        replacement="replacement\n",
+    )
+    real_open = os.open
+    relative_temp_opens: list[tuple[str, int]] = []
+
+    def record_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if (
+            isinstance(path, str)
+            and path.startswith(".README.md.")
+            and path.endswith(".tmp")
+            and dir_fd is not None
+        ):
+            relative_temp_opens.append((path, dir_fd))
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", record_open)
+
+    reporting._atomic_text_if_unchanged(change)
+
+    assert target.read_text() == "replacement\n"
+    assert len(relative_temp_opens) == 1
+
+
+def test_open_entry_at_cannot_block_on_foreign_fifo_swap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "README.md"
+    target.write_text("original\n")
+    expected = reporting._require_kind(target, directory=False)
+    original_aside = tmp_path / "README.original"
+    parent_fd, _ = reporting._open_pinned_directory(tmp_path, None)
+    real_open = os.open
+    real_close = os.close
+    swapped = False
+
+    def swap_to_fifo_then_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if path == target.name and dir_fd == parent_fd and not swapped:
+            swapped = True
+            target.rename(original_aside)
+            os.mkfifo(target)
+            assert flags & os.O_NONBLOCK
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", swap_to_fifo_then_open)
+    try:
+        assert (
+            reporting._open_entry_at(parent_fd, target.name, expected, directory=False)
+            is None
+        )
+    finally:
+        real_close(parent_fd)
+
+    assert swapped
+    assert target.is_fifo()
+    assert original_aside.read_text() == "original\n"
+
+
+def test_open_entry_at_does_not_retry_ambiguous_mismatch_close(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    expected_path = tmp_path / "expected"
+    foreign_path = tmp_path / "foreign"
+    expected_path.write_text("expected\n")
+    foreign_path.write_text("foreign\n")
+    expected = reporting._require_kind(expected_path, directory=False)
+    parent_fd, _ = reporting._open_pinned_directory(tmp_path, None)
+    real_close = os.close
+    close_calls = 0
+
+    def close_then_raise(fd: int) -> None:
+        nonlocal close_calls
+        close_calls += 1
+        real_close(fd)
+        raise OSError("simulated ambiguous close failure")
+
+    monkeypatch.setattr(os, "close", close_then_raise)
+    try:
+        with pytest.raises(OSError, match="entry descriptor cleanup failed"):
+            reporting._open_entry_at(
+                parent_fd, foreign_path.name, expected, directory=False
+            )
+    finally:
+        real_close(parent_fd)
+
+    assert close_calls == 1
+
+
 def test_ordinary_atomic_temp_close_failure_does_not_mask_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1184,46 +1643,37 @@ def test_ordinary_atomic_temp_close_failure_does_not_mask_keyboard_interrupt(
         replacement="replacement",
     )
     interruption = KeyboardInterrupt()
-    real_open = Path.open
+    real_open = os.open
+    real_write = os.write
+    real_close = os.close
+    temporary_fd: int | None = None
 
-    class InterruptingHandle:
-        def __init__(self, handle: Any) -> None:
-            self._handle = handle
+    def capture_temporary_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal temporary_fd
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if isinstance(path, str) and path.endswith(".tmp"):
+            temporary_fd = fd
+        return fd
 
-        def fileno(self) -> int:
-            return self._handle.fileno()
-
-        def write(self, value: str) -> int:
-            del value
+    def interrupting_write(fd: int, value: Any) -> int:
+        if fd == temporary_fd:
             raise interruption
+        return real_write(fd, value)
 
-        def flush(self) -> None:
-            self._handle.flush()
-
-        def close(self) -> None:
-            self._handle.close()
+    def failing_temporary_close(fd: int) -> None:
+        real_close(fd)
+        if fd == temporary_fd:
             raise OSError("simulated temp close failure")
 
-        def __enter__(self) -> Any:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            self.close()
-
-    def interrupting_open(
-        path: Path,
-        mode: str = "r",
-        buffering: int = -1,
-        encoding: str | None = None,
-        errors: str | None = None,
-        newline: str | None = None,
-    ) -> Any:
-        handle = real_open(path, mode, buffering, encoding, errors, newline)
-        if path.name.endswith(".tmp"):
-            return InterruptingHandle(handle)
-        return handle
-
-    monkeypatch.setattr(Path, "open", interrupting_open)
+    monkeypatch.setattr(os, "open", capture_temporary_open)
+    monkeypatch.setattr(os, "write", interrupting_write)
+    monkeypatch.setattr(os, "close", failing_temporary_close)
 
     with pytest.raises(KeyboardInterrupt) as raised:
         reporting._prepare_atomic_text(change)

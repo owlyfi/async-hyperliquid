@@ -8,12 +8,12 @@ import json
 import math
 import os
 import re
-import shutil
 import signal
 import stat
 import statistics
 import subprocess
 import sys
+import threading
 import uuid
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -113,6 +113,7 @@ class _AtomicTextChange:
     snapshot: str
     snapshot_identity: _PathIdentity
     replacement: str
+    parent_identity: _PathIdentity | None = None
     replacement_identity: _PathIdentity | None = None
 
 
@@ -206,6 +207,45 @@ def _rename_noreplace_at(
     raise OSError(error_number, "atomic no-replace rename failed")
 
 
+def _rename_exchange_at(
+    source_fd: int, source_name: str, destination_fd: int, destination_name: str
+) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    source_bytes = os.fsencode(source_name)
+    destination_bytes = os.fsencode(destination_name)
+    if sys.platform == "darwin":
+        rename = libc.renameatx_np
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(
+            source_fd, source_bytes, destination_fd, destination_bytes, 0x00000002
+        )
+    elif sys.platform.startswith("linux") and hasattr(libc, "renameat2"):
+        rename = libc.renameat2
+        rename.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        rename.restype = ctypes.c_int
+        result = rename(
+            source_fd, source_bytes, destination_fd, destination_bytes, 0x00000002
+        )
+    else:
+        raise OSError(errno.ENOTSUP, "atomic exchange rename is unavailable")
+    if result != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, "atomic exchange rename failed")
+
+
 def _open_pinned_directory(
     path: Path, expected_identity: _PathIdentity | None
 ) -> tuple[int, _PathIdentity]:
@@ -274,14 +314,7 @@ def _atomic_move_noreplace(
         _raise_with_cleanup(
             primary, cleanup, primary_message="atomic no-replace rename failed"
         )
-    if cleanup.control_flow is not None:
-        raise cleanup.control_flow from _safe_exception_group(
-            "atomic rename cleanup failures", cleanup.ordinary
-        )
-    if cleanup.ordinary:
-        raise OSError("atomic rename descriptor cleanup failed") from (
-            _safe_exception_group("atomic rename cleanup failures", cleanup.ordinary)
-        )
+    _raise_cleanup_only(cleanup, "atomic rename descriptor cleanup failed")
 
 
 def _require_kind(path: Path, *, directory: bool) -> _PathIdentity:
@@ -317,7 +350,7 @@ def _create_owned_directory(
             _after_directory_create(path)
             return _register_owned_directory(path, registry)
         except BaseException as error:
-            if not created:
+            if not created and isinstance(error, Exception):
                 raise
             cleanup = _CleanupOutcome()
             try:
@@ -336,7 +369,15 @@ def _after_directory_create(path: Path) -> None:
 
 @contextmanager
 def _defer_directory_creation_signals() -> Iterator[None]:
-    blocked = {signal.SIGINT}
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    blocked = {
+        candidate
+        for candidate in signal.valid_signals()
+        if candidate not in {signal.SIGKILL, signal.SIGSTOP}
+        and callable(signal.getsignal(candidate))
+    }
     previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
     try:
         yield
@@ -353,55 +394,225 @@ def _register_owned_directory(
     return owned
 
 
-def _restore_foreign_quarantine(quarantine: Path, original: Path) -> None:
+def _identity_at(parent_fd: int, name: str) -> _PathIdentity | None:
     try:
-        _atomic_move_noreplace(quarantine, original)
-    except BaseException as error:
-        if not isinstance(error, Exception):
-            raise
-
-
-def _quarantine_owned(owned: _OwnedPath) -> _OwnedPath | None:
-    if not _matches_identity(owned.path, owned.identity):
-        return None
-    quarantine = owned.path.with_name(f".{owned.path.name}.{uuid.uuid4().hex}.cleanup")
-    try:
-        _atomic_move_noreplace(owned.path, quarantine)
+        return _identity_from_stat(
+            os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        )
     except FileNotFoundError:
         return None
-    moved_identity = _lexical_identity(quarantine)
-    if moved_identity != owned.identity:
-        _restore_foreign_quarantine(quarantine, owned.path)
+
+
+def _open_entry_at(
+    parent_fd: int, name: str, expected: _PathIdentity, *, directory: bool
+) -> int | None:
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+    if directory:
+        flags |= os.O_DIRECTORY
+    try:
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    except OSError:
         return None
-    return _OwnedPath(quarantine, owned.identity)
+    validation_error: BaseException | None = None
+    try:
+        matches = _identity_from_stat(os.fstat(fd)) == expected
+    except BaseException as error:
+        validation_error = error
+        matches = False
+    if matches:
+        return fd
+    cleanup = _CleanupOutcome()
+    _capture_cleanup(cleanup, lambda: os.close(fd), "entry descriptor cleanup failed")
+    if validation_error is not None:
+        _raise_with_cleanup(
+            validation_error, cleanup, primary_message="entry validation failed"
+        )
+        raise AssertionError("unreachable")
+    _raise_cleanup_only(cleanup, "entry descriptor cleanup failed")
+    return None
+
+
+def _directory_names(fd: int) -> tuple[str, ...]:
+    with os.scandir(fd) as entries:
+        return tuple(entry.name for entry in entries)
+
+
+def _clear_directory_fd(fd: int) -> None:
+    for name in _directory_names(fd):
+        identity = _identity_at(fd, name)
+        if identity is None:
+            raise OSError("cleanup entry disappeared")
+        if stat.S_ISDIR(identity.mode):
+            child_fd = _open_entry_at(fd, name, identity, directory=True)
+            if child_fd is None:
+                raise OSError("cleanup directory identity changed")
+            primary: BaseException | None = None
+            cleanup = _CleanupOutcome()
+            try:
+                _clear_directory_fd(child_fd)
+                if _identity_at(fd, name) != identity:
+                    raise OSError("cleanup directory identity changed")
+                os.rmdir(name, dir_fd=fd)
+            except BaseException as error:
+                primary = error
+            _capture_cleanup(
+                cleanup, lambda: os.close(child_fd), "child descriptor cleanup failed"
+            )
+            if primary is not None:
+                _raise_with_cleanup(
+                    primary, cleanup, primary_message="recursive cleanup failed"
+                )
+            _raise_cleanup_only(cleanup, "child descriptor cleanup failed")
+        else:
+            if _identity_at(fd, name) != identity:
+                raise OSError("cleanup entry identity changed")
+            os.unlink(name, dir_fd=fd)
+
+
+def _create_cleanup_guard(
+    cleanup_fd: int, guard_name: str, *, directory: bool
+) -> _PathIdentity:
+    if directory:
+        os.mkdir(guard_name, 0o700, dir_fd=cleanup_fd)
+        identity = _identity_at(cleanup_fd, guard_name)
+        if identity is None:
+            raise OSError("cleanup guard disappeared")
+        return identity
+    guard_fd = os.open(
+        guard_name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+        0o600,
+        dir_fd=cleanup_fd,
+    )
+    primary: BaseException | None = None
+    try:
+        identity = _identity_from_stat(os.fstat(guard_fd))
+    except BaseException as error:
+        primary = error
+        identity = None
+    cleanup = _CleanupOutcome()
+    _capture_cleanup(
+        cleanup, lambda: os.close(guard_fd), "guard descriptor cleanup failed"
+    )
+    if primary is not None:
+        _raise_with_cleanup(primary, cleanup, primary_message="guard validation failed")
+    _raise_cleanup_only(cleanup, "guard descriptor cleanup failed")
+    if identity is None:
+        raise AssertionError("cleanup guard identity was not captured")
+    return identity
+
+
+def _finalize_quarantined_entry(
+    cleanup_fd: int, object_name: str, identity: _PathIdentity, *, directory: bool
+) -> bool:
+    guard_name = f"guard.{uuid.uuid4().hex}"
+    guard_identity = _create_cleanup_guard(cleanup_fd, guard_name, directory=directory)
+    if _identity_at(cleanup_fd, object_name) != identity:
+        return False
+    _rename_exchange_at(cleanup_fd, object_name, cleanup_fd, guard_name)
+    moved_identity = _identity_at(cleanup_fd, guard_name)
+    placeholder_identity = _identity_at(cleanup_fd, object_name)
+    if moved_identity != identity or placeholder_identity != guard_identity:
+        if moved_identity is not None and placeholder_identity == guard_identity:
+            try:
+                _rename_exchange_at(cleanup_fd, object_name, cleanup_fd, guard_name)
+            except BaseException as error:
+                if not isinstance(error, Exception):
+                    raise
+        return False
+    remover = os.rmdir if directory else os.unlink
+    remover(guard_name, dir_fd=cleanup_fd)
+    remover(object_name, dir_fd=cleanup_fd)
+    return True
+
+
+def _restore_quarantined_entry(
+    cleanup_fd: int, object_name: str, parent_fd: int, original_name: str
+) -> bool:
+    try:
+        _rename_noreplace_at(cleanup_fd, object_name, parent_fd, original_name)
+    except FileExistsError:
+        return False
+    return True
+
+
+def _remove_owned_entry(owned: _OwnedPath, *, directory: bool, recursive: bool) -> None:
+    parent_fd: int | None = None
+    cleanup_fd: int | None = None
+    object_fd: int | None = None
+    primary: BaseException | None = None
+    cleanup = _CleanupOutcome()
+    try:
+        parent_fd, _ = _open_pinned_directory(owned.path.parent, None)
+        if _identity_at(parent_fd, owned.path.name) == owned.identity:
+            cleanup_name = f".{owned.path.name}.{uuid.uuid4().hex}.cleanup"
+            os.mkdir(cleanup_name, 0o700, dir_fd=parent_fd)
+            cleanup_identity = _identity_at(parent_fd, cleanup_name)
+            if cleanup_identity is None:
+                raise OSError("cleanup namespace disappeared")
+            cleanup_fd = _open_entry_at(
+                parent_fd, cleanup_name, cleanup_identity, directory=True
+            )
+            if cleanup_fd is None:
+                raise OSError("cleanup namespace identity changed")
+            cleanup_empty = True
+            try:
+                _rename_noreplace_at(parent_fd, owned.path.name, cleanup_fd, "object")
+            except FileNotFoundError:
+                pass
+            else:
+                cleanup_empty = False
+                object_fd = _open_entry_at(
+                    cleanup_fd, "object", owned.identity, directory=directory
+                )
+                if object_fd is None:
+                    cleanup_empty = _restore_quarantined_entry(
+                        cleanup_fd, "object", parent_fd, owned.path.name
+                    )
+                elif _identity_at(cleanup_fd, "object") == owned.identity:
+                    ready = True
+                    if directory and recursive:
+                        _clear_directory_fd(object_fd)
+                    elif directory and _directory_names(object_fd):
+                        ready = False
+                    current_identity = _identity_at(cleanup_fd, "object")
+                    if not ready and current_identity == owned.identity:
+                        cleanup_empty = _restore_quarantined_entry(
+                            cleanup_fd, "object", parent_fd, owned.path.name
+                        )
+                    elif ready and current_identity == owned.identity:
+                        cleanup_empty = _finalize_quarantined_entry(
+                            cleanup_fd, "object", owned.identity, directory=directory
+                        )
+            if (
+                cleanup_empty
+                and _identity_at(parent_fd, cleanup_name) == cleanup_identity
+            ):
+                os.rmdir(cleanup_name, dir_fd=parent_fd)
+    except BaseException as error:
+        primary = error
+    for fd, message in (
+        (object_fd, "owned object descriptor cleanup failed"),
+        (cleanup_fd, "cleanup namespace descriptor cleanup failed"),
+        (parent_fd, "cleanup parent descriptor cleanup failed"),
+    ):
+        if fd is not None:
+            _capture_cleanup(cleanup, lambda fd=fd: os.close(fd), message)
+    if primary is not None:
+        _raise_with_cleanup(primary, cleanup, primary_message="owned cleanup failed")
+    _raise_cleanup_only(cleanup, "owned cleanup descriptor failure")
 
 
 def _remove_owned_directory(owned: _OwnedPath) -> None:
-    quarantined = _quarantine_owned(owned)
-    if quarantined is None:
-        return
-    shutil.rmtree(quarantined.path)
+    _remove_owned_entry(owned, directory=True, recursive=True)
 
 
 def _remove_owned_empty_directory(owned: _OwnedPath) -> None:
-    quarantined = _quarantine_owned(owned)
-    if quarantined is None:
-        return
-    try:
-        if any(quarantined.path.iterdir()):
-            _restore_foreign_quarantine(quarantined.path, owned.path)
-            return
-        os.rmdir(quarantined.path)
-    except OSError:
-        _restore_foreign_quarantine(quarantined.path, owned.path)
-        raise
+    _remove_owned_entry(owned, directory=True, recursive=False)
 
 
 def _remove_owned_file(owned: _OwnedPath) -> None:
-    quarantined = _quarantine_owned(owned)
-    if quarantined is None:
-        return
-    os.unlink(quarantined.path)
+    _remove_owned_entry(owned, directory=False, recursive=False)
 
 
 def _capture_cleanup(outcome: _CleanupOutcome, operation: Any, message: str) -> None:
@@ -415,6 +626,17 @@ def _safe_exception_group(
     message: str, ordinary: Sequence[Exception]
 ) -> ExceptionGroup:
     return ExceptionGroup(message, list(ordinary))
+
+
+def _raise_cleanup_only(cleanup: _CleanupOutcome, message: str) -> None:
+    if cleanup.control_flow is not None:
+        if cleanup.ordinary:
+            raise cleanup.control_flow from _safe_exception_group(
+                message, cleanup.ordinary
+            )
+        raise cleanup.control_flow
+    if cleanup.ordinary:
+        raise OSError(message) from _safe_exception_group(message, cleanup.ordinary)
 
 
 def _raise_with_cleanup(
@@ -433,64 +655,208 @@ def _raise_with_cleanup(
     raise primary from _safe_exception_group("cleanup failures", safe_failures)
 
 
-def _prepare_atomic_text(change: _AtomicTextChange) -> _OwnedPath:
-    temporary = change.path.with_name(f".{change.path.name}.{uuid.uuid4().hex}.tmp")
-    handle: Any | None = None
+def _unlink_owned_at(parent_fd: int, name: str, identity: _PathIdentity) -> None:
+    if _identity_at(parent_fd, name) == identity:
+        os.unlink(name, dir_fd=parent_fd)
+
+
+def _prepare_atomic_text_at(change: _AtomicTextChange, parent_fd: int) -> _OwnedPath:
+    temporary_name = f".{change.path.name}.{uuid.uuid4().hex}.tmp"
+    temporary = change.path.with_name(temporary_name)
+    handle_fd: int | None = None
     owned: _OwnedPath | None = None
     primary: BaseException | None = None
     cleanup = _CleanupOutcome()
     try:
-        handle = temporary.open("x")
-        owned = _OwnedPath(
-            path=temporary, identity=_identity_from_stat(os.fstat(handle.fileno()))
+        handle_fd = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=parent_fd,
         )
-        handle.write(change.replacement)
-        handle.flush()
-        os.fsync(handle.fileno())
+        owned = _OwnedPath(
+            path=temporary, identity=_identity_from_stat(os.fstat(handle_fd))
+        )
+        remaining = memoryview(change.replacement.encode("utf-8"))
+        while remaining:
+            written = os.write(handle_fd, remaining)
+            if written <= 0:
+                raise OSError("atomic temporary write made no progress")
+            remaining = remaining[written:]
+        os.fsync(handle_fd)
     except BaseException as error:
         primary = error
-    if handle is not None:
-        try:
-            handle.close()
-        except BaseException as error:
-            if primary is None:
-                primary = error
-            else:
-                cleanup.capture(error, "atomic temporary close failed")
-    if primary is not None:
+    if handle_fd is not None:
+        _capture_cleanup(
+            cleanup, lambda: os.close(handle_fd), "atomic temporary close failed"
+        )
+    if primary is not None or cleanup.control_flow is not None or cleanup.ordinary:
         if owned is not None:
             _capture_cleanup(
                 cleanup,
-                lambda: _remove_owned_file(owned),
+                lambda: _unlink_owned_at(parent_fd, temporary_name, owned.identity),
                 "atomic temporary cleanup failed",
             )
+    if primary is not None:
         _raise_with_cleanup(
             primary, cleanup, primary_message="atomic text preparation failed"
         )
         raise AssertionError("unreachable")
+    _raise_cleanup_only(cleanup, "atomic temporary descriptor cleanup failed")
     if owned is None:
         raise AssertionError("atomic temporary was not created")
     return owned
 
 
-def _atomic_text_if_unchanged(change: _AtomicTextChange) -> None:
-    temporary = _prepare_atomic_text(change)
-    change.replacement_identity = temporary.identity
+def _prepare_atomic_text(
+    change: _AtomicTextChange, parent_fd: int | None = None
+) -> _OwnedPath:
+    owns_parent = parent_fd is None
+    opened_parent: int | None = None
+    parent_identity: _PathIdentity | None = None
+    if parent_fd is None:
+        opened_parent, parent_identity = _open_pinned_directory(
+            change.path.parent, change.parent_identity
+        )
+        parent_fd = opened_parent
+        if change.parent_identity is None:
+            change.parent_identity = parent_identity
+    temporary: _OwnedPath | None = None
+    primary: BaseException | None = None
+    cleanup = _CleanupOutcome()
     try:
-        current = _read_pinned_text(change.path, change.snapshot_identity)
-        if current != change.snapshot:
-            raise BenchmarkFailure(_PUBLICATION_FAILURE)
-        os.replace(temporary.path, change.path)
+        temporary = _prepare_atomic_text_at(change, parent_fd)
     except BaseException as error:
-        cleanup = _CleanupOutcome()
+        primary = error
+    if owns_parent and opened_parent is not None:
+        _capture_cleanup(
+            cleanup, lambda: os.close(opened_parent), "atomic parent cleanup failed"
+        )
+    if primary is not None:
+        _raise_with_cleanup(
+            primary, cleanup, primary_message="atomic text preparation failed"
+        )
+    if cleanup.control_flow is not None or cleanup.ordinary:
+        if temporary is not None:
+            _capture_cleanup(
+                cleanup,
+                lambda: _remove_owned_file(temporary),
+                "atomic temporary cleanup failed",
+            )
+        _raise_cleanup_only(cleanup, "atomic parent descriptor cleanup failed")
+    if temporary is None:
+        raise AssertionError("atomic temporary was not prepared")
+    return temporary
+
+
+def _read_text_fd(fd: int, expected: _PathIdentity) -> str:
+    if _identity_from_stat(os.fstat(fd)) != expected:
+        raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        while chunk := os.read(fd, 64 * 1024):
+            chunks.append(chunk)
+        value = b"".join(chunks).decode("utf-8")
+    except (OSError, UnicodeError):
+        raise BenchmarkFailure(_PUBLICATION_FAILURE) from None
+    if _identity_from_stat(os.fstat(fd)) != expected:
+        raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    return value
+
+
+def _restore_atomic_text_exchange(
+    parent_fd: int,
+    temporary_name: str,
+    target_name: str,
+    temporary_identity: _PathIdentity,
+    displaced_identity: _PathIdentity,
+) -> bool:
+    if (
+        _identity_at(parent_fd, target_name) != temporary_identity
+        or _identity_at(parent_fd, temporary_name) != displaced_identity
+    ):
+        return False
+    _rename_exchange_at(parent_fd, temporary_name, parent_fd, target_name)
+    return (
+        _identity_at(parent_fd, target_name) == displaced_identity
+        and _identity_at(parent_fd, temporary_name) == temporary_identity
+    )
+
+
+def _atomic_text_if_unchanged(change: _AtomicTextChange) -> None:
+    parent_fd: int | None = None
+    target_fd: int | None = None
+    temporary: _OwnedPath | None = None
+    temporary_consumed = False
+    primary: BaseException | None = None
+    cleanup = _CleanupOutcome()
+    try:
+        parent_fd, parent_identity = _open_pinned_directory(
+            change.path.parent, change.parent_identity
+        )
+        if change.parent_identity is None:
+            change.parent_identity = parent_identity
+        temporary = _prepare_atomic_text(change, parent_fd)
+        target_fd = _open_entry_at(
+            parent_fd, change.path.name, change.snapshot_identity, directory=False
+        )
+        if target_fd is None:
+            raise BenchmarkFailure(_PUBLICATION_FAILURE)
+        current = _read_text_fd(target_fd, change.snapshot_identity)
+        if (
+            current != change.snapshot
+            or _identity_at(parent_fd, change.path.name) != change.snapshot_identity
+        ):
+            raise BenchmarkFailure(_PUBLICATION_FAILURE)
+        _rename_exchange_at(parent_fd, temporary.path.name, parent_fd, change.path.name)
+        displaced_identity = _identity_at(parent_fd, temporary.path.name)
+        replacement_identity = _identity_at(parent_fd, change.path.name)
+        parent_matches = _matches_identity(change.path.parent, parent_identity)
+        if (
+            displaced_identity != change.snapshot_identity
+            or replacement_identity != temporary.identity
+            or not parent_matches
+        ):
+            if displaced_identity is not None:
+                _restore_atomic_text_exchange(
+                    parent_fd,
+                    temporary.path.name,
+                    change.path.name,
+                    temporary.identity,
+                    displaced_identity,
+                )
+            raise BenchmarkFailure(_PUBLICATION_FAILURE)
+        change.replacement_identity = temporary.identity
+        temporary_consumed = _finalize_quarantined_entry(
+            parent_fd, temporary.path.name, change.snapshot_identity, directory=False
+        )
+        if not temporary_consumed:
+            raise BenchmarkFailure(_PUBLICATION_FAILURE)
+    except BaseException as error:
+        if isinstance(error, Exception) and not isinstance(error, BenchmarkFailure):
+            primary = BenchmarkFailure(_PUBLICATION_FAILURE)
+        else:
+            primary = error
+    if parent_fd is not None and temporary is not None and not temporary_consumed:
         _capture_cleanup(
             cleanup,
-            lambda: _remove_owned_file(temporary),
+            lambda: _unlink_owned_at(
+                parent_fd, temporary.path.name, temporary.identity
+            ),
             "atomic temporary cleanup failed",
         )
+    for fd, message in (
+        (target_fd, "atomic target descriptor cleanup failed"),
+        (parent_fd, "atomic parent descriptor cleanup failed"),
+    ):
+        if fd is not None:
+            _capture_cleanup(cleanup, lambda fd=fd: os.close(fd), message)
+    if primary is not None:
         _raise_with_cleanup(
-            error, cleanup, primary_message="atomic text replacement failed"
+            primary, cleanup, primary_message="atomic text replacement failed"
         )
+    _raise_cleanup_only(cleanup, "atomic text descriptor cleanup failed")
 
 
 def _atomic_text(path: Path, content: str) -> None:
@@ -500,6 +866,7 @@ def _atomic_text(path: Path, content: str) -> None:
         snapshot=_read_pinned_text(path, identity),
         snapshot_identity=identity,
         replacement=content,
+        parent_identity=_require_kind(path.parent, directory=True),
     )
     _atomic_text_if_unchanged(change)
 
@@ -1209,13 +1576,18 @@ def _compensate_publication(
         (benchmark_change, "benchmark README rollback failed"),
     ):
         replacement_identity = change.replacement_identity
-        if replacement_identity is None or not _matches_identity(
-            change.path, replacement_identity
-        ):
+        if replacement_identity is None:
             continue
+        rollback = _AtomicTextChange(
+            path=change.path,
+            snapshot=change.replacement,
+            snapshot_identity=replacement_identity,
+            replacement=change.snapshot,
+            parent_identity=change.parent_identity,
+        )
         _capture_cleanup(
             outcome,
-            lambda change=change: _atomic_text(change.path, change.snapshot),
+            lambda rollback=rollback: _atomic_text_if_unchanged(rollback),
             failure_message,
         )
 
@@ -1316,6 +1688,7 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
     ):
         _verify_repository(locked_root, git_dir, report)
         git_dir_identity = _require_kind(git_dir, directory=True)
+        root_dir_identity = _require_kind(locked_root, directory=True)
         benchmarks_dir_path = locked_root / "benchmarks"
         benchmarks_dir = _OwnedPath(
             benchmarks_dir_path, _require_kind(benchmarks_dir_path, directory=True)
@@ -1337,10 +1710,18 @@ def publish_report(report_path: Path, repository_root: Path) -> Path:
             _detail_markdown(report, timestamp),
         )
         root_change = _AtomicTextChange(
-            root_readme, root_text, root_identity, rendered_root
+            root_readme,
+            root_text,
+            root_identity,
+            rendered_root,
+            parent_identity=root_dir_identity,
         )
         benchmark_change = _AtomicTextChange(
-            benchmark_readme, benchmark_text, benchmark_identity, rendered_benchmark
+            benchmark_readme,
+            benchmark_text,
+            benchmark_identity,
+            rendered_benchmark,
+            parent_identity=benchmarks_dir.identity,
         )
         results_path = benchmarks_dir.path / "results"
         results_identity = _lexical_identity(results_path)
