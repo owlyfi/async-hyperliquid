@@ -46,10 +46,15 @@ def test_info_public_coroutines_have_unit_and_integration_coverage() -> None:
     deterministic = _called_methods(
         ("tests/unit/test_info.py", "tests/unit/test_metadata.py")
     )
-    integration = _test_names(("tests/integration/test_info.py",))
+    integration = _called_methods(("tests/integration/test_info.py",))
 
     assert methods <= deterministic
-    assert {f"test_{method}" for method in methods} <= integration
+    assert methods <= integration
+
+
+def test_info_integration_names_are_concise() -> None:
+    names = _test_names(("tests/integration/test_info.py",))
+    assert {name for name in names if name.count("_") > 4} == set()
 
 
 def test_exchange_public_coroutines_have_unit_and_integration_coverage() -> None:
