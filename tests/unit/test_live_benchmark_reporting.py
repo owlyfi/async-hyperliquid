@@ -152,9 +152,7 @@ def test_publication_rejects_duplicate_measured_rounds() -> None:
     "mutation",
     [
         pytest.param(lambda report: report.update(config=[]), id="config-list"),
-        pytest.param(
-            lambda report: report.update(versions=[]), id="versions-list"
-        ),
+        pytest.param(lambda report: report.update(versions=[]), id="versions-list"),
         pytest.param(lambda report: report.update(git=[]), id="git-list"),
         pytest.param(
             lambda report: report.update(environment=[]), id="environment-list"
@@ -165,12 +163,8 @@ def test_publication_rejects_duplicate_measured_rounds() -> None:
         pytest.param(
             lambda report: report.update(completed_at=None), id="completed-at-null"
         ),
-        pytest.param(
-            lambda report: report.update(samples={}), id="samples-mapping"
-        ),
-        pytest.param(
-            lambda report: report.update(summaries=[]), id="summaries-list"
-        ),
+        pytest.param(lambda report: report.update(samples={}), id="samples-mapping"),
+        pytest.param(lambda report: report.update(summaries=[]), id="summaries-list"),
     ],
 )
 def test_publication_sanitizes_malformed_schema_containers_and_scalars(
@@ -246,8 +240,7 @@ def test_publication_rejects_invalid_concurrent_cancel_slots(
 
 
 def _small_concurrent_report(
-    oid_rounds: tuple[tuple[int, ...], ...],
-    cloid_rounds: tuple[tuple[int, ...], ...],
+    oid_rounds: tuple[tuple[int, ...], ...], cloid_rounds: tuple[tuple[int, ...], ...]
 ) -> LiveBenchmarkReport:
     samples = []
     for operation, rounds in (
@@ -271,8 +264,7 @@ def _small_concurrent_report(
 
 def test_round_max_summaries_use_the_slowest_request_per_method_round() -> None:
     report = _small_concurrent_report(
-        oid_rounds=((1, 2, 9), (3, 4, 8)),
-        cloid_rounds=((5, 6, 7), (2, 10, 11)),
+        oid_rounds=((1, 2, 9), (3, 4, 8)), cloid_rounds=((5, 6, 7), (2, 10, 11))
     )
 
     summaries = round_max_summaries(report)
@@ -392,7 +384,9 @@ def test_publish_sanitizes_overflowing_completion_timestamp_before_mutation(
     benchmarks.mkdir()
     (benchmarks / "README.md").write_text(original_detail)
 
-    with pytest.raises(BenchmarkFailure, match="^report completion time is not publishable$"):
+    with pytest.raises(
+        BenchmarkFailure, match="^report completion time is not publishable$"
+    ):
         publish_report(report_path, tmp_path)
 
     assert (tmp_path / "README.md").read_text() == original_root

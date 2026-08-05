@@ -64,8 +64,37 @@ class FakeProvider:
         self.closed = True
 
 
+class SerialOnlyProvider:
+    name = "async-hyperliquid"
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def wire_orders(self, pair: OrderPair) -> tuple[WireOrder, WireOrder]:
+        return FakeProvider(self.name).wire_orders(pair)
+
+    async def place(self, pair: OrderPair) -> tuple[int, int]:
+        del pair
+        return (100, 101)
+
+    async def cancel_oids(
+        self, orders: Sequence[CanonicalOrder], oids: Sequence[int]
+    ) -> None:
+        assert len(orders) == len(oids)
+
+    async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None:
+        assert orders
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 class FakeMarketSource:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def snapshot(self) -> tuple[float, int]:
+        self.calls += 1
         return (100_000.0, 5)
 
 
@@ -216,6 +245,56 @@ async def test_all_runs_offline_through_injected_providers(tmp_path: Path) -> No
     assert (tmp_path / "samples.csv").is_file()
     assert (tmp_path / "cancel-id-latency.svg").is_file()
     assert (tmp_path / "providers-latency.png").is_file()
+
+
+@pytest.mark.asyncio
+async def test_cancel_id_rejects_async_provider_without_concurrent_placement(
+    tmp_path: Path,
+) -> None:
+    provider = SerialOnlyProvider()
+    recovery = FakeProvider("recovery")
+    market = FakeMarketSource()
+
+    async def provider_factory(credentials: Credentials) -> ProviderSet:
+        del credentials
+        return ProviderSet(
+            measured=(provider,),
+            recovery=recovery,
+            mid_source=market,
+            owned=(provider, recovery),
+        )
+
+    outcome = await run_live(
+        parse_args(
+            [
+                "cancel-id",
+                "--output-dir",
+                str(tmp_path),
+                "--rounds",
+                "1",
+                "--warmups",
+                "0",
+            ]
+        ),
+        environ={
+            "IS_MAINNET": "false",
+            "HL_ADDR": "0x1111111111111111111111111111111111111111",
+            "HL_AK": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+            "HL_SK": "0x" + "11" * 32,
+            "HL_SUB": "0x3333333333333333333333333333333333333333",
+        },
+        provider_factory=provider_factory,
+        pacer_factory=fake_pacer,
+        versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
+    )
+
+    assert not outcome.valid
+    assert json.loads(outcome.report_path.read_text())["failure_reason"] == (
+        "cancel_id_failed"
+    )
+    assert market.calls == 0
+    assert provider.closed
+    assert recovery.closed
 
 
 @pytest.mark.asyncio

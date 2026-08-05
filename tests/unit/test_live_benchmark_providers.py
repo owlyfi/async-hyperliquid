@@ -56,9 +56,7 @@ class AsyncClientStub:
             "response": {
                 "type": "order",
                 "data": {
-                    "statuses": [
-                        {"resting": {"oid": oid}} for oid in self.resting_oids
-                    ]
+                    "statuses": [{"resting": {"oid": oid}} for oid in self.resting_oids]
                 },
             },
         }

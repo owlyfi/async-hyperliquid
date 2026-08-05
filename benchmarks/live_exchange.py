@@ -21,7 +21,11 @@ if __package__ in (None, ""):
 from benchmarks.live.models import BenchmarkConfig, BenchmarkFailure, GitMetadata
 from benchmarks.live.pacing import WeightedPacer
 from benchmarks.live.preflight import Credentials
-from benchmarks.live.providers import ProviderSet, build_providers
+from benchmarks.live.providers import (
+    ConcurrentCancelProvider,
+    ProviderSet,
+    build_providers,
+)
 from benchmarks.live.reporting import publish_report, write_csv, write_figures
 from benchmarks.live.results import SampleRecorder, write_report
 from benchmarks.live.runner import run_cancel_id_suite, run_provider_suite
@@ -208,6 +212,7 @@ async def run_live(
                 provider
                 for provider in providers.measured
                 if provider.name == "async-hyperliquid"
+                and isinstance(provider, ConcurrentCancelProvider)
             )
             if len(async_candidates) != 1:
                 raise BenchmarkFailure(

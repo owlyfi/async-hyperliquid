@@ -74,9 +74,7 @@ class ProviderStub:
     def wire_orders(self, pair: OrderPair) -> tuple[dict[str, object], ...]:
         return ({"b": pair.buy.is_buy}, {"b": pair.sell.is_buy})
 
-    async def place_many(
-        self, orders: Sequence[CanonicalOrder]
-    ) -> tuple[int, ...]:
+    async def place_many(self, orders: Sequence[CanonicalOrder]) -> tuple[int, ...]:
         self.placement_sizes.append(len(orders))
         self.placed_orders.append(tuple(orders))
         self.clock.advance(500)
@@ -230,9 +228,7 @@ async def test_cancel_identifier_launches_balanced_twenty_request_burst(
             assert method_sides.count("buy") == 5
             assert method_sides.count("sell") == 5
         for pair_index in range(10):
-            expected_method = (
-                "oid" if (pair_index + round_index) % 2 == 0 else "cloid"
-            )
+            expected_method = "oid" if (pair_index + round_index) % 2 == 0 else "cloid"
             pair_orders = provider.placed_orders[round_index][
                 pair_index * 2 : pair_index * 2 + 2
             ]
@@ -310,9 +306,7 @@ async def test_indeterminate_place_cleans_both_cloids_without_retry() -> None:
     assert len(recovery.cleaned[0]) == 20
 
 
-@pytest.mark.parametrize(
-    ("fail_calls", "expected_pending"), [({4}, 1), ({4, 15}, 2)]
-)
+@pytest.mark.parametrize(("fail_calls", "expected_pending"), [({4}, 1), ({4, 15}, 2)])
 async def test_concurrent_cancel_waits_for_all_tasks_and_recovers_pending(
     fail_calls: set[int], expected_pending: int
 ) -> None:

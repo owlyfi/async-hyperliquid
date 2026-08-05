@@ -10,7 +10,7 @@ from uuid import uuid4
 from .models import BenchmarkConfig, BenchmarkFailure, CanonicalOrder, LatencySample
 from .pacing import WeightedPacer
 from .providers import (
-    AsyncHyperliquidProvider,
+    ConcurrentCancelProvider,
     LiveProvider,
     MarketSource,
     validate_provider_wire_parity,
@@ -31,7 +31,7 @@ class _CancelRequest:
 
 
 async def _cancel_one(
-    provider: LiveProvider,
+    provider: ConcurrentCancelProvider,
     gate: asyncio.Event,
     request: _CancelRequest,
     clock_ns: Callable[[], int],
@@ -60,7 +60,7 @@ async def _recover_pending(
 
 
 async def run_cancel_id_suite(
-    provider: AsyncHyperliquidProvider,
+    provider: ConcurrentCancelProvider,
     recovery: LiveProvider,
     mid_source: MarketSource,
     pacer: WeightedPacer,
@@ -118,9 +118,7 @@ async def run_cancel_id_suite(
             requests = tuple(
                 request
                 for pair in zip(
-                    by_method[first_operation],
-                    by_method[second_operation],
-                    strict=True,
+                    by_method[first_operation], by_method[second_operation], strict=True
                 )
                 for request in pair
             )

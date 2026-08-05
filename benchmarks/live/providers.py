@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from async_hyperliquid import AsyncHyperliquid
 from async_hyperliquid._internal.encoding import _wire_float, encode_order
@@ -44,6 +44,19 @@ class LiveProvider(Protocol):
     async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None: ...
 
     async def close(self) -> None: ...
+
+
+@runtime_checkable
+class ConcurrentCancelProvider(Protocol):
+    name: str
+
+    async def place_many(self, orders: Sequence[CanonicalOrder]) -> tuple[int, ...]: ...
+
+    async def cancel_oids(
+        self, orders: Sequence[CanonicalOrder], oids: Sequence[int]
+    ) -> None: ...
+
+    async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None: ...
 
 
 class MarketSource(Protocol):
@@ -155,9 +168,7 @@ class AsyncHyperliquidProvider:
         )
         return cast(tuple[WireOrder, WireOrder], encoded)
 
-    async def place_many(
-        self, orders: Sequence[CanonicalOrder]
-    ) -> tuple[int, ...]:
+    async def place_many(self, orders: Sequence[CanonicalOrder]) -> tuple[int, ...]:
         if not orders:
             raise ValueError("orders must not be empty")
         requests = tuple(_async_request(order, self._coin) for order in orders)

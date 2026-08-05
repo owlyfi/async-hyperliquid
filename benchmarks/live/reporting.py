@@ -361,7 +361,9 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
                         else not expected_oid_even
                     )
                     if (slot % 2 == 0) != expected_even:
-                        raise BenchmarkFailure("report sample values are not publishable")
+                        raise BenchmarkFailure(
+                            "report sample values are not publishable"
+                        )
             if set(operations) != {"cancel_by_oid", "cancel_by_cloid"} or slots != set(
                 range(20)
             ):
@@ -397,10 +399,7 @@ def _ms(value: float | int) -> str:
 def _round_max_values(report: LiveBenchmarkReport) -> dict[str, list[int]]:
     grouped: dict[str, dict[int, list[int]]] = {}
     for sample in report["samples"]:
-        if (
-            sample["suite"] != "cancel-id"
-            or sample["provider"] != "async-hyperliquid"
-        ):
+        if sample["suite"] != "cancel-id" or sample["provider"] != "async-hyperliquid":
             continue
         grouped.setdefault(sample["operation"], {}).setdefault(
             sample["round_index"], []
