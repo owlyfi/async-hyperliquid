@@ -351,12 +351,13 @@ def _create_owned_directory(
 ) -> _OwnedPath:
     parent_fd: int | None = None
     object_fd: int | None = None
+    candidate_owned: _OwnedPath | None = None
     owned: _OwnedPath | None = None
     primary: BaseException | None = None
     cleanup = _CleanupOutcome()
     try:
         parent_fd, _ = _open_pinned_directory(path.parent, None)
-        with _defer_directory_creation_signals():
+        with _defer_directory_creation_signals() as signal_is_pending:
             # A direct test double can perform mkdir(2) and then raise before
             # returning.  That state is deliberately ambiguous: never inspect,
             # register, or remove the pathname from that exception edge.  All
@@ -371,9 +372,26 @@ def _create_owned_directory(
             identity = _identity_from_stat(os.fstat(object_fd))
             if not stat.S_ISDIR(identity.mode):
                 raise OSError("created directory descriptor is not a directory")
-            owned = _OwnedPath(path=path, identity=identity)
-            if registry is not None:
-                registry.append(owned)
+            candidate_owned = _OwnedPath(path=path, identity=identity)
+            if signal_is_pending():
+                # The pathname could have been swapped after mkdir(2).  Once a
+                # callable-handler signal is pending, never infer ownership
+                # from the object subsequently opened at that name.  Close the
+                # descriptor exactly once while the signal remains masked;
+                # restoring the mask below then preserves the handler's own
+                # exception or control flow.
+                ambiguous_fd = object_fd
+                object_fd = None
+                candidate_owned = None
+                os.close(ambiguous_fd)
+                raise OSError("directory creation ownership is ambiguous")
+        # Registration happens only after mask restoration completes without a
+        # handler exception.  A signal arriving after the pending check but
+        # before restoration therefore also prevents this handoff when its
+        # handler transfers control.
+        owned = candidate_owned
+        if owned is not None and registry is not None:
+            registry.append(owned)
     except BaseException as error:
         primary = error
     for fd, message in (
@@ -394,9 +412,9 @@ def _create_owned_directory(
 
 
 @contextmanager
-def _defer_directory_creation_signals() -> Iterator[None]:
+def _defer_directory_creation_signals() -> Iterator[Callable[[], bool]]:
     if threading.current_thread() is not threading.main_thread():
-        yield
+        yield lambda: False
         return
     blocked = {
         candidate
@@ -406,7 +424,11 @@ def _defer_directory_creation_signals() -> Iterator[None]:
     }
     previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
     try:
-        yield
+        # Treat every pending callable-handler signal conservatively.  Standard
+        # signals can coalesce, so distinguishing a pre-existing pending signal
+        # from another arrival is not reliable; an unregistered UUID orphan is
+        # the safe outcome in either case.
+        yield lambda: bool(signal.sigpending() & blocked)
     finally:
         signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 

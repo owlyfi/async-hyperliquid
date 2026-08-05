@@ -872,7 +872,7 @@ def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
-def test_sigterm_during_created_directory_fstat_is_deferred_until_registry_handoff(
+def test_sigterm_during_created_directory_fstat_leaves_unregistered_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repository, report_path, original_root, original_detail = (
@@ -923,14 +923,17 @@ def test_sigterm_during_created_directory_fstat_is_deferred_until_registry_hando
     assert raised.value.code == 18
     assert sent
     assert delivered == [signal.SIGTERM]
-    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    candidates = list(git_dir.glob("benchmark-publication.*.staging"))
+    assert len(candidates) == 1
+    assert candidates[0].is_dir()
+    assert list(candidates[0].iterdir()) == []
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     _assert_no_publication_debris(repository)
 
 
 @pytest.mark.parametrize("directory_kind", ["results", "staging"])
-def test_sigterm_after_real_mkdir_is_deferred_until_ownership_handoff(
+def test_sigterm_after_real_mkdir_leaves_unregistered_private_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, directory_kind: str
 ) -> None:
     repository, report_path, original_root, original_detail = (
@@ -972,11 +975,124 @@ def test_sigterm_after_real_mkdir_is_deferred_until_ownership_handoff(
     assert raised.value.code == 15
     assert sent
     assert delivered == [signal.SIGTERM]
-    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    suffix = "results.creation" if directory_kind == "results" else "staging"
+    candidates = list(git_dir.glob(f"benchmark-publication.*.{suffix}"))
+    assert len(candidates) == 1
+    assert candidates[0].is_dir()
+    assert list(candidates[0].iterdir()) == []
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     _assert_no_publication_debris(repository)
     assert not (repository / "benchmarks" / "results").exists()
+
+
+@pytest.mark.parametrize("directory_kind", ["results", "staging"])
+@pytest.mark.parametrize("handler_kind", ["ordinary", "control-flow"])
+def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    directory_kind: str,
+    handler_kind: str,
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    real_mkdir = os.mkdir
+    real_open = os.open
+    delivered: list[int] = []
+    swapped: list[tuple[Path, Path]] = []
+    replacement_fds: list[int] = []
+    sent = False
+    replacement_opens = 0
+
+    def raises_from_sigterm(signum: int, frame: object) -> None:
+        del frame
+        delivered.append(signum)
+        if handler_kind == "ordinary":
+            raise RuntimeError("sensitive signal-handler detail")
+        raise SystemExit(31)
+
+    def mkdir_swap_then_sigterm(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal sent
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        candidate = git_dir / os.fsdecode(os.fspath(path))
+        matches = (
+            candidate.name.endswith(".results.creation")
+            if directory_kind == "results"
+            else candidate.name.endswith(".staging")
+        )
+        if matches and not sent:
+            sent = True
+            moved = candidate.with_name(f"{candidate.name}.ambiguous-owned")
+            candidate.rename(moved)
+            real_mkdir(candidate, 0o711)
+            (candidate / "foreign.txt").write_text("foreign namespace\n")
+            candidate.chmod(0o711)
+            swapped.append((candidate, moved))
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    def record_replacement_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replacement_opens
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if (
+            swapped
+            and dir_fd is not None
+            and os.fsdecode(os.fspath(path)) == swapped[0][0].name
+        ):
+            replacement_opens += 1
+            replacement_fds.append(fd)
+        return fd
+
+    previous_handler = signal.signal(signal.SIGTERM, raises_from_sigterm)
+    monkeypatch.setattr(os, "mkdir", mkdir_swap_then_sigterm)
+    monkeypatch.setattr(os, "open", record_replacement_open)
+    try:
+        if handler_kind == "ordinary":
+            with pytest.raises(
+                BenchmarkFailure, match="^benchmark publication failed$"
+            ) as raised:
+                publish_report(report_path, repository)
+            assert "sensitive" not in str(raised.value)
+        else:
+            with pytest.raises(SystemExit) as raised:
+                publish_report(report_path, repository)
+            assert raised.value.code == 31
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert sent
+    assert delivered == [signal.SIGTERM]
+    assert replacement_opens == 1
+    assert len(replacement_fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(replacement_fds[0])
+    assert len(swapped) == 1
+    replacement, moved = swapped[0]
+    assert replacement.parent == git_dir
+    assert replacement.stat().st_mode & 0o777 == 0o711
+    assert (replacement / "foreign.txt").read_text() == "foreign namespace\n"
+    assert moved.is_dir()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    assert not (repository / "benchmarks" / "results").exists()
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    destination = publish_report(report_path, repository)
+
+    assert destination.is_dir()
+    assert replacement_opens == 1
+    assert replacement.stat().st_mode & 0o777 == 0o711
+    assert (replacement / "foreign.txt").read_text() == "foreign namespace\n"
 
 
 @pytest.mark.parametrize("directory_kind", ["results", "staging"])
