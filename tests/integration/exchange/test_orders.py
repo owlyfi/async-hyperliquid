@@ -1,3 +1,4 @@
+from copy import deepcopy
 from decimal import Decimal
 from time import time
 from typing import cast
@@ -12,6 +13,7 @@ from async_hyperliquid.types import (
     Cloid,
     Builder,
     JsonObject,
+    JsonValue,
     CancelOrder,
     TimeInForce,
     TriggerKind,
@@ -403,6 +405,60 @@ async def test_place_twap(sub_hl: AsyncHyperliquid) -> None:
         value = running["twapId"]
         assert isinstance(value, int)
         twap_id = value
+    finally:
+        try:
+            if twap_id is not None:
+                await sub_hl.cancel_twap("BTC", twap_id)
+        finally:
+            await sub_hl.close_position("BTC")
+
+
+@pytest.mark.parametrize(
+    ("with_trigger", "with_stop"),
+    [(True, True), (True, False), (False, True)],
+    ids=("trigger-and-stop", "trigger-only", "stop-only"),
+)
+async def test_place_twap_advanced_prices(
+    sub_hl: AsyncHyperliquid,
+    monkeypatch: pytest.MonkeyPatch,
+    with_trigger: bool,
+    with_stop: bool,
+) -> None:
+    mark_px = await sub_hl.info.mark_price("BTC")
+    trigger_value = round(mark_px * 0.95) if with_trigger else None
+    stop_value = round(mark_px * 1.05) if with_stop else None
+    trigger_px = None if trigger_value is None else float(trigger_value)
+    stop_px = None if stop_value is None else float(stop_value)
+    captured_actions: list[JsonObject] = []
+    original_post_json = sub_hl._transport.post_json
+
+    async def capture_action(url: str, payload: JsonObject) -> JsonValue:
+        action = payload.get("action")
+        if isinstance(action, dict) and action.get("type") == "twapOrder":
+            captured_actions.append(deepcopy(cast(JsonObject, action)))
+        return await original_post_json(url, payload)
+
+    monkeypatch.setattr(sub_hl._transport, "post_json", capture_action)
+    order = await _market_request(sub_hl, "BTC", notional=120)
+    twap_id: int | None = None
+    try:
+        response = await sub_hl.place_twap(
+            "BTC", True, order["sz"], 5, trigger_px=trigger_px, stop_px=stop_px
+        )
+        assert response["status"] == "ok"
+        status = cast(JsonObject, response["response"]["data"]["status"])
+        running = cast(JsonObject, status["running"])
+        value = running["twapId"]
+        assert isinstance(value, int)
+        twap_id = value
+
+        assert len(captured_actions) == 1
+        details = cast(JsonObject, captured_actions[0]["details"])
+        assert details["s"] == (None if stop_value is None else str(stop_value))
+        if trigger_value is None:
+            assert details["t"] is None
+        else:
+            assert details["t"] == {"a": False, "p": str(trigger_value)}
     finally:
         try:
             if twap_id is not None:
