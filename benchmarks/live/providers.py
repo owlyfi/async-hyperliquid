@@ -401,32 +401,18 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
 
     owned: list[LiveProvider] = []
     try:
-        async_client = AsyncHyperliquid(
-            credentials.master_address,
-            credentials.signing_key,
-            vault_address=credentials.subaccount_address,
-            network=Network.TESTNET,
-        )
-        await async_client.info.refresh_metadata()
-        market = await async_client.info._market_info("BTC")
-        api_role = await async_client.info.user_role(credentials.api_wallet_address)
-        sub_role = await async_client.info.user_role(credentials.subaccount_address)
-        validate_roles(credentials.master_address, api_role, sub_role)
-        async_provider = AsyncHyperliquidProvider(
-            cast(_AsyncClient, async_client),
-            coin="BTC",
-            asset=market.asset,
-            size_decimals=market.size_decimals,
-        )
-        owned.append(async_provider)
-
         recovery_client = AsyncHyperliquid(
             credentials.master_address,
             credentials.signing_key,
             vault_address=credentials.subaccount_address,
             network=Network.TESTNET,
         )
-        await recovery_client.info.refresh_metadata()
+        try:
+            await recovery_client.info.refresh_metadata()
+            market = await recovery_client.info._market_info("BTC")
+        except BaseException:
+            await recovery_client.close()
+            raise
         recovery_provider = AsyncHyperliquidProvider(
             cast(_AsyncClient, recovery_client),
             coin="BTC",
@@ -434,6 +420,36 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
             size_decimals=market.size_decimals,
         )
         owned.append(recovery_provider)
+
+        async_client = AsyncHyperliquid(
+            credentials.master_address,
+            credentials.signing_key,
+            vault_address=credentials.subaccount_address,
+            network=Network.TESTNET,
+        )
+        try:
+            await async_client.info.refresh_metadata()
+            measured_market = await async_client.info._market_info("BTC")
+            api_role = await async_client.info.user_role(credentials.api_wallet_address)
+            sub_role = await async_client.info.user_role(credentials.subaccount_address)
+            validate_roles(credentials.master_address, api_role, sub_role)
+            if (measured_market.asset, measured_market.size_decimals) != (
+                market.asset,
+                market.size_decimals,
+            ):
+                raise BenchmarkFailure(
+                    "async clients resolved different BTC market metadata"
+                )
+        except BaseException:
+            await async_client.close()
+            raise
+        async_provider = AsyncHyperliquidProvider(
+            cast(_AsyncClient, async_client),
+            coin="BTC",
+            asset=market.asset,
+            size_decimals=market.size_decimals,
+        )
+        owned.append(async_provider)
 
         sdk_client = Exchange(
             Account.from_key(credentials.signing_key),
@@ -460,31 +476,35 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
                 "enableRateLimit": False,
             }
         )
-        ccxt_client.set_sandbox_mode(True)
-        markets = cast(Mapping[str, object], ccxt_client.load_markets())
-        ccxt_market = _ccxt_market(markets, "BTC")
-        symbol = ccxt_market.get("symbol")
-        base_id = ccxt_market.get("baseId")
-        if not isinstance(symbol, str) or not isinstance(base_id, str | int):
-            raise BenchmarkFailure("ccxt BTC market metadata is incomplete")
-        if int(base_id) != market.asset:
-            raise BenchmarkFailure("ccxt BTC market metadata does not match")
+        try:
+            ccxt_client.set_sandbox_mode(True)
+            markets = cast(Mapping[str, object], ccxt_client.load_markets())
+            ccxt_market = _ccxt_market(markets, "BTC")
+            symbol = ccxt_market.get("symbol")
+            base_id = ccxt_market.get("baseId")
+            if not isinstance(symbol, str) or not isinstance(base_id, str | int):
+                raise BenchmarkFailure("ccxt BTC market metadata is incomplete")
+            if int(base_id) != market.asset:
+                raise BenchmarkFailure("ccxt BTC market metadata does not match")
 
-        ccxt_runtime = cast(Any, ccxt_client)
-        ccxt_options = cast(dict[str, object], ccxt_runtime.options)
-        ccxt_options["approvedBuilderFee"] = False
-        ccxt_options["builderFee"] = False
-        ccxt_options["refSet"] = True
-        ccxt_options["enableUnifiedMargin"] = False
-        setattr(ccxt_runtime, "initialize_client", lambda: True)
-        ccxt_provider = CcxtProvider(
-            cast(_CcxtClient, ccxt_runtime),
-            coin="BTC",
-            symbol=symbol,
-            asset=market.asset,
-            size_decimals=market.size_decimals,
-            vault_address=credentials.subaccount_address,
-        )
+            ccxt_runtime = cast(Any, ccxt_client)
+            ccxt_options = cast(dict[str, object], ccxt_runtime.options)
+            ccxt_options["approvedBuilderFee"] = False
+            ccxt_options["builderFee"] = False
+            ccxt_options["refSet"] = True
+            ccxt_options["enableUnifiedMargin"] = False
+            setattr(ccxt_runtime, "initialize_client", lambda: True)
+            ccxt_provider = CcxtProvider(
+                cast(_CcxtClient, ccxt_runtime),
+                coin="BTC",
+                symbol=symbol,
+                asset=market.asset,
+                size_decimals=market.size_decimals,
+                vault_address=credentials.subaccount_address,
+            )
+        except BaseException:
+            ccxt_client.close()
+            raise
         owned.append(ccxt_provider)
 
         return ProviderSet(

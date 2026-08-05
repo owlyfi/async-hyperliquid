@@ -1,8 +1,11 @@
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
+import benchmarks.live.providers as provider_module
 from benchmarks.live.models import BenchmarkFailure, OrderPair
+from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import (
     AsyncHyperliquidProvider,
     AsyncMarketSource,
@@ -299,3 +302,48 @@ async def test_provider_set_closes_owned_resources_in_reverse_order() -> None:
     await providers.close()
 
     assert closed == ["second", "recovery", "first"]
+
+
+async def test_factory_builds_recovery_first_and_closes_partial_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clients: list[Any] = []
+
+    class FakeInfo:
+        def __init__(self, index: int) -> None:
+            self.index = index
+
+        async def refresh_metadata(self) -> None:
+            if self.index == 1:
+                raise RuntimeError("measured metadata failed")
+
+        async def _market_info(self, coin: str) -> object:
+            assert coin == "BTC"
+            return SimpleNamespace(asset=0, size_decimals=5)
+
+        async def user_role(self, address: str) -> object:
+            raise AssertionError(f"recovery must not query roles: {address}")
+
+    class FakeAsyncHyperliquid:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            self.info = FakeInfo(len(clients))
+            self.closed = False
+            clients.append(self)
+
+        async def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(provider_module, "AsyncHyperliquid", FakeAsyncHyperliquid)
+    credentials = Credentials(
+        master_address="0x1111111111111111111111111111111111111111",
+        api_wallet_address="0x2222222222222222222222222222222222222222",
+        signing_key="0x" + "11" * 32,
+        subaccount_address="0x3333333333333333333333333333333333333333",
+    )
+
+    with pytest.raises(RuntimeError, match="measured metadata failed"):
+        await provider_module.build_providers(credentials)
+
+    assert len(clients) == 2
+    assert all(client.closed for client in clients)

@@ -1,5 +1,151 @@
 # Benchmarks
 
+## Live Exchange benchmark
+
+This benchmark submits real orders to Hyperliquid testnet. It compares
+`async-hyperliquid` cancellation by order ID (OID) with cancellation by client
+order ID (CLOID), then compares `async-hyperliquid`,
+`hyperliquid-python-sdk==0.24.0`, and `ccxt==4.5.71` for batch placement and
+batch cancellation. It never targets mainnet, but it does require a funded
+testnet subaccount and should be treated as a live trading program.
+
+Every logical workload uses the BTC perpetual and submits exactly two ALO
+orders with unique CLOIDs:
+
+- buy price: `mid * 0.90`;
+- sell price: `mid * 1.10`;
+- target notional: approximately 11 USDC for each order after exchange size
+  rounding.
+
+Both orders must return a `resting` status. A fill, rejection, malformed
+response, rate-limit response, or unsuccessful cancellation invalidates the
+whole run; measured failures are never retried or dropped.
+
+### Safety prerequisites
+
+Install the locked opt-in dependencies:
+
+```bash
+uv sync --frozen --group benchmark
+```
+
+Create `.env.local` in the repository root with testnet-only credentials:
+
+```dotenv
+IS_MAINNET=false
+HL_ADDR=0x_master_account
+HL_AK=0x_api_wallet
+HL_SK=0x_api_wallet_private_key
+HL_SUB=0x_execution_subaccount
+```
+
+`HL_SK` must derive `HL_AK`; the API wallet and subaccount must both belong to
+`HL_ADDR`. The runner validates those roles before submitting an order. Do not
+run another process with the same API-wallet key: Exchange nonces are local to
+one client owner and concurrent submissions can make the run invalid. Verify
+that the testnet subaccount has adequate available margin and no unrelated
+open orders before starting.
+
+The runner loads `.env.local` without overriding environment variables already
+set by the shell. Credentials, addresses, OIDs, CLOIDs, signatures, request
+bodies, and response bodies are excluded from every persisted artifact.
+
+### Reproducible commands
+
+Use a fresh output directory for every run. The default, publishable shape is
+three untallied warmups followed by 30 measured rounds with 250 ms reserved per
+REST weight:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py all \
+  --output-dir /tmp/hl-live-default
+```
+
+The suites can also be run separately for diagnostics:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
+  --output-dir /tmp/hl-live-cancel-id
+
+uv run --frozen --group benchmark python benchmarks/live_exchange.py providers \
+  --output-dir /tmp/hl-live-providers
+```
+
+`--rounds`, `--warmups`, and `--interval-ms` may be changed for smoke runs;
+`--interval-ms` cannot be lower than 250. Only a complete `all` report with
+the exact defaults and locked library versions can update the committed
+results.
+
+### Rate-limit budget
+
+Hyperliquid documents a 1,200 REST-weight/minute IP limit. An Exchange batch
+containing two orders or two cancellations has weight
+`1 + floor(batch_length / 40) = 1`. The global pacer reserves at least 250 ms
+for every unit of request weight, limiting the controlled workload to 240
+weight/minute, or 20% of the documented IP allowance. Market snapshots are
+reserved at their documented weight as well. Metadata and role validation
+happen before timing and use the remaining headroom; avoid any other traffic
+from the same public IP while collecting a report. See the
+[official rate-limit documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits).
+
+Address-based cumulative limits still apply. The benchmark does not claim
+exchange capacity and cannot isolate other traffic sharing the IP, API wallet,
+or execution account.
+
+### Timing and fairness
+
+A measured sample begins immediately before the provider's public batch method
+and ends after encoding, signing, HTTP transport, response receipt, response
+parsing, and strict success validation. Imports, client construction, metadata,
+role checks, mid lookup, pacing sleep, recovery cleanup, report serialization,
+and chart generation are outside the measured interval.
+
+Provider order rotates every round. OID/CLOID cancellation order and the order
+side assigned to each identifier alternate by round. All providers first build
+an unsubmitted canonical probe and must produce identical wire orders. Each
+real provider placement then receives a different pair of CLOIDs so one
+provider can never cancel another provider's orders.
+
+CCXT's default Hyperliquid initialization may submit builder/referrer setup
+actions and attach builder parameters. After sandbox market initialization,
+the adapter explicitly disables that initialization path and builder fee so
+the measured Exchange action matches the other two providers exactly.
+
+### Cleanup, artifacts, and publication
+
+Each successful measured placement is cancelled immediately. If placement,
+parsing, or measured cancellation fails, the recovery client attempts a
+targeted batch cancellation using the two unique CLOIDs before the error is
+propagated. An explicit successful cancel response is required. Any recovery
+or client-close failure sets `cleanup_ok=false`; inspect the testnet subaccount
+manually before another run whenever the command exits nonzero.
+
+A valid selected-suite run writes sanitized `report.json`, `samples.csv`, and
+the applicable PNG/SVG figures. An invalid run writes
+`report.invalid.json`, preserves already collected safe samples, and does not
+publish figures or CSV as a successful result. Exit status zero means all
+selected suites, cleanup, report, CSV, and figures completed.
+
+After inspecting a default-shape `all` run, publish it explicitly:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py publish \
+  --report /tmp/hl-live-default/report.json
+```
+
+Publication recomputes and validates the exact sample shape and summaries,
+requires clean completion and pinned versions, copies JSON/CSV/PNG/SVG into
+`benchmarks/results/<UTC timestamp>/`, then updates the detailed block below
+and the overall block in the repository README from the same report.
+
+<!-- live-exchange-benchmark:detail:start -->
+## Published live Exchange benchmark
+
+No validated live testnet result has been published yet. Simulated, partial,
+non-default, cleanup-failed, and locally edited reports are not eligible for
+this section.
+<!-- live-exchange-benchmark:detail:end -->
+
 ## Signing benchmark
 
 This benchmark compares Hyperliquid signing and order-payload construction in

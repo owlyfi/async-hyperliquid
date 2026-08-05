@@ -141,52 +141,64 @@ def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, 
     from matplotlib import pyplot as plt
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    cancel = figure_series(report, "cancel-id")
-    cancel_operations = ("cancel_by_oid", "cancel_by_cloid")
-    cancel_values = [
-        cancel[operation]["async-hyperliquid"] for operation in cancel_operations
-    ]
-    cancel_labels = ("OID", "CLOID")
-    cancel_figure, cancel_axes = plt.subplots(1, 2, figsize=(12, 5))
-    _distribution_panel(
-        cancel_axes[0],
-        cancel_values,
-        cancel_labels,
-        title="Cancel latency distribution",
-    )
-    _comparison_panel(
-        cancel_axes[1], cancel_values, cancel_labels, title="Cancel median and p95"
-    )
-    cancel_figure.tight_layout()
-    cancel_paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[:2])
-    for path in cancel_paths:
-        cancel_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
-    plt.close(cancel_figure)
+    suites = {sample["suite"] for sample in report["samples"]}
+    paths: list[Path] = []
 
-    providers = figure_series(report, "providers")
-    operations = ("place_batch_2", "cancel_batch_2_by_oid")
-    titles = ("Place two ALO orders", "Cancel two orders by OID")
-    provider_figure, provider_axes = plt.subplots(2, 2, figsize=(14, 10))
-    for row, (operation, title) in enumerate(zip(operations, titles, strict=True)):
-        operation_values = [providers[operation][name] for name in _PROVIDERS]
+    if "cancel-id" in suites:
+        cancel = figure_series(report, "cancel-id")
+        cancel_operations = ("cancel_by_oid", "cancel_by_cloid")
+        cancel_values = [
+            cancel[operation]["async-hyperliquid"] for operation in cancel_operations
+        ]
+        cancel_labels = ("OID", "CLOID")
+        cancel_figure, cancel_axes = plt.subplots(1, 2, figsize=(12, 5))
         _distribution_panel(
-            provider_axes[row][0],
-            operation_values,
-            _PROVIDERS,
-            title=f"{title}: distribution",
+            cancel_axes[0],
+            cancel_values,
+            cancel_labels,
+            title="Cancel latency distribution",
         )
         _comparison_panel(
-            provider_axes[row][1],
-            operation_values,
-            _PROVIDERS,
-            title=f"{title}: median and p95",
+            cancel_axes[1], cancel_values, cancel_labels, title="Cancel median and p95"
         )
-    provider_figure.tight_layout()
-    provider_paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[2:])
-    for path in provider_paths:
-        provider_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
-    plt.close(provider_figure)
-    return (*cancel_paths, *provider_paths)
+        cancel_figure.tight_layout()
+        cancel_paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[:2])
+        for path in cancel_paths:
+            cancel_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
+        plt.close(cancel_figure)
+        paths.extend(cancel_paths)
+
+    if "providers" in suites:
+        providers = figure_series(report, "providers")
+        operations = ("place_batch_2", "cancel_batch_2_by_oid")
+        titles = ("Place two ALO orders", "Cancel two orders by OID")
+        provider_figure, provider_axes = plt.subplots(2, 2, figsize=(14, 10))
+        for row, (operation, title) in enumerate(zip(operations, titles, strict=True)):
+            operation_values = [providers[operation][name] for name in _PROVIDERS]
+            _distribution_panel(
+                provider_axes[row][0],
+                operation_values,
+                _PROVIDERS,
+                title=f"{title}: distribution",
+            )
+            _comparison_panel(
+                provider_axes[row][1],
+                operation_values,
+                _PROVIDERS,
+                title=f"{title}: median and p95",
+            )
+        provider_figure.tight_layout()
+        provider_paths = tuple(
+            output_dir / filename for filename in FIGURE_FILENAMES[2:]
+        )
+        for path in provider_paths:
+            provider_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
+        plt.close(provider_figure)
+        paths.extend(provider_paths)
+
+    if not paths:
+        raise BenchmarkFailure("report has no supported figure samples")
+    return tuple(paths)
 
 
 def _expected_counts() -> Counter[tuple[str, str, str]]:
@@ -386,7 +398,7 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
 def _overall_markdown(report: LiveBenchmarkReport) -> str:
     winner, ratio = _cancel_comparison(report)
     lines = [
-        "## Live Exchange benchmark",
+        "#### Published live Exchange result",
         "",
         f"On the validated testnet run, {winner} cancellation had the lower median; the slower "
         f"identifier was {ratio:.3f}x the faster median.",

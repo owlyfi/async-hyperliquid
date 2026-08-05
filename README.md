@@ -390,6 +390,24 @@ warmup, and CCXT's CoinCurve signer was verified before timing. The detailed
 manual contains the machine specification, per-operation median/MAD/p95,
 throughput, aggregation formula, and exact reproduction command.
 
+### Live Exchange benchmark
+
+The repository also includes a rate-controlled testnet benchmark for
+async-hyperliquid OID versus CLOID cancellation and for end-to-end batch place
+and cancel latency across async-hyperliquid, the official SDK, and CCXT. Each
+workload places two BTC perpetual ALO orders at 90% and 110% of mid with
+approximately 11 USDC notional per order. See the
+[live benchmark safety and reproduction manual](https://github.com/traderfiapp/async-hyperliquid/blob/master/benchmarks/README.md#live-exchange-benchmark)
+before running it because it submits real testnet orders.
+
+<!-- live-exchange-benchmark:overall:start -->
+#### Published live Exchange result
+
+No validated live testnet result has been published yet. This section is only
+updated from a complete default-shape report after cleanup and artifact
+validation succeed.
+<!-- live-exchange-benchmark:overall:end -->
+
 The credential-free Info command always runs the complete suite against both
 MAINNET and TESTNET:
 
