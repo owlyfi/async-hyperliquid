@@ -4,6 +4,7 @@ import json
 import math
 import statistics
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import cast
 
 from .models import (
@@ -263,3 +264,23 @@ def assert_report_is_sanitized(
     for value in forbidden_values:
         if value and value.casefold() in rendered:
             raise BenchmarkFailure("report contains a sensitive value")
+
+
+def write_report(
+    report: LiveBenchmarkReport, output_dir: Path, *, forbidden_values: Sequence[str]
+) -> Path:
+    assert_report_is_sanitized(
+        cast(Mapping[str, object], report), forbidden_values=forbidden_values
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = "report.json" if report["valid"] else "report.invalid.json"
+    destination = output_dir / filename
+    temporary = output_dir / f".{filename}.tmp"
+    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    try:
+        temporary.write_text(rendered)
+        temporary.replace(destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return destination

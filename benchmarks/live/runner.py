@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from time import perf_counter_ns
 from uuid import uuid4
 
 from .models import BenchmarkConfig, BenchmarkFailure, CanonicalOrder, LatencySample
 from .pacing import WeightedPacer
-from .providers import LiveProvider, MarketSource
+from .providers import LiveProvider, MarketSource, validate_provider_wire_parity
 from .results import SampleRecorder
-from .workload import build_order_pair
+from .workload import build_order_pair, rotate_names
 
 
 def _new_cloid() -> str:
@@ -103,3 +103,95 @@ async def run_cancel_id_suite(
             raise BenchmarkFailure("cancel-id cleanup failed") from cause
         if failure is not None:
             raise failure
+
+
+async def run_provider_suite(
+    providers: Sequence[LiveProvider],
+    recovery: LiveProvider,
+    mid_source: MarketSource,
+    pacer: WeightedPacer,
+    config: BenchmarkConfig,
+    recorder: SampleRecorder,
+    *,
+    clock_ns: Callable[[], int] = perf_counter_ns,
+    cloid_factory: Callable[[], str] = _new_cloid,
+) -> None:
+    if not providers:
+        raise ValueError("providers must not be empty")
+    providers_by_name = {provider.name: provider for provider in providers}
+    if len(providers_by_name) != len(providers):
+        raise ValueError("provider names must be unique")
+    provider_names = tuple(providers_by_name)
+
+    total_rounds = config.warmups + config.rounds
+    for logical_round in range(total_rounds):
+        await pacer.wait(weight=2)
+        mid, size_decimals = await mid_source.snapshot()
+        parity_pair = build_order_pair(
+            mid,
+            size_decimals,
+            target_notional=config.target_notional,
+            cloids=(cloid_factory(), cloid_factory()),
+        )
+        validate_provider_wire_parity(tuple(providers), parity_pair)
+
+        measured = logical_round >= config.warmups
+        measured_round = logical_round - config.warmups
+        ordered_names = rotate_names(provider_names, logical_round)
+        for provider_order, provider_name in enumerate(ordered_names):
+            provider = providers_by_name[provider_name]
+            pair = build_order_pair(
+                mid,
+                size_decimals,
+                target_notional=config.target_notional,
+                cloids=(cloid_factory(), cloid_factory()),
+            )
+            pending = {order.cloid: order for order in pair.as_tuple()}
+            failure: BaseException | None = None
+
+            try:
+                await pacer.wait(weight=1)
+                place_started = clock_ns() if measured else 0
+                oids = await provider.place(pair)
+                if measured:
+                    recorder.record(
+                        LatencySample(
+                            suite="providers",
+                            provider=provider.name,
+                            operation="place_batch_2",
+                            round_index=measured_round,
+                            provider_order=provider_order,
+                            duration_ns=clock_ns() - place_started,
+                        )
+                    )
+
+                await pacer.wait(weight=1)
+                cancel_started = clock_ns() if measured else 0
+                await provider.cancel_oids(pair.as_tuple(), oids)
+                pending.clear()
+                if measured:
+                    recorder.record(
+                        LatencySample(
+                            suite="providers",
+                            provider=provider.name,
+                            operation="cancel_batch_2_by_oid",
+                            round_index=measured_round,
+                            provider_order=provider_order,
+                            duration_ns=clock_ns() - cancel_started,
+                        )
+                    )
+            except BaseException as error:
+                failure = error
+
+            cleanup_failure = await _recover_pending(pending, recovery, pacer)
+            if cleanup_failure is not None:
+                if failure is None:
+                    cause: BaseException = cleanup_failure
+                else:
+                    cause = BaseExceptionGroup(
+                        "provider operation and cleanup both failed",
+                        [failure, cleanup_failure],
+                    )
+                raise BenchmarkFailure("providers cleanup failed") from cause
+            if failure is not None:
+                raise failure

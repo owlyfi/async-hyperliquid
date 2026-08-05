@@ -301,8 +301,10 @@ git commit -m "feat: benchmark oid and cloid cancellation"
 - [ ] **Step 1: Write failing provider-order rotation tests**
 
 With provider names `(ccxt, sdk, async-hyperliquid)`, assert three successive
-rounds use ABC, BCA, and CAB. Every provider must receive the same `OrderPair`
-object for a round.
+rounds use ABC, BCA, and CAB. Every provider receives the same price, size, and
+ALO semantics for a round but fresh CLOIDs, so every submitted live order has a
+globally unique recovery identifier. Exact wire parity is checked separately
+with one unsubmitted probe pair.
 
 - [ ] **Step 2: Implement paced two-operation provider timing**
 
