@@ -86,3 +86,19 @@ async def hl() -> AsyncIterator[AsyncHyperliquid]:
         await client.info.refresh_metadata()
         await _validate_exchange_roles(client.info)
         yield client
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def sub_hl() -> AsyncIterator[AsyncHyperliquid]:
+    _prepare_exchange()
+    subaccount = require_env("HL_SUB", os.environ)
+    async with AsyncHyperliquid(
+        subaccount,
+        require_env("HL_SK", os.environ),
+        vault_address=subaccount,
+        network=Network.TESTNET,
+        dexs=_DEXS,
+    ) as client:
+        await client.info.refresh_metadata()
+        await _validate_exchange_roles(client.info)
+        yield client

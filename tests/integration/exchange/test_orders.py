@@ -93,6 +93,21 @@ async def _cancel(client: AsyncHyperliquid, orders: Sequence[CancelOrder]) -> No
         assert response["status"] == "ok"
 
 
+async def _assert_subaccount_order(
+    client: AsyncHyperliquid, subaccount_address: str
+) -> None:
+    order = await _limit_request(client, "BTC")
+    oid: int | None = None
+    try:
+        response = await client.place_limit_order(order)
+        oid = _resting_oid(response)
+        status = await client.info.order_status(subaccount_address, oid)
+        assert status["status"] == "order"
+    finally:
+        if oid is not None:
+            await _cancel(client, (CancelOrder("BTC", oid),))
+
+
 async def _assert_resting_price(
     client: AsyncHyperliquid, coin: str, expected_px: Decimal
 ) -> None:
@@ -144,6 +159,18 @@ async def test_place_limit_order(hl: AsyncHyperliquid) -> None:
             cancels.append(CancelOrder(coin, _resting_oid(response)))
     finally:
         await _cancel(hl, cancels)
+
+
+async def test_master_address_subaccount_order(
+    hl: AsyncHyperliquid, subaccount_address: str
+) -> None:
+    await _assert_subaccount_order(hl, subaccount_address)
+
+
+async def test_subaccount_address_order(
+    sub_hl: AsyncHyperliquid, subaccount_address: str
+) -> None:
+    await _assert_subaccount_order(sub_hl, subaccount_address)
 
 
 async def test_outcome_minimum_notional_is_exchange_owned(hl: AsyncHyperliquid) -> None:
