@@ -135,6 +135,14 @@ def _assert_no_publication_debris(repository: Path) -> None:
     assert not results.exists() or list(results.iterdir()) == []
 
 
+def _test_tombstone(base: Path) -> reporting._OwnedPath:
+    private_root = base / ".git-private-test"
+    private_root.mkdir(exist_ok=True)
+    path = private_root / f"benchmark-publication.{os.urandom(16).hex()}.tombstone"
+    path.mkdir(mode=0o700)
+    return reporting._OwnedPath(path, reporting._require_kind(path, directory=True))
+
+
 def test_figure_series_keeps_operations_and_providers_separate() -> None:
     series = figure_series(_valid_report(), "cancel-id")
 
@@ -864,27 +872,57 @@ def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
-def test_interrupt_after_mkdir_before_identity_handoff_leaves_no_orphan(
+def test_sigterm_during_created_directory_fstat_is_deferred_until_registry_handoff(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repository, report_path, original_root, original_detail = (
         _prepare_publish_repository(tmp_path)
     )
     git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
-    interruption = KeyboardInterrupt()
+    real_open = os.open
+    real_fstat = os.fstat
+    created_fd: int | None = None
+    delivered: list[int] = []
+    sent = False
 
-    def interrupt_after_create(path: Path) -> None:
-        if path.name.endswith(".staging"):
-            raise interruption
+    def raises_system_exit(signum: int, frame: object) -> None:
+        del frame
+        delivered.append(signum)
+        raise SystemExit(18)
 
-    monkeypatch.setattr(
-        reporting, "_after_directory_create", interrupt_after_create, raising=False
-    )
+    def record_created_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal created_fd
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if isinstance(path, str) and path.endswith(".staging") and dir_fd is not None:
+            created_fd = fd
+        return fd
 
-    with pytest.raises(KeyboardInterrupt) as raised:
-        publish_report(report_path, repository)
+    def fstat_then_sigterm(fd: int) -> os.stat_result:
+        nonlocal sent
+        value = real_fstat(fd)
+        if fd == created_fd and not sent:
+            sent = True
+            os.kill(os.getpid(), signal.SIGTERM)
+        return value
 
-    assert raised.value is interruption
+    previous_handler = signal.signal(signal.SIGTERM, raises_system_exit)
+    monkeypatch.setattr(os, "open", record_created_open)
+    monkeypatch.setattr(os, "fstat", fstat_then_sigterm)
+    try:
+        with pytest.raises(SystemExit) as raised:
+            publish_report(report_path, repository)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert raised.value.code == 18
+    assert sent
+    assert delivered == [signal.SIGTERM]
     assert list(git_dir.glob("benchmark-publication.*.staging")) == []
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
@@ -915,7 +953,7 @@ def test_sigterm_after_real_mkdir_is_deferred_until_ownership_handoff(
         real_mkdir(path, mode, dir_fd=dir_fd)
         candidate = Path(path)
         matches = (
-            candidate.name == "results"
+            candidate.name.endswith(".results.creation")
             if directory_kind == "results"
             else candidate.name.endswith(".staging")
         )
@@ -943,7 +981,7 @@ def test_sigterm_after_real_mkdir_is_deferred_until_ownership_handoff(
 
 @pytest.mark.parametrize("directory_kind", ["results", "staging"])
 @pytest.mark.parametrize("control_flow", [KeyboardInterrupt(), SystemExit(23)])
-def test_injected_control_flow_after_real_mkdir_registers_owned_directory(
+def test_injected_control_flow_after_real_mkdir_leaves_git_private_orphan(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     directory_kind: str,
@@ -955,6 +993,7 @@ def test_injected_control_flow_after_real_mkdir_registers_owned_directory(
     git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
     real_mkdir = os.mkdir
     injected = False
+    ambiguous: list[Path] = []
 
     def mkdir_then_interrupt(
         path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
@@ -963,12 +1002,13 @@ def test_injected_control_flow_after_real_mkdir_registers_owned_directory(
         real_mkdir(path, mode, dir_fd=dir_fd)
         candidate = Path(path)
         matches = (
-            candidate.name == "results"
+            candidate.name.endswith(".results.creation")
             if directory_kind == "results"
             else candidate.name.endswith(".staging")
         )
         if matches and not injected:
             injected = True
+            ambiguous.append(git_dir / candidate.name)
             raise control_flow
 
     monkeypatch.setattr(os, "mkdir", mkdir_then_interrupt)
@@ -978,11 +1018,81 @@ def test_injected_control_flow_after_real_mkdir_registers_owned_directory(
 
     assert raised.value is control_flow
     assert injected
-    assert list(git_dir.glob("benchmark-publication.*.staging")) == []
+    assert len(ambiguous) == 1
+    assert ambiguous[0].is_dir()
+    assert ambiguous[0].parent == git_dir
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     _assert_no_publication_debris(repository)
     assert not (repository / "benchmarks" / "results").exists()
+
+
+@pytest.mark.parametrize("directory_kind", ["results", "staging"])
+@pytest.mark.parametrize("control_flow", [KeyboardInterrupt(), SystemExit(29)])
+def test_ambiguous_post_mkdir_swap_is_never_claimed_and_retry_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    directory_kind: str,
+    control_flow: BaseException,
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    results_dir = repository / "benchmarks" / "results"
+    real_mkdir = os.mkdir
+    injected = False
+    swapped: list[tuple[Path, Path]] = []
+
+    def mkdir_swap_then_interrupt(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
+        nonlocal injected
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        candidate = (
+            Path(path) if dir_fd is None else git_dir / os.fsdecode(os.fspath(path))
+        )
+        matches = (
+            candidate == results_dir or candidate.name.endswith(".results.creation")
+            if directory_kind == "results"
+            else candidate.name.endswith(".staging")
+        )
+        if matches and not injected:
+            injected = True
+            moved = candidate.with_name(f"{candidate.name}.ambiguous-owned")
+            candidate.rename(moved)
+            real_mkdir(candidate, mode)
+            (candidate / "foreign.txt").write_text("foreign namespace\n")
+            swapped.append((candidate, moved))
+            raise control_flow
+
+    monkeypatch.setattr(os, "mkdir", mkdir_swap_then_interrupt)
+
+    with pytest.raises(type(control_flow)) as raised:
+        publish_report(report_path, repository)
+
+    assert raised.value is control_flow
+    assert injected
+    assert len(swapped) == 1
+    replacement, moved = swapped[0]
+    assert replacement.parent == git_dir
+    assert (replacement / "foreign.txt").read_text() == "foreign namespace\n"
+    assert moved.is_dir()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    first_invocation_names = [
+        path
+        for path in git_dir.glob("benchmark-publication.*")
+        if path.name != reporting._PUBLICATION_LOCK_FILENAME
+    ]
+    assert len(first_invocation_names) <= 3
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    destination = publish_report(report_path, repository)
+
+    assert destination.is_dir()
+    assert (replacement / "foreign.txt").read_text() == "foreign namespace\n"
 
 
 def test_final_destination_collision_fails_before_readme_mutation(
@@ -1012,22 +1122,29 @@ def test_results_creation_collision_is_not_deleted(
     repository, report_path, original_root, original_detail = (
         _prepare_publish_repository(tmp_path)
     )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
     results_dir = repository / "benchmarks" / "results"
     real_mkdir = os.mkdir
+    collision: list[Path] = []
 
-    def collide(path: str | os.PathLike[str], mode: int = 0o777) -> None:
-        if Path(path) == results_dir:
-            real_mkdir(path, mode)
+    def collide(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
+        candidate = Path(path)
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        if candidate.name.endswith(".results.creation"):
+            collision.append(git_dir / candidate.name)
             raise FileExistsError("simulated namespace winner")
-        real_mkdir(path, mode)
 
     monkeypatch.setattr(os, "mkdir", collide)
 
     with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
         publish_report(report_path, repository)
 
-    assert results_dir.is_dir()
-    assert list(results_dir.iterdir()) == []
+    assert not results_dir.exists()
+    assert len(collision) == 1
+    assert collision[0].is_dir()
+    assert collision[0].parent == git_dir
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
 
@@ -1038,16 +1155,18 @@ def test_staging_creation_collision_is_not_deleted(
     repository, report_path, original_root, original_detail = (
         _prepare_publish_repository(tmp_path)
     )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
     collision: list[Path] = []
     real_mkdir = os.mkdir
 
-    def collide(path: str | os.PathLike[str], mode: int = 0o777) -> None:
+    def collide(
+        path: str | os.PathLike[str], mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> None:
         candidate = Path(path)
+        real_mkdir(path, mode, dir_fd=dir_fd)
         if candidate.name.endswith(".staging"):
-            real_mkdir(path, mode)
-            collision.append(candidate)
+            collision.append(git_dir / candidate.name)
             raise FileExistsError("simulated namespace winner")
-        real_mkdir(path, mode)
 
     monkeypatch.setattr(os, "mkdir", collide)
 
@@ -1092,6 +1211,149 @@ def test_staging_namespace_swap_is_rejected_without_deleting_replacement(
     assert not (repository / "benchmarks" / "results" / "20260805T000100Z").exists()
 
 
+def test_transaction_cleanup_retains_value_free_git_private_tombstone_without_removers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    real_unlink = os.unlink
+    real_rmdir = os.rmdir
+    removals: list[str] = []
+
+    def record_unlink(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> None:
+        removals.append("unlink")
+        real_unlink(path, dir_fd=dir_fd)
+
+    def record_rmdir(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> None:
+        removals.append("rmdir")
+        real_rmdir(path, dir_fd=dir_fd)
+
+    def generate_tree_then_fail(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        _write_fake_publish_figures(report, output_dir)
+        nested = output_dir / "nested"
+        nested.mkdir()
+        (nested / "secret.txt").write_text("credential-like report payload\n")
+        raise RuntimeError("simulated generator failure")
+
+    monkeypatch.setattr(os, "unlink", record_unlink)
+    monkeypatch.setattr(os, "rmdir", record_rmdir)
+    monkeypatch.setattr(reporting, "write_figures", generate_tree_then_fail)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert removals == []
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    tombstones = list(git_dir.glob("benchmark-publication.*.tombstone"))
+    assert len(tombstones) == 1
+    assert tombstones[0].stat().st_mode & 0o777 == 0o700
+    retained_entries = list(tombstones[0].iterdir())
+    assert 1 <= len(retained_entries) <= 3
+    retained_files = [path for path in tombstones[0].rglob("*") if path.is_file()]
+    assert retained_files
+    assert all(path.read_bytes() == b"" for path in retained_files)
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    destination = publish_report(report_path, repository)
+
+    assert destination.is_dir()
+    assert removals == []
+    assert len(list(git_dir.glob("benchmark-publication.*.tombstone"))) == 2
+
+
+def test_readme_temp_swap_after_tombstone_verification_preserves_foreign_and_retries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    real_open = os.open
+    real_write = os.write
+    real_fstat = os.fstat
+    real_identity_from_stat = reporting._identity_from_stat
+    temporary_fd: int | None = None
+    temporary_identity: reporting._PathIdentity | None = None
+    write_failed = False
+    swapped: list[tuple[Path, Path]] = []
+
+    def record_temporary_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal temporary_fd
+        fd = real_open(path, flags, mode, dir_fd=dir_fd)
+        if isinstance(path, str) and path.endswith(".tmp"):
+            temporary_fd = fd
+        return fd
+
+    def write_prefix_then_fail(fd: int, value: Any) -> int:
+        nonlocal temporary_identity, write_failed
+        if fd == temporary_fd and not write_failed:
+            write_failed = True
+            temporary_identity = real_identity_from_stat(real_fstat(fd))
+            prefix = memoryview(value)[:32]
+            real_write(fd, prefix)
+            raise OSError("simulated README temporary write failure")
+        return real_write(fd, value)
+
+    def identify_then_swap(value: os.stat_result) -> Any:
+        identity = real_identity_from_stat(value)
+        if identity == temporary_identity and not swapped:
+            candidates = [
+                candidate
+                for tombstone in git_dir.glob("benchmark-publication.*.tombstone")
+                for candidate in tombstone.glob("entry.*.file")
+                if candidate.lstat().st_dev == identity.device
+                and candidate.lstat().st_ino == identity.inode
+            ]
+            if candidates:
+                retained = candidates[0]
+                moved = retained.with_name(f"{retained.name}.moved-owned")
+                retained.rename(moved)
+                retained.write_text("foreign README temporary\n")
+                swapped.append((retained, moved))
+        return identity
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(os, "open", record_temporary_open)
+    monkeypatch.setattr(os, "write", write_prefix_then_fail)
+    monkeypatch.setattr(reporting, "_identity_from_stat", identify_then_swap)
+
+    with pytest.raises(BenchmarkFailure, match="^benchmark publication failed$"):
+        publish_report(report_path, repository)
+
+    assert write_failed
+    assert len(swapped) == 1
+    foreign, moved = swapped[0]
+    assert foreign.read_text() == "foreign README temporary\n"
+    assert moved.read_bytes() == b""
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert list(repository.glob(".README.md.*.tmp")) == []
+    assert list((repository / "benchmarks").glob(".README.md.*.tmp")) == []
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    monkeypatch.setattr(os, "write", real_write)
+    destination = publish_report(report_path, repository)
+
+    assert destination.is_dir()
+    assert foreign.read_text() == "foreign README temporary\n"
+
+
 @pytest.mark.parametrize("kind", ["tree", "empty-directory", "file"])
 def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kind: str
@@ -1106,6 +1368,7 @@ def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
     owned = reporting._OwnedPath(
         owned_path, reporting._require_kind(owned_path, directory=kind != "file")
     )
+    tombstone = _test_tombstone(tmp_path)
     moved = tmp_path / "moved-owned"
     real_rename_noreplace_at = reporting._rename_noreplace_at
     swapped = False
@@ -1130,14 +1393,16 @@ def test_cleanup_swap_after_last_identity_check_does_not_delete_foreign_object(
     monkeypatch.setattr(reporting, "_rename_noreplace_at", swap_then_rename)
 
     if kind == "tree":
-        reporting._remove_owned_directory(owned)
+        reporting._remove_owned_directory(owned, tombstone)
         assert (owned_path / "foreign.txt").read_text() == "foreign\n"
+        assert (moved / "owned.txt").read_bytes() == b""
     elif kind == "empty-directory":
-        reporting._remove_owned_empty_directory(owned)
+        reporting._remove_owned_empty_directory(owned, tombstone)
         assert owned_path.is_dir()
     else:
-        reporting._remove_owned_file(owned)
+        reporting._remove_owned_file(owned, tombstone)
         assert owned_path.read_text() == "foreign\n"
+        assert moved.read_bytes() == b""
     assert moved.exists()
 
 
@@ -1155,16 +1420,17 @@ def test_cleanup_swap_after_quarantine_verification_preserves_foreign_object(
     owned = reporting._OwnedPath(
         owned_path, reporting._require_kind(owned_path, directory=kind != "file")
     )
+    tombstone = _test_tombstone(tmp_path)
     real_identity_from_stat = reporting._identity_from_stat
     swapped: list[tuple[Path, Path]] = []
 
     def identify_then_swap(value: os.stat_result) -> Any:
         identity = real_identity_from_stat(value)
-        if identity == owned.identity and not swapped:
+        if reporting._same_object(identity, owned.identity) and not swapped:
             candidates = [
                 candidate
-                for candidate in tmp_path.rglob("*")
-                if ".cleanup" in str(candidate.relative_to(tmp_path))
+                for candidate in tombstone.path.rglob("*")
+                if candidate.name.startswith("entry.")
                 and candidate.lstat().st_dev == owned.identity.device
                 and candidate.lstat().st_ino == owned.identity.inode
             ]
@@ -1184,11 +1450,11 @@ def test_cleanup_swap_after_quarantine_verification_preserves_foreign_object(
     monkeypatch.setattr(reporting, "_identity_from_stat", identify_then_swap)
 
     if kind == "tree":
-        reporting._remove_owned_directory(owned)
+        reporting._remove_owned_directory(owned, tombstone)
     elif kind == "empty-directory":
-        reporting._remove_owned_empty_directory(owned)
+        reporting._remove_owned_empty_directory(owned, tombstone)
     else:
-        reporting._remove_owned_file(owned)
+        reporting._remove_owned_file(owned, tombstone)
 
     assert len(swapped) == 1
     quarantine, moved = swapped[0]
@@ -1199,6 +1465,10 @@ def test_cleanup_swap_after_quarantine_verification_preserves_foreign_object(
     else:
         assert quarantine.read_text() == "foreign\n"
     assert moved.exists()
+    if kind == "tree":
+        assert (moved / "owned.txt").read_bytes() == b""
+    elif kind == "file":
+        assert moved.read_bytes() == b""
 
 
 @pytest.mark.parametrize("kind", ["tree", "empty-directory", "file"])
@@ -1219,6 +1489,7 @@ def test_cleanup_finishes_committed_quarantine_before_parent_close_error(
     owned = reporting._OwnedPath(
         owned_path, reporting._require_kind(owned_path, directory=kind != "file")
     )
+    tombstone = _test_tombstone(tmp_path)
     real_open = os.open
     real_close = os.close
     parent_fds: set[int] = set()
@@ -1250,17 +1521,20 @@ def test_cleanup_finishes_committed_quarantine_before_parent_close_error(
 
     with pytest.raises(type(close_error)) as raised:
         if kind == "tree":
-            reporting._remove_owned_directory(owned)
+            reporting._remove_owned_directory(owned, tombstone)
         elif kind == "empty-directory":
-            reporting._remove_owned_empty_directory(owned)
+            reporting._remove_owned_empty_directory(owned, tombstone)
         else:
-            reporting._remove_owned_file(owned)
+            reporting._remove_owned_file(owned, tombstone)
 
     if not isinstance(close_error, Exception):
         assert raised.value is close_error
     assert injected
     assert not owned_path.exists()
-    assert list(tmp_path.glob(".*.cleanup*")) == []
+    assert tombstone.path.is_dir()
+    assert all(
+        path.read_bytes() == b"" for path in tombstone.path.rglob("*") if path.is_file()
+    )
 
 
 def test_rename_then_keyboard_interrupt_removes_owned_final_and_retries(
@@ -1306,11 +1580,12 @@ def test_control_flow_during_compensation_is_re_raised_unchanged(
     )
     destination = repository / "benchmarks" / "results" / "20260805T000100Z"
     real_atomic_text_if_unchanged = reporting._atomic_text_if_unchanged
+    real_move = reporting._atomic_move_noreplace
 
     def fail_final_rename(source: Path, target: Path, **kwargs: Any) -> None:
-        del source, kwargs
-        assert target == destination
-        raise OSError("final rename failed")
+        if target == destination:
+            raise OSError("final rename failed")
+        real_move(source, target, **kwargs)
 
     def interrupt_rollback(change: reporting._AtomicTextChange) -> None:
         if change.replacement in {original_root, original_detail}:
@@ -1464,6 +1739,7 @@ def test_readme_parent_swap_at_exchange_uses_pinned_parent_and_aborts(
         snapshot="original\n",
         snapshot_identity=target_identity,
         replacement="replacement\n",
+        tombstone=_test_tombstone(tmp_path),
     )
     moved_parent = parent.with_name(f"{parent.name}.moved-original")
     real_exchange = reporting._rename_exchange_at
@@ -1505,6 +1781,7 @@ def test_atomic_text_fails_closed_when_exchange_is_unavailable(
         snapshot="original\n",
         snapshot_identity=identity,
         replacement="replacement\n",
+        tombstone=_test_tombstone(tmp_path),
     )
 
     def unsupported_exchange(*args: object) -> None:
@@ -1531,6 +1808,7 @@ def test_atomic_text_prepares_temporary_relative_to_pinned_parent(
         snapshot="original\n",
         snapshot_identity=identity,
         replacement="replacement\n",
+        tombstone=_test_tombstone(tmp_path),
     )
     real_open = os.open
     relative_temp_opens: list[tuple[str, int]] = []
@@ -1556,7 +1834,8 @@ def test_atomic_text_prepares_temporary_relative_to_pinned_parent(
     reporting._atomic_text_if_unchanged(change)
 
     assert target.read_text() == "replacement\n"
-    assert len(relative_temp_opens) == 1
+    assert len(relative_temp_opens) == 2
+    assert relative_temp_opens[0][0] == relative_temp_opens[1][0]
 
 
 def test_open_entry_at_cannot_block_on_foreign_fifo_swap(
@@ -1641,6 +1920,7 @@ def test_ordinary_atomic_temp_close_failure_does_not_mask_keyboard_interrupt(
         snapshot="original",
         snapshot_identity=target_identity,
         replacement="replacement",
+        tombstone=_test_tombstone(tmp_path),
     )
     interruption = KeyboardInterrupt()
     real_open = os.open
