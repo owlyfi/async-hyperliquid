@@ -1,0 +1,398 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate_release:
+    name: Validate release identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+
+    steps:
+      - name: Reject unexpected repository
+        if: github.repository != 'owlyfi/async-hyperliquid'
+        run: |
+          echo "Release workflow is restricted to owlyfi/async-hyperliquid" >&2
+          exit 1
+
+      - name: Check out tagged revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          version: "0.11.32"
+
+      - name: Validate tag, version, and main ancestry
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="$(uv version --short)"
+
+          if ! [[ "$tag" == "v$version" ]]; then
+            echo "Tag $tag does not match project version $version" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          release_commit="$(git rev-parse "${GITHUB_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "Release commit $release_commit is not in origin/main history" >&2
+            exit 1
+          fi
+
+          prerelease=false
+          case "$version" in
+            *a[0-9]* | *b[0-9]* | *rc[0-9]* | *.dev[0-9]*) prerelease=true ;;
+          esac
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  test_and_build:
+    name: Test and build distributions
+    needs: validate_release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          version: "0.11.32"
+
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+
+      - name: Check formatting
+        run: uv run ruff format --check
+
+      - name: Lint
+        run: uv run ruff check src tests benchmarks
+
+      - name: Type-check package
+        run: uv run ty check src/async_hyperliquid
+
+      - name: Type-check tests
+        run: |
+          uv run ty check tests/contracts
+          uv run ty check tests/integration
+          uv run ty check tests/oracle
+          uv run ty check tests/package
+          uv run ty check tests/public_api
+          uv run ty check tests/typing
+          uv run ty check tests/unit
+
+      - name: Type-check benchmarks
+        run: uv run ty check benchmarks
+
+      - name: Run deterministic tests
+        run: uv run pytest -q tests/unit tests/public_api tests/contracts tests/package
+
+      - name: Build wheel and source distribution
+        run: uv build --no-sources --clear
+
+      - name: Inspect wheel typing marker
+        run: uv run pytest -q tests/package
+        env:
+          ASYNC_HYPERLIQUID_WHEEL_DIR: dist
+
+      - name: Smoke-test installed wheel public API
+        run: |
+          uv venv .wheel-venv
+          uv pip install --python .wheel-venv/bin/python dist/*.whl
+          .wheel-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+
+      - name: Smoke-test installed source distribution public API
+        run: |
+          uv venv .sdist-venv
+          uv pip install --python .sdist-venv/bin/python dist/*.tar.gz
+          .sdist-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+
+      - name: Validate distribution metadata
+        env:
+          EXPECTED_VERSION: ${{ needs.validate_release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t wheels < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          mapfile -t sdists < <(find dist -maxdepth 1 -type f -name '*.tar.gz' -print)
+          if [[ ${#wheels[@]} -ne 1 || ${#sdists[@]} -ne 1 ]]; then
+            echo "Expected exactly one wheel and one sdist" >&2
+            find dist -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+
+          uv run python - "${wheels[0]}" <<'PY'
+          import email
+          import os
+          import sys
+          import zipfile
+
+          wheel = sys.argv[1]
+          with zipfile.ZipFile(wheel) as archive:
+              metadata_files = [
+                  name
+                  for name in archive.namelist()
+                  if name.endswith(".dist-info/METADATA")
+              ]
+              if len(metadata_files) != 1:
+                  raise SystemExit(f"expected one METADATA file, found {metadata_files}")
+              metadata = email.message_from_bytes(archive.read(metadata_files[0]))
+
+          expected_version = os.environ["EXPECTED_VERSION"]
+          if metadata["Name"] != "async-hyperliquid":
+              raise SystemExit(f"unexpected package name: {metadata['Name']}")
+          if metadata["Version"] != expected_version:
+              raise SystemExit(
+                  f"artifact version {metadata['Version']} != {expected_version}"
+              )
+          PY
+
+      - name: Generate distribution checksums
+        run: sha256sum dist/* > SHA256SUMS
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: |
+            dist
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  create_draft_release:
+    name: Stage GitHub Release
+    needs:
+      - validate_release
+      - test_and_build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: release-bundle
+
+      - name: Verify release bundle
+        run: cd release-bundle && sha256sum --check SHA256SUMS
+
+      - name: Create populated draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.validate_release.outputs.prerelease }}
+          TAG: ${{ needs.validate_release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to replace assets" >&2
+            exit 1
+          fi
+
+          flags=(--draft --verify-tag --generate-notes --title "$TAG")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            release-bundle/dist/* \
+            release-bundle/SHA256SUMS \
+            "${flags[@]}"
+
+  publish_pypi:
+    name: Publish distributions to PyPI
+    needs:
+      - validate_release
+      - create_draft_release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/async-hyperliquid
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: release-bundle
+
+      - name: Verify release bundle
+        run: cd release-bundle && sha256sum --check SHA256SUMS
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          packages-dir: release-bundle/dist
+          attestations: true
+          print-hash: true
+
+  publish_github_release:
+    name: Publish immutable GitHub Release
+    needs:
+      - validate_release
+      - publish_pypi
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish populated draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate_release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          is_draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"
+          if [[ "$is_draft" != "true" ]]; then
+            echo "Expected $TAG to be a draft before publication" >&2
+            exit 1
+          fi
+          gh release edit "$TAG" --draft=false
+
+  verify_release:
+    name: Verify public release channels
+    needs:
+      - validate_release
+      - publish_github_release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: release-bundle
+
+      - name: Verify release bundle
+        run: cd release-bundle && sha256sum --check SHA256SUMS
+
+      - name: Verify PyPI filenames and checksums
+        env:
+          VERSION: ${{ needs.validate_release.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import urlopen
+
+          version = os.environ["VERSION"]
+          dist = Path("release-bundle/dist")
+          expected = {
+              path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in dist.iterdir()
+              if path.is_file()
+          }
+          url = f"https://pypi.org/pypi/async-hyperliquid/{version}/json"
+          observed = None
+          last_error = None
+          for attempt in range(13):
+              try:
+                  with urlopen(url, timeout=10) as response:
+                      payload = json.load(response)
+                  observed = {
+                      item["filename"]: item["digests"]["sha256"]
+                      for item in payload["urls"]
+                  }
+                  if observed == expected:
+                      break
+                  last_error = f"published files {observed} != expected {expected}"
+              except (HTTPError, URLError, TimeoutError) as exc:
+                  last_error = str(exc)
+              if attempt < 12:
+                  time.sleep(5)
+          else:
+              raise SystemExit(f"PyPI verification failed: {last_error}")
+          PY
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          version: "0.11.32"
+
+      - name: Smoke-test package installed from PyPI
+        env:
+          VERSION: ${{ needs.validate_release.outputs.version }}
+        run: |
+          uv venv --python 3.12 .verify-venv
+          uv pip install --python .verify-venv/bin/python --no-cache "async-hyperliquid==${VERSION}"
+          .verify-venv/bin/python -c "from async_hyperliquid import AsyncHyperliquid, HyperliquidError, InfoClient; from async_hyperliquid.types import LimitOrder, Network"
+
+      - name: Verify immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.validate_release.outputs.prerelease }}
+          TAG: ${{ needs.validate_release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" \
+            --json assets,isDraft,isImmutable,isPrerelease,tagName > release.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          release = json.loads(Path("release.json").read_text())
+          expected_assets = {
+              path.name for path in Path("release-bundle/dist").iterdir() if path.is_file()
+          }
+          expected_assets.add("SHA256SUMS")
+          observed_assets = {asset["name"] for asset in release["assets"]}
+
+          if release["tagName"] != os.environ["TAG"]:
+              raise SystemExit(f"unexpected release tag: {release['tagName']}")
+          if release["isDraft"]:
+              raise SystemExit("GitHub Release is still a draft")
+          if not release["isImmutable"]:
+              raise SystemExit("GitHub Release immutability is not enabled")
+          expected_prerelease = os.environ["PRERELEASE"] == "true"
+          if release["isPrerelease"] != expected_prerelease:
+              raise SystemExit("GitHub prerelease flag does not match the package version")
+          if observed_assets != expected_assets:
+              raise SystemExit(
+                  f"GitHub assets {observed_assets} != expected {expected_assets}"
+              )
+          PY
