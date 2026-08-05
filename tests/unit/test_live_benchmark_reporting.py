@@ -148,6 +148,47 @@ def test_publication_rejects_duplicate_measured_rounds() -> None:
         validate_publishable(report)
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda report: report.update(config=[]), id="config-list"),
+        pytest.param(
+            lambda report: report.update(versions=[]), id="versions-list"
+        ),
+        pytest.param(lambda report: report.update(git=[]), id="git-list"),
+        pytest.param(
+            lambda report: report.update(environment=[]), id="environment-list"
+        ),
+        pytest.param(
+            lambda report: report.update(started_at=0), id="started-at-integer"
+        ),
+        pytest.param(
+            lambda report: report.update(completed_at=None), id="completed-at-null"
+        ),
+        pytest.param(
+            lambda report: report.update(samples={}), id="samples-mapping"
+        ),
+        pytest.param(
+            lambda report: report.update(summaries=[]), id="summaries-list"
+        ),
+    ],
+)
+def test_publication_sanitizes_malformed_schema_containers_and_scalars(
+    mutation: Callable[[dict[str, Any]], None],
+) -> None:
+    report = _valid_report()
+    mutation(cast(dict[str, Any], report))
+
+    with pytest.raises(BenchmarkFailure, match="^report schema is not publishable$"):
+        validate_publishable(report)
+
+
+@pytest.mark.parametrize("report", [[], "not-a-report"])
+def test_publication_sanitizes_non_mapping_top_level_report(report: object) -> None:
+    with pytest.raises(BenchmarkFailure, match="^report schema is not publishable$"):
+        validate_publishable(cast(LiveBenchmarkReport, report))
+
+
 def test_publication_requires_concurrent_cancel_shape() -> None:
     report = _valid_report()
 

@@ -258,9 +258,34 @@ def _is_safe_environment(environment: Mapping[str, object]) -> bool:
 
 def validate_publishable(report: LiveBenchmarkReport) -> None:
     try:
+        if not isinstance(report, Mapping):
+            raise BenchmarkFailure("report schema is not publishable")
         config = report["config"]
         versions = report["versions"]
         git = report["git"]
+        environment = report["environment"]
+        samples = report["samples"]
+        summaries = report["summaries"]
+        if (
+            not isinstance(config, Mapping)
+            or not isinstance(versions, Mapping)
+            or not isinstance(git, Mapping)
+            or not isinstance(environment, Mapping)
+            or not isinstance(samples, list)
+            or not isinstance(summaries, Mapping)
+            or not all(isinstance(sample, Mapping) for sample in samples)
+            or isinstance(report["schema_version"], bool)
+            or not isinstance(report["schema_version"], int)
+            or not isinstance(report["valid"], bool)
+            or not isinstance(report["cleanup_ok"], bool)
+            or not isinstance(report["started_at"], str)
+            or not isinstance(report["completed_at"], str)
+            or (
+                report["failure_reason"] is not None
+                and not isinstance(report["failure_reason"], str)
+            )
+        ):
+            raise BenchmarkFailure("report schema is not publishable")
         if (
             report["schema_version"] != 1
             or not report["valid"]
@@ -279,22 +304,22 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
             or versions.get("async-hyperliquid") != "1.0.0rc1"
             or versions.get("sdk") != "0.24.0"
             or versions.get("ccxt") != "4.5.71"
-            or not _is_safe_environment(report["environment"])
-            or report["environment"].get("network") != "testnet"
+            or not _is_safe_environment(environment)
+            or environment.get("network") != "testnet"
             or git.get("dirty") is not False
             or not _is_git_revision(git.get("revision"))
         ):
             raise BenchmarkFailure("report is not publishable")
         actual = Counter(
             (sample["suite"], sample["provider"], sample["operation"])
-            for sample in report["samples"]
+            for sample in samples
         )
         if actual != _expected_counts():
             raise BenchmarkFailure("report sample shape is not publishable")
 
         grouped: dict[tuple[str, str, str], list[int]] = {}
         round_samples: dict[int, dict[str, list[dict[str, object]]]] = {}
-        for sample in report["samples"]:
+        for sample in samples:
             if set(sample) != set(_CSV_FIELDS):
                 raise BenchmarkFailure("report sample schema is not publishable")
             key = (sample["suite"], sample["provider"], sample["operation"])
@@ -347,7 +372,7 @@ def validate_publishable(report: LiveBenchmarkReport) -> None:
             rebuilt.setdefault(suite, {}).setdefault(operation, {})[provider] = (
                 summarize_ns(values)
             )
-        if report["summaries"] != rebuilt:
+        if summaries != rebuilt:
             raise BenchmarkFailure("report summaries are not publishable")
         assert_report_is_sanitized(
             cast(Mapping[str, object], report), forbidden_values=()
