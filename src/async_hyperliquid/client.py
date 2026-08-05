@@ -472,6 +472,10 @@ class AsyncHyperliquid:
             trigger: EncodedTwapTrigger | None = None
             if encoded_trigger_px is not None:
                 mark_px = await self._info.mark_price(coin)
+                if not math.isfinite(mark_px) or mark_px <= 0:
+                    raise ProtocolError(
+                        "mark price must be finite and greater than zero"
+                    )
                 trigger = {
                     "a": float(encoded_trigger_px) > mark_px,
                     "p": encoded_trigger_px,

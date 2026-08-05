@@ -645,6 +645,20 @@ async def test_twap_mark_price_failure_prevents_signing(
     assert transport.requests == []
 
 
+@pytest.mark.parametrize("mark_px", [float("nan"), float("inf"), 0.0, -1.0])
+async def test_twap_invalid_mark_price_prevents_signing(mark_px: float) -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+    info = cast(StubInfo, client._info)
+    info.mark_prices["BTC"] = mark_px
+
+    with pytest.raises(ProtocolError, match="mark price"):
+        await client.place_twap("BTC", True, 0.01, 5, trigger_px=100_000.0)
+
+    assert client.exchange._last_nonce == 0
+    assert transport.requests == []
+
+
 async def test_twap_below_market_precision_fails_before_signing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
