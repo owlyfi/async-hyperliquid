@@ -6,7 +6,7 @@ from typing import cast
 from dotenv import dotenv_values
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
-from eth_utils import is_address, is_same_address
+from eth_utils import is_address, is_same_address, to_normalized_address
 from hyperliquid.exchange import Exchange as SdkExchange
 from hyperliquid.utils.constants import TESTNET_API_URL
 from hyperliquid.utils.signing import sign_l1_action as sdk_sign_l1_action
@@ -427,6 +427,30 @@ def _local_account(private_key_name: str, address_name: str) -> LocalAccount:
     return account
 
 
+def _normalize_distinct_root_addresses(
+    master_address: str, subaccount_address: str
+) -> tuple[str, str]:
+    if not is_address(master_address) or not is_address(subaccount_address):
+        raise AssertionError("HL_ADDR and HL_SUB must be Ethereum addresses")
+    normalized_master = to_normalized_address(master_address)
+    normalized_subaccount = to_normalized_address(subaccount_address)
+    if is_same_address(normalized_master, normalized_subaccount):
+        raise AssertionError("root addresses must be different")
+    return normalized_master, normalized_subaccount
+
+
+def test_root_addresses_normalize_mixed_case() -> None:
+    normalized = _normalize_distinct_root_addresses("0x" + "aB" * 20, "0x" + "Cd" * 20)
+
+    if normalized != ("0x" + "ab" * 20, "0x" + "cd" * 20):
+        raise AssertionError("root addresses were not normalized")
+
+
+def test_root_addresses_reject_semantically_identical_values() -> None:
+    with pytest.raises(AssertionError, match="must be different"):
+        _normalize_distinct_root_addresses("0x" + "ab" * 20, "0x" + "AB" * 20)
+
+
 async def test_subaccount_account_address_payload_matches_official_sdk_without_network(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -448,8 +472,9 @@ async def test_subaccount_account_address_payload_matches_official_sdk_without_n
         raise AssertionError("HL_SK is not a valid private key") from None
     if not is_address(api_address) or not is_same_address(account.address, api_address):
         raise AssertionError("HL_SK does not match HL_AK")
-    if not is_address(master_address) or not is_address(subaccount_address):
-        raise AssertionError("HL_ADDR and HL_SUB must be Ethereum addresses")
+    master_address, subaccount_address = _normalize_distinct_root_addresses(
+        master_address, subaccount_address
+    )
 
     sdk_orders: list[SdkOrderRequest] = [
         {
