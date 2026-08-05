@@ -17,6 +17,7 @@ from async_hyperliquid.types import (
 from async_hyperliquid.types.info import OrderStatus
 from tests.integration.exchange.order_checks import (
     cleanup_order,
+    cleanup_shared_cloid_orders,
     place_and_assert_order_owner,
 )
 
@@ -150,6 +151,43 @@ async def test_cleanup_targets_the_submitted_market() -> None:
     )
 
     assert client.cancelled_coins == ["PURR/USDC"]
+
+
+async def test_shared_cleanup_preserves_isolation_and_cleanup_failures() -> None:
+    cloid = Cloid.from_int(2)
+    original = ValueError("routing assertion failed")
+    master = SubaccountOrderClientStub(_RESTING_RESPONSE, (_CANCEL_SUCCESS,), ())
+    subaccount = SubaccountOrderClientStub(
+        _RESTING_RESPONSE,
+        (ConnectionError("sub cleanup failed"), ConnectionError("sub retry failed")),
+        (_UNKNOWN_ORDER_STATUS, _OPEN_ORDER_STATUS, _OPEN_ORDER_STATUS),
+    )
+    with pytest.raises(BaseExceptionGroup) as raised:
+        await cleanup_shared_cloid_orders(
+            cast(AsyncHyperliquid, master),
+            "test-master",
+            "PURR/USDC",
+            cast(AsyncHyperliquid, subaccount),
+            "test-subaccount",
+            "PURR/USDC",
+            cloid,
+            failure=original,
+            master_cleanup_required=True,
+            subaccount_cleanup_required=True,
+        )
+
+    routing_failure, isolation_failure, cleanup_failure = raised.value.exceptions
+    assert routing_failure is original
+    assert isinstance(isolation_failure, AssertionError)
+    assert isinstance(cleanup_failure, ExceptionGroup)
+    assert (
+        sum(isinstance(error, ConnectionError) for error in cleanup_failure.exceptions)
+        == 2
+    )
+    assert master.cancelled_cloids == [cloid]
+    assert subaccount.cancelled_cloids == [cloid, cloid]
+    assert master.mass_cancel_calls == 0
+    assert subaccount.mass_cancel_calls == 0
 
 
 async def test_cleanup_retries_once_after_inconclusive_failure() -> None:

@@ -19,7 +19,7 @@ from tests.integration.conftest import _prepare_exchange, _validate_exchange_rol
 from .order_checks import (
     _resting_oid,
     assert_order_owner,
-    cleanup_order,
+    cleanup_shared_cloid_orders,
     place_and_assert_order_owner,
     requires_order_cleanup,
 )
@@ -98,7 +98,6 @@ async def test_shared_cloid_stays_isolated_between_master_and_subaccount(
     subaccount_order = await _limit_request(sub_hl)
     subaccount_order["cloid"] = cloid
     failure: BaseException | None = None
-    cleanup_failures: list[BaseException] = []
     master_cleanup_required = False
     subaccount_cleanup_required = False
     try:
@@ -115,27 +114,15 @@ async def test_shared_cloid_stays_isolated_between_master_and_subaccount(
     except BaseException as error:
         failure = error
     finally:
-        for client, owner_address, coin, cleanup_required in (
-            (master_hl, master_address, master_order["coin"], master_cleanup_required),
-            (
-                sub_hl,
-                subaccount_address,
-                subaccount_order["coin"],
-                subaccount_cleanup_required,
-            ),
-        ):
-            if not cleanup_required:
-                continue
-            try:
-                await cleanup_order(client, owner_address, coin, cloid)
-            except BaseException as cleanup_error:
-                cleanup_failures.append(cleanup_error)
-    if failure is not None and cleanup_failures:
-        raise BaseExceptionGroup(
-            "shared-cloid routing test and cleanup both failed",
-            [failure, *cleanup_failures],
+        await cleanup_shared_cloid_orders(
+            master_hl,
+            master_address,
+            master_order["coin"],
+            sub_hl,
+            subaccount_address,
+            subaccount_order["coin"],
+            cloid,
+            failure=failure,
+            master_cleanup_required=master_cleanup_required,
+            subaccount_cleanup_required=subaccount_cleanup_required,
         )
-    if cleanup_failures:
-        raise BaseExceptionGroup("shared-cloid cleanup failed", cleanup_failures)
-    if failure is not None:
-        raise failure

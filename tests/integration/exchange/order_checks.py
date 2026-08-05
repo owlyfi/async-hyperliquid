@@ -39,13 +39,13 @@ def _assert_targeted_cancel_succeeded(response: CancelOrderResponse) -> None:
 
 async def cleanup_order(
     client: AsyncHyperliquid, owner_address: str, coin: str, cloid: Cloid
-) -> None:
+) -> bool:
     failures: list[Exception] = []
     for attempt in range(2):
         try:
             response = await client.cancel_by_cloid(CancelByCloid(coin, cloid))
             _assert_targeted_cancel_succeeded(response)
-            return
+            return True
         except Exception as error:
             failures.append(error)
 
@@ -67,10 +67,56 @@ async def cleanup_order(
             failures.append(AssertionError("test order filled before cleanup"))
             break
         if order_status != "open":
-            return
+            return False
         failures.append(AssertionError("test order remains open after cleanup"))
 
     raise ExceptionGroup("targeted order cleanup failed", failures)
+
+
+async def cleanup_shared_cloid_orders(
+    master_client: AsyncHyperliquid,
+    master_owner_address: str,
+    master_coin: str,
+    subaccount_client: AsyncHyperliquid,
+    subaccount_owner_address: str,
+    subaccount_coin: str,
+    cloid: Cloid,
+    *,
+    failure: BaseException | None,
+    master_cleanup_required: bool,
+    subaccount_cleanup_required: bool,
+) -> None:
+    failures: list[BaseException] = []
+    if failure is not None:
+        failures.append(failure)
+
+    master_cancel_succeeded = False
+    if master_cleanup_required:
+        try:
+            master_cancel_succeeded = await cleanup_order(
+                master_client, master_owner_address, master_coin, cloid
+            )
+        except BaseException as cleanup_error:
+            failures.append(cleanup_error)
+
+    if master_cancel_succeeded and subaccount_cleanup_required:
+        try:
+            await assert_order_owner(subaccount_client, subaccount_owner_address, cloid)
+        except BaseException as isolation_error:
+            failures.append(isolation_error)
+
+    if subaccount_cleanup_required:
+        try:
+            await cleanup_order(
+                subaccount_client, subaccount_owner_address, subaccount_coin, cloid
+            )
+        except BaseException as cleanup_error:
+            failures.append(cleanup_error)
+
+    if len(failures) == 1:
+        raise failures[0]
+    if failures:
+        raise BaseExceptionGroup("shared-cloid routing cleanup failed", failures)
 
 
 async def assert_order_owner(
