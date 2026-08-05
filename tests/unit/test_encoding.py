@@ -283,24 +283,95 @@ def test_missing_order_type_defaults_to_ioc_limit() -> None:
     )["t"] == {"limit": {"tif": "Ioc"}}
 
 
-@pytest.mark.parametrize(
-    "order",
-    [
-        {
-            "coin": "BTC",
-            "is_buy": True,
-            "sz": 0.000_001,
-            "px": 100_000.0,
-            "is_market": False,
-        },
-        {"coin": "BTC", "is_buy": True, "sz": 0.01, "px": 0.01, "is_market": False},
-    ],
-)
-def test_order_encoding_rejects_values_below_market_precision(
-    order: PlaceOrderRequest,
-) -> None:
-    with pytest.raises(ValueError, match="market precision"):
+def test_order_encoding_rejects_size_below_market_precision() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": 0.000_001,
+        "px": 100_000.0,
+        "is_market": False,
+    }
+
+    with pytest.raises(ValueError, match="order size is below market precision"):
         encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
+
+
+@pytest.mark.parametrize("size", [float("nan"), float("inf"), 0.0, -0.01])
+def test_order_encoding_rejects_non_positive_or_non_finite_size(size: float) -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": size,
+        "px": 100_000.0,
+        "is_market": False,
+    }
+
+    with pytest.raises(ValueError, match="size must be finite and greater than zero"):
+        encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
+
+
+def test_order_encoding_rejects_price_below_market_precision() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": 0.01,
+        "px": 0.01,
+        "is_market": False,
+    }
+
+    with pytest.raises(ValueError, match="order value is below market precision"):
+        encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
+
+
+def test_spot_order_encoding_rejects_reduce_only() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "@182",
+        "is_buy": False,
+        "sz": 0.01,
+        "px": 4_000.0,
+        "is_market": False,
+        "ro": True,
+    }
+
+    with pytest.raises(ValueError, match="spot orders cannot be reduce-only"):
+        encode_order(
+            order, asset=10_182, size_decimals=2, is_spot=True, is_outcome=False
+        )
+
+
+def test_perp_reduce_only_below_minimum_notional_still_encodes() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": 0.000_01,
+        "px": 100_000.0,
+        "is_market": False,
+        "ro": True,
+    }
+
+    encoded = encode_order(
+        order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
+    )
+
+    assert float(encoded["p"]) * float(encoded["s"]) == 1.0
+    assert encoded["r"] is True
+
+
+def test_spot_non_reduce_only_below_minimum_notional_still_encodes() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "@0",
+        "is_buy": True,
+        "sz": 0.01,
+        "px": 1.0,
+        "is_market": False,
+    }
+
+    encoded = encode_order(
+        order, asset=10_000, size_decimals=2, is_spot=True, is_outcome=False
+    )
+
+    assert float(encoded["p"]) * float(encoded["s"]) == 0.01
+    assert encoded["r"] is False
 
 
 def test_trigger_order_encoding_preserves_trigger_contract() -> None:

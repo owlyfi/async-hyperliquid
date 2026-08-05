@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from aiohttp import ClientSession, ClientTimeout
 
-from ._internal.encoding import _normalize_price, _round_size, _wire_float, encode_order
+from ._internal.encoding import (
+    _normalize_price,
+    _normalize_size,
+    _wire_float,
+    encode_order,
+)
 from ._internal.http import _HttpTransport
 from ._internal.metadata import _MarketInfo
 from .constants import OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE
@@ -455,12 +460,10 @@ class AsyncHyperliquid:
     ) -> PlaceTwapResponse:
         if minutes <= 0:
             raise ValueError("minutes must be greater than zero")
-        if not math.isfinite(size) or size <= 0:
-            raise ValueError("size must be finite and greater than zero")
         market = await self._info._market_info(coin)
-        rounded_size = _round_size(size, market.size_decimals)
-        if rounded_size == 0:
-            raise ValueError("size is below market precision")
+        if market.is_spot and reduce_only:
+            raise ValueError("spot orders cannot be reduce-only")
+        rounded_size = _normalize_size(size, market.size_decimals)
         details: EncodedTwapDetails | None = None
         if trigger_px is not None or stop_px is not None:
             encoded_trigger_px = (

@@ -102,6 +102,7 @@ class StubInfo:
             "BTC": _MarketInfo("BTC", 0, 5, False, ""),
             "ETH": _MarketInfo("ETH", 1, 4, False, ""),
             "xyz:NVDA": _MarketInfo("xyz:NVDA", 110_002, 3, False, "xyz"),
+            "@182": _MarketInfo("@182", 10_182, 2, True, ""),
         }
         return markets[coin]
 
@@ -687,11 +688,22 @@ async def test_twap_below_market_precision_fails_before_signing(
 
     monkeypatch.setattr(exchange_module, "sign_exchange_action", spy_sign)
 
-    with pytest.raises(ValueError, match="precision"):
+    with pytest.raises(ValueError, match="order size is below market precision"):
         await client.place_twap("BTC", True, 0.000_001, 5)
 
     assert client.exchange._last_nonce == 0
     assert sign_calls == 0
+    assert transport.requests == []
+
+
+async def test_spot_twap_rejects_reduce_only_before_signing() -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+
+    with pytest.raises(ValueError, match="spot orders cannot be reduce-only"):
+        await client.place_twap("@182", False, 0.01, 5, reduce_only=True)
+
+    assert client.exchange._last_nonce == 0
     assert transport.requests == []
 
 

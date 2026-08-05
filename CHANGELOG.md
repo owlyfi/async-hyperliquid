@@ -118,6 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `perpDexs`.
 - Reject order prices or sizes that round to zero at the market precision
   before signing.
+- Reject spot and outcome reduce-only orders locally before signing, and
+  centralize finite, positive order-size normalization across orders and TWAPs.
 - Reject malformed JSON and mismatched protocol response shapes at the
   transport/client boundary without leaking request signatures.
 - Keep root-scoped actions on the main account while preserving vault targets

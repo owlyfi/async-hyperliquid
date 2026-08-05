@@ -17,6 +17,16 @@ def _round_size(value: float, size_decimals: int) -> float | int:
     return int(rounded) if rounded.is_integer() else rounded
 
 
+def _normalize_size(value: float, size_decimals: int) -> float | int:
+    size = float(value)
+    if not math.isfinite(size) or size <= 0:
+        raise ValueError("size must be finite and greater than zero")
+    rounded = _round_size(size, size_decimals)
+    if rounded <= 0:
+        raise ValueError("order size is below market precision")
+    return rounded
+
+
 def _round_price(value: float, max_decimals: int) -> float | int:
     number = float(value)
     if number.is_integer():
@@ -57,13 +67,14 @@ def encode_order(
     is_spot: bool,
     is_outcome: bool,
 ) -> EncodedOrder:
+    if is_spot and order.get("ro", False):
+        raise ValueError("spot orders cannot be reduce-only")
+
     max_decimals = (8 if is_spot else 6) - size_decimals
     price = _normalize_price(
         order["px"], max_decimals=max_decimals, is_outcome=is_outcome
     )
-    size = _round_size(order["sz"], size_decimals)
-    if size <= 0:
-        raise ValueError("order value is below market precision")
+    size = _normalize_size(order["sz"], size_decimals)
 
     order_type = order.get("order_type")
     encoded_type: EncodedOrderType

@@ -13,6 +13,7 @@ from async_hyperliquid.types import (
     CancelByCloid,
     CancelOrder,
     Cloid,
+    ModifyOrderRequest,
     OrderGrouping,
     PlaceOrderRequest,
     PlaceOrderResponse,
@@ -363,6 +364,47 @@ async def test_place_orders_rejects_spot_and_perp_in_one_batch(
         await client.place_orders((_limit_request(), _spot_limit_request()))
 
     mid_prices.assert_not_awaited()
+    submit.assert_not_awaited()
+
+
+async def test_place_orders_rejects_spot_reduce_only_before_submission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    market_infos = AsyncMock(return_value=(_MarketInfo("@182", 10_182, 2, True, ""),))
+    submit = AsyncMock(return_value=RESPONSE)
+    monkeypatch.setattr(InfoClient, "_market_infos", market_infos)
+    monkeypatch.setattr(ExchangeClient, "_submit_orders", submit)
+    client = AsyncHyperliquid(ADDRESS, KEY)
+    order = _spot_limit_request()
+    order["coin"] = "@182"
+    order["ro"] = True
+
+    with pytest.raises(ValueError, match="spot orders cannot be reduce-only"):
+        await client.place_orders((order,))
+
+    submit.assert_not_awaited()
+
+
+async def test_modify_order_rejects_spot_reduce_only_before_submission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    market_info = AsyncMock(return_value=_MarketInfo("@182", 10_182, 2, True, ""))
+    submit = AsyncMock(return_value=RESPONSE)
+    monkeypatch.setattr(InfoClient, "_market_info", market_info)
+    monkeypatch.setattr(ExchangeClient, "_submit_modify", submit)
+    client = AsyncHyperliquid(ADDRESS, KEY)
+    order: ModifyOrderRequest = {
+        "oid": 7,
+        "coin": "@182",
+        "is_buy": False,
+        "sz": 0.01,
+        "px": 4_000.0,
+        "ro": True,
+    }
+
+    with pytest.raises(ValueError, match="spot orders cannot be reduce-only"):
+        await client.modify_order(order)
+
     submit.assert_not_awaited()
 
 

@@ -29,24 +29,24 @@
 - Produces: `_normalize_size(value: float, size_decimals: int) -> float | int`.
 - Consumes: `_round_size` and market `size_decimals`.
 
-- [ ] **Step 1: Write failing consumer-visible tests**
+- [x] **Step 1: Write failing consumer-visible tests**
 
 Split the combined below-precision encoding test so the size case requires
 `order size is below market precision`. Add non-finite size cases requiring
 `size must be finite and greater than zero`. Tighten the existing TWAP
 below-precision assertion to require the same order-size error.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run the named encoding and TWAP tests. The size-message expectations must fail
 against the current scattered checks.
 
-- [ ] **Step 3: Implement `_normalize_size`**
+- [x] **Step 3: Implement `_normalize_size`**
 
 Add the helper, use it from `encode_order`, import it in `client.py`, and use it
 from `place_twap`. Remove the duplicated post-round checks.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run `tests/unit/test_encoding.py` and the focused TWAP tests.
 
@@ -65,30 +65,30 @@ Run `tests/unit/test_encoding.py` and the focused TWAP tests.
   `place_twap(..., reduce_only=...)`.
 - Produces: `ValueError("spot orders cannot be reduce-only")` before signing.
 
-- [ ] **Step 1: Write failing spot tests and notional characterizations**
+- [x] **Step 1: Write failing spot tests and notional characterizations**
 
 Add tests proving spot reduce-only fails through `encode_order`, `place_orders`,
 `modify_order`, and `place_twap` without submission. Add passing
 characterizations proving sub-10 notional perpetual reduce-only and spot
 non-reduce-only requests still encode.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run the new spot reduce-only tests and confirm current code submits or encodes
 the invalid requests.
 
-- [ ] **Step 3: Implement minimal venue gates**
+- [x] **Step 3: Implement minimal venue gates**
 
 In `encode_order`, reject `is_spot and order.get("ro", False)`. In
 `place_twap`, reject `market.is_spot and reduce_only` before trigger price work
 or submission. Add one changelog bullet.
 
-- [ ] **Step 4: Verify GREEN and complete checks**
+- [x] **Step 4: Verify GREEN and complete checks**
 
 Run focused suites, Ruff, sequential CI `ty` shards, and
 `pytest -q tests/unit tests/public_api tests/contracts tests/package`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/async_hyperliquid/_internal/encoding.py src/async_hyperliquid/client.py tests/unit/test_encoding.py tests/unit/test_orders.py tests/unit/test_exchange.py CHANGELOG.md docs/superpowers/specs/2026-08-05-order-size-and-spot-reduce-only-design.md docs/superpowers/plans/2026-08-05-order-size-and-spot-reduce-only.md
