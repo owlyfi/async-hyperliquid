@@ -47,13 +47,13 @@ async def _cancel_one(
 
 async def _recover_pending(
     pending: dict[str, CanonicalOrder], recovery: LiveProvider, pacer: WeightedPacer
-) -> BaseException | None:
+) -> Exception | None:
     if not pending:
         return None
     try:
         await pacer.wait(weight=1)
         await recovery.cancel_cloids(tuple(pending.values()))
-    except BaseException as error:
+    except Exception as error:
         return error
     pending.clear()
     return None
@@ -133,11 +133,18 @@ async def run_cancel_id_suite(
                 asyncio.create_task(_cancel_one(provider, gate, request, clock_ns))
                 for request in requests
             )
-            await asyncio.sleep(0)
-            gate.set()
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                await asyncio.sleep(0)
+                gate.set()
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+            except BaseException:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
 
             cancel_failures: list[BaseException] = []
+            samples: list[LatencySample] = []
             for provider_order, (request, result) in enumerate(
                 zip(requests, results, strict=True)
             ):
@@ -146,7 +153,7 @@ async def run_cancel_id_suite(
                     continue
                 pending.pop(request.order.cloid)
                 if measured:
-                    recorder.record(
+                    samples.append(
                         LatencySample(
                             suite="cancel-id",
                             provider=provider.name,
@@ -160,12 +167,20 @@ async def run_cancel_id_suite(
                 failure = BaseExceptionGroup(
                     "cancel-id concurrent cancel failed", cancel_failures
                 )
+            for sample in samples:
+                recorder.record(sample)
         except BaseException as error:
             if failure is None:
                 failure = error
+            else:
+                failure = BaseExceptionGroup(
+                    "cancel-id multiple operation failures", [failure, error]
+                )
 
         cleanup_failure = await _recover_pending(pending, recovery, pacer)
         if cleanup_failure is not None:
+            if failure is not None and not isinstance(failure, Exception):
+                raise failure from cleanup_failure
             if failure is None:
                 cause: BaseException = cleanup_failure
             else:

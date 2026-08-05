@@ -121,14 +121,16 @@ class ProviderStub:
 class RecoveryStub:
     name = "recovery"
 
-    def __init__(self, *, fail: bool = False) -> None:
-        self.fail = fail
+    def __init__(
+        self, *, fail: bool = False, error: BaseException | None = None
+    ) -> None:
+        self.error = RuntimeError("cleanup transport failed") if fail else error
         self.cleaned: list[tuple[str, ...]] = []
 
     async def cancel_cloids(self, orders: Sequence[CanonicalOrder]) -> None:
         self.cleaned.append(tuple(order.cloid for order in orders))
-        if self.fail:
-            raise RuntimeError("cleanup transport failed")
+        if self.error is not None:
+            raise self.error
 
 
 def _recorder(config: BenchmarkConfig) -> SampleRecorder:
@@ -138,6 +140,16 @@ def _recorder(config: BenchmarkConfig) -> SampleRecorder:
         versions={"async-hyperliquid": "1.0.0rc1"},
         git=GitMetadata(revision="abc", dirty=False),
     )
+
+
+class FailingRecorder:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def record(self, sample: Any) -> None:
+        del sample
+        self.calls += 1
+        raise RuntimeError("recorder sink failed")
 
 
 def _cloid_factory() -> Any:
@@ -326,6 +338,110 @@ async def test_concurrent_cancel_waits_for_all_tasks_and_recovers_pending(
     assert provider.completed_calls == set(range(1, 21)) - fail_calls
     assert len(recovery.cleaned[0]) == expected_pending
     assert len(recorder.samples) == 20 - expected_pending
+
+
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+async def test_cancel_during_pre_gate_yield_drains_all_created_tasks(
+    monkeypatch: pytest.MonkeyPatch, cleanup_fails: bool
+) -> None:
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    provider = ProviderStub(clock)
+    recovery = RecoveryStub(fail=cleanup_fails)
+    yield_started = asyncio.Event()
+    never_release = asyncio.Event()
+    created_tasks: list[asyncio.Task[Any]] = []
+    real_create_task = asyncio.create_task
+
+    async def blocking_yield(seconds: float) -> None:
+        assert seconds == 0
+        yield_started.set()
+        await never_release.wait()
+
+    def tracking_create_task(coroutine: Any) -> asyncio.Task[Any]:
+        task = real_create_task(coroutine)
+        created_tasks.append(task)
+        return task
+
+    monkeypatch.setattr(runner_module.asyncio, "sleep", blocking_yield)
+    monkeypatch.setattr(runner_module.asyncio, "create_task", tracking_create_task)
+    suite_task = real_create_task(
+        run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            _recorder(config),
+            clock_ns=clock.now,
+            cloid_factory=_cloid_factory(),
+        )
+    )
+
+    await yield_started.wait()
+    suite_task.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await suite_task
+
+        assert len(created_tasks) == 20
+        assert all(task.done() for task in created_tasks)
+        assert len(recovery.cleaned) == 1
+        assert len(recovery.cleaned[0]) == 20
+        if cleanup_fails:
+            assert isinstance(raised.value.__cause__, RuntimeError)
+        else:
+            assert raised.value.__cause__ is None
+    finally:
+        for task in created_tasks:
+            task.cancel()
+        await asyncio.gather(*created_tasks, return_exceptions=True)
+
+
+async def test_recovery_preserves_cancellation_semantics() -> None:
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    provider = ProviderStub(clock, fail_place=True)
+    recovery = RecoveryStub(error=asyncio.CancelledError())
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            _recorder(config),
+            clock_ns=clock.now,
+            cloid_factory=_cloid_factory(),
+        )
+
+    assert len(recovery.cleaned) == 1
+    assert len(recovery.cleaned[0]) == 20
+
+
+async def test_recorder_failure_recovers_only_unconfirmed_orders() -> None:
+    config = BenchmarkConfig(rounds=1, warmups=0)
+    clock = TickClock()
+    provider = ProviderStub(clock)
+    recovery = RecoveryStub()
+    recorder = FailingRecorder()
+
+    with pytest.raises(RuntimeError, match="recorder sink failed"):
+        await run_cancel_id_suite(
+            cast(Any, provider),
+            cast(Any, recovery),
+            cast(Any, MarketSourceStub()),
+            cast(Any, PacerStub(clock)),
+            config,
+            cast(Any, recorder),
+            clock_ns=clock.now,
+            cloid_factory=_cloid_factory(),
+        )
+
+    assert provider.completed_calls == set(range(1, 21))
+    assert recorder.calls == 1
+    assert recovery.cleaned == []
 
 
 async def test_cleanup_failure_is_terminal_and_value_free() -> None:
