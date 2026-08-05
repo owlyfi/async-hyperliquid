@@ -26,16 +26,42 @@ def test_readme_links_the_benchmark_manual() -> None:
 
 
 def test_signing_benchmark_uses_sdk_as_its_only_relative_baseline() -> None:
-    readmes = (
-        (ROOT / "README.md").read_text(),
-        (ROOT / "benchmarks" / "README.md").read_text(),
+    overall_tables = (
+        (
+            (ROOT / "README.md").read_text(),
+            "#### Local overall result",
+            "### Live Exchange benchmark",
+            (
+                "| Library | Overall throughput | Relative to SDK |",
+                "|---|---:|---:|",
+                "| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x |",
+                "| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x |",
+                "| CCXT 4.5.71 | 803 ops/s | 0.0476x |",
+            ),
+        ),
+        (
+            (ROOT / "benchmarks" / "README.md").read_text(),
+            "### Overall comparison",
+            "## Correctness verification",
+            (
+                "| Library | Geometric-mean throughput | Relative to SDK |",
+                "|---|---:|---:|",
+                "| async-hyperliquid | 24,641 ops/s | 1.460x |",
+                "| Official SDK | 16,874 ops/s | 1.000x |",
+                "| CCXT | 803 ops/s | 0.0476x |",
+            ),
+        ),
     )
 
-    for readme in readmes:
-        assert "Relative to fastest" not in readme
-        assert "hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x" in readme or (
-            "Official SDK | 16,874 ops/s | 1.000x" in readme
-        )
+    for readme, start, end, expected_table in overall_tables:
+        section = readme.split(start, maxsplit=1)[1].split(end, maxsplit=1)[0]
+        table = re.findall(r"^\|.*\|$", section, re.MULTILINE)
+
+        assert tuple(table) == expected_table
+        assert "100.0%" not in section
+        assert [
+            heading.strip() for heading in re.findall(r"Relative to [^|\n]+", section)
+        ] == ["Relative to SDK"]
 
 
 def test_readme_documents_live_integration_commands_without_run_flags() -> None:
