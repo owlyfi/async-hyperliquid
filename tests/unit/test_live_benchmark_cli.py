@@ -42,12 +42,17 @@ class FakeProvider:
         )
         return cast(tuple[WireOrder, WireOrder], orders)
 
-    async def place(self, pair: OrderPair) -> tuple[int, int]:
-        del pair
+    async def place_many(
+        self, orders: Sequence[CanonicalOrder]
+    ) -> tuple[int, ...]:
         if self.fail_place:
             raise TimeoutError("raw-response-secret")
-        self._next_oid += 2
-        return (self._next_oid - 1, self._next_oid)
+        first_oid = self._next_oid
+        self._next_oid += len(orders)
+        return tuple(range(first_oid, self._next_oid))
+
+    async def place(self, pair: OrderPair) -> tuple[int, int]:
+        return cast(tuple[int, int], await self.place_many(pair.as_tuple()))
 
     async def cancel_oids(
         self, orders: Sequence[CanonicalOrder], oids: Sequence[int]
@@ -194,7 +199,9 @@ async def test_all_runs_offline_through_injected_providers(tmp_path: Path) -> No
     assert constructed == 1
     assert all(provider.closed for provider in (*providers, recovery))
     report = json.loads(outcome.report_path.read_text())
-    assert len(report["samples"]) == 8
+    assert len(report["samples"]) == 26
+    assert sum(sample["suite"] == "cancel-id" for sample in report["samples"]) == 20
+    assert sum(sample["suite"] == "providers" for sample in report["samples"]) == 6
     assert set(report["summaries"]) == {"cancel-id", "providers"}
     assert (tmp_path / "samples.csv").is_file()
     assert (tmp_path / "cancel-id-latency.svg").is_file()

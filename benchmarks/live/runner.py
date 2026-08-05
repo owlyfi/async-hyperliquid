@@ -1,18 +1,48 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from time import perf_counter_ns
+from typing import Literal
 from uuid import uuid4
 
 from .models import BenchmarkConfig, BenchmarkFailure, CanonicalOrder, LatencySample
 from .pacing import WeightedPacer
-from .providers import LiveProvider, MarketSource, validate_provider_wire_parity
+from .providers import (
+    AsyncHyperliquidProvider,
+    LiveProvider,
+    MarketSource,
+    validate_provider_wire_parity,
+)
 from .results import SampleRecorder
 from .workload import build_order_pair, rotate_names
 
 
 def _new_cloid() -> str:
     return f"0x{uuid4().int:032x}"
+
+
+@dataclass(frozen=True, slots=True)
+class _CancelRequest:
+    operation: Literal["cancel_by_oid", "cancel_by_cloid"]
+    order: CanonicalOrder
+    oid: int
+
+
+async def _cancel_one(
+    provider: LiveProvider,
+    gate: asyncio.Event,
+    request: _CancelRequest,
+    clock_ns: Callable[[], int],
+) -> int:
+    await gate.wait()
+    started = clock_ns()
+    if request.operation == "cancel_by_oid":
+        await provider.cancel_oids((request.order,), (request.oid,))
+    else:
+        await provider.cancel_cloids((request.order,))
+    return clock_ns() - started
 
 
 async def _recover_pending(
@@ -30,7 +60,7 @@ async def _recover_pending(
 
 
 async def run_cancel_id_suite(
-    provider: LiveProvider,
+    provider: AsyncHyperliquidProvider,
     recovery: LiveProvider,
     mid_source: MarketSource,
     pacer: WeightedPacer,
@@ -44,54 +74,95 @@ async def run_cancel_id_suite(
     for logical_round in range(total_rounds):
         await pacer.wait(weight=2)
         mid, size_decimals = await mid_source.snapshot()
-        pair = build_order_pair(
-            mid,
-            size_decimals,
-            target_notional=config.target_notional,
-            cloids=(cloid_factory(), cloid_factory()),
-            buy_multiplier=config.buy_multiplier,
-            sell_multiplier=config.sell_multiplier,
+        pairs = tuple(
+            build_order_pair(
+                mid,
+                size_decimals,
+                target_notional=config.target_notional,
+                cloids=(cloid_factory(), cloid_factory()),
+                buy_multiplier=config.buy_multiplier,
+                sell_multiplier=config.sell_multiplier,
+            )
+            for _ in range(10)
         )
-        pending = {order.cloid: order for order in pair.as_tuple()}
+        orders = tuple(order for pair in pairs for order in pair.as_tuple())
+        pending = {order.cloid: order for order in orders}
         failure: BaseException | None = None
 
         try:
             await pacer.wait(weight=1)
-            buy_oid, sell_oid = await provider.place(pair)
-            if logical_round % 2 == 0:
-                steps = (
-                    ("cancel_by_oid", pair.buy, buy_oid),
-                    ("cancel_by_cloid", pair.sell, sell_oid),
+            oids = await provider.place_many(orders)
+
+            by_method: dict[
+                Literal["cancel_by_oid", "cancel_by_cloid"], list[_CancelRequest]
+            ] = {"cancel_by_oid": [], "cancel_by_cloid": []}
+            for pair_index, pair in enumerate(pairs):
+                operation: Literal["cancel_by_oid", "cancel_by_cloid"] = (
+                    "cancel_by_oid"
+                    if (pair_index + logical_round) % 2 == 0
+                    else "cancel_by_cloid"
                 )
-            else:
-                steps = (
-                    ("cancel_by_cloid", pair.buy, buy_oid),
-                    ("cancel_by_oid", pair.sell, sell_oid),
+                by_method[operation].extend(
+                    (
+                        _CancelRequest(operation, pair.buy, oids[pair_index * 2]),
+                        _CancelRequest(operation, pair.sell, oids[pair_index * 2 + 1]),
+                    )
                 )
+
+            first_operation: Literal["cancel_by_oid", "cancel_by_cloid"] = (
+                "cancel_by_oid" if logical_round % 2 == 0 else "cancel_by_cloid"
+            )
+            second_operation: Literal["cancel_by_oid", "cancel_by_cloid"] = (
+                "cancel_by_cloid" if logical_round % 2 == 0 else "cancel_by_oid"
+            )
+            requests = tuple(
+                request
+                for pair in zip(
+                    by_method[first_operation],
+                    by_method[second_operation],
+                    strict=True,
+                )
+                for request in pair
+            )
 
             measured = logical_round >= config.warmups
             measured_round = logical_round - config.warmups
-            for provider_order, (operation, order, oid) in enumerate(steps):
-                await pacer.wait(weight=1)
-                started = clock_ns() if measured else 0
-                if operation == "cancel_by_oid":
-                    await provider.cancel_oids((order,), (oid,))
-                else:
-                    await provider.cancel_cloids((order,))
+            await pacer.wait(weight=20)
+            gate = asyncio.Event()
+            tasks = tuple(
+                asyncio.create_task(_cancel_one(provider, gate, request, clock_ns))
+                for request in requests
+            )
+            await asyncio.sleep(0)
+            gate.set()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            cancel_failures: list[BaseException] = []
+            for provider_order, (request, result) in enumerate(
+                zip(requests, results, strict=True)
+            ):
+                if isinstance(result, BaseException):
+                    cancel_failures.append(result)
+                    continue
+                pending.pop(request.order.cloid)
                 if measured:
                     recorder.record(
                         LatencySample(
                             suite="cancel-id",
                             provider=provider.name,
-                            operation=operation,
+                            operation=request.operation,
                             round_index=measured_round,
                             provider_order=provider_order,
-                            duration_ns=clock_ns() - started,
+                            duration_ns=result,
                         )
                     )
-                pending.pop(order.cloid)
+            if cancel_failures:
+                failure = BaseExceptionGroup(
+                    "cancel-id concurrent cancel failed", cancel_failures
+                )
         except BaseException as error:
-            failure = error
+            if failure is None:
+                failure = error
 
         cleanup_failure = await _recover_pending(pending, recovery, pacer)
         if cleanup_failure is not None:
