@@ -136,6 +136,7 @@ def test_csv_contains_only_safe_sample_columns(tmp_path: Path) -> None:
     )
     assert len(rows) == 240
     assert not ({"oid", "cloid", "address", "signature"} & rows[0].keys())
+    assert b"\r\n" not in path.read_bytes()
 
 
 @pytest.mark.parametrize(
@@ -199,7 +200,9 @@ def test_figures_are_written_as_png_and_svg(tmp_path: Path) -> None:
     for path in paths:
         assert path.stat().st_size > 100
     assert (tmp_path / "cancel-id-latency.png").read_bytes().startswith(b"\x89PNG")
-    assert b"<svg" in (tmp_path / "providers-latency.svg").read_bytes()[:1000]
+    provider_svg = tmp_path / "providers-latency.svg"
+    assert b"<svg" in provider_svg.read_bytes()[:1000]
+    assert all(line == line.rstrip() for line in provider_svg.read_text().splitlines())
 
 
 @pytest.mark.parametrize(
@@ -270,6 +273,7 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
     assert "old detail" not in detail_readme
     assert "240 weight/minute" in detail_readme
     assert "results/20260805T000100Z/providers-latency.svg" in detail_readme
+    assert all(line == line.rstrip() for line in detail_readme.splitlines())
 
 
 def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:

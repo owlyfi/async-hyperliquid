@@ -141,9 +141,55 @@ and the overall block in the repository README from the same report.
 <!-- live-exchange-benchmark:detail:start -->
 ## Published live Exchange benchmark
 
-No validated live testnet result has been published yet. Simulated, partial,
-non-default, cleanup-failed, and locally edited reports are not eligible for
-this section.
+Validated testnet run completed `2026-08-05T11:21:27.452390Z`. The runner used
+three warmup rounds, 30 measured rounds, and a maximum controlled rate of
+240 weight/minute. Initialization, market metadata, mid lookup, pacing, and
+cleanup are excluded from measured latency.
+
+| Environment | Value |
+|---|---|
+| network | testnet |
+| platform | Darwin-arm64 |
+| python | 3.12.13 |
+| async-hyperliquid | 1.0.0rc1 |
+| ccxt | 4.5.71 |
+| sdk | 0.24.0 |
+
+### OID versus CLOID cancellation
+
+CLOID had the lower median latency; the slower median was 1.009x the faster median.
+
+| Identifier | Median (ms) | MAD (ms) | p95 (ms) | Min (ms) | Max (ms) |
+|---|---:|---:|---:|---:|---:|
+| OID | 876.84 | 46.04 | 1028.63 | 804.35 | 1141.53 |
+| CLOID | 869.04 | 25.14 | 978.29 | 818.43 | 995.77 |
+
+![OID and CLOID latency](results/20260805T112127Z/cancel-id-latency.svg)
+
+### Provider comparison
+
+| Operation | Provider | Median (ms) | MAD (ms) | p95 (ms) |
+|---|---|---:|---:|---:|
+| place_batch_2 | async-hyperliquid | 572.98 | 31.34 | 725.07 |
+| place_batch_2 | sdk | 573.03 | 44.03 | 816.82 |
+| place_batch_2 | ccxt | 569.62 | 35.76 | 713.90 |
+| cancel_batch_2_by_oid | async-hyperliquid | 872.36 | 41.34 | 956.99 |
+| cancel_batch_2_by_oid | sdk | 872.88 | 37.18 | 985.23 |
+| cancel_batch_2_by_oid | ccxt | 868.22 | 33.71 | 1004.00 |
+
+![Provider place and cancel latency](results/20260805T112127Z/providers-latency.svg)
+
+### Equal-weight overall latency
+
+| Rank | Provider | Geometric mean of place/cancel medians (ms) |
+|---:|---|---:|
+| 1 | ccxt | 703.25 |
+| 2 | async-hyperliquid | 707.00 |
+| 3 | sdk | 707.24 |
+
+Artifacts: [sanitized JSON](results/20260805T112127Z/report.json), [sample CSV](results/20260805T112127Z/samples.csv).
+
+These measurements describe one testnet run, not exchange capacity. Shared-IP traffic, geography, testnet load, dependency versions, and network conditions can change results.
 <!-- live-exchange-benchmark:detail:end -->
 
 ## Signing benchmark

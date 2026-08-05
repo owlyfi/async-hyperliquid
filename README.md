@@ -403,9 +403,20 @@ before running it because it submits real testnet orders.
 <!-- live-exchange-benchmark:overall:start -->
 #### Published live Exchange result
 
-No validated live testnet result has been published yet. This section is only
-updated from a complete default-shape report after cleanup and artifact
-validation succeed.
+On the validated testnet run, CLOID cancellation had the lower median; the slower identifier was 1.009x the faster median.
+
+| Operation | Provider | Median (ms) | p95 (ms) |
+|---|---|---:|---:|
+| place_batch_2 | ccxt | 569.62 | 713.90 |
+| place_batch_2 | async-hyperliquid | 572.98 | 725.07 |
+| place_batch_2 | sdk | 573.03 | 816.82 |
+| cancel_batch_2_by_oid | ccxt | 868.22 | 1004.00 |
+| cancel_batch_2_by_oid | async-hyperliquid | 872.36 | 956.99 |
+| cancel_batch_2_by_oid | sdk | 872.88 | 985.23 |
+
+Overall equal-weight ranking: 1. ccxt (703.25 ms), 2. async-hyperliquid (707.00 ms), 3. sdk (707.24 ms).
+
+See the [detailed methodology, distributions, and artifacts](benchmarks/README.md#published-live-exchange-benchmark).
 <!-- live-exchange-benchmark:overall:end -->
 
 The credential-free Info command always runs the complete suite against both

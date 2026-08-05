@@ -68,7 +68,7 @@ def write_csv(report: LiveBenchmarkReport, output_dir: Path) -> Path:
     temporary = output_dir / ".samples.csv.tmp"
     try:
         with temporary.open("w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=_CSV_FIELDS)
+            writer = csv.DictWriter(handle, fieldnames=_CSV_FIELDS, lineterminator="\n")
             writer.writeheader()
             writer.writerows(report["samples"])
         temporary.replace(destination)
@@ -135,6 +135,13 @@ def _comparison_panel(
     axis.grid(axis="y", alpha=0.25)
 
 
+def _write_figure(figure: Any, path: Path) -> None:
+    figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
+    if path.suffix == ".svg":
+        normalized = "\n".join(line.rstrip() for line in path.read_text().splitlines())
+        path.write_text(f"{normalized}\n")
+
+
 def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, ...]:
     import matplotlib
 
@@ -165,7 +172,7 @@ def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, 
         cancel_figure.tight_layout()
         cancel_paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[:2])
         for path in cancel_paths:
-            cancel_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
+            _write_figure(cancel_figure, path)
         plt.close(cancel_figure)
         paths.extend(cancel_paths)
 
@@ -193,7 +200,7 @@ def write_figures(report: LiveBenchmarkReport, output_dir: Path) -> tuple[Path, 
             output_dir / filename for filename in FIGURE_FILENAMES[2:]
         )
         for path in provider_paths:
-            provider_figure.savefig(path, dpi=160 if path.suffix == ".png" else None)
+            _write_figure(provider_figure, path)
         plt.close(provider_figure)
         paths.extend(provider_paths)
 
@@ -364,9 +371,9 @@ def _detail_markdown(report: LiveBenchmarkReport, artifact_dir: str) -> str:
     lines = [
         "## Published live Exchange benchmark",
         "",
-        f"Validated testnet run completed `{report['completed_at']}`. The runner used ",
-        "three warmup rounds, 30 measured rounds, and a maximum controlled rate of ",
-        "240 weight/minute. Initialization, market metadata, mid lookup, pacing, and ",
+        f"Validated testnet run completed `{report['completed_at']}`. The runner used",
+        "three warmup rounds, 30 measured rounds, and a maximum controlled rate of",
+        "240 weight/minute. Initialization, market metadata, mid lookup, pacing, and",
         "cleanup are excluded from measured latency.",
         "",
         "| Environment | Value |",
