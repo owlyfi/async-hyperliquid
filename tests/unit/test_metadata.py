@@ -237,45 +237,17 @@ async def test_spot_alias_resolves_to_protocol_coin_before_mid_lookup() -> None:
     assert transport.all_mids_dexes == [""]
 
 
-@pytest.mark.parametrize(
-    ("protocol_name", "alias"),
-    (
-        ("UBTC", "BTC/USDC"),
-        ("UETH", "ETH/USDC"),
-        ("USOL", "SOL/USDC"),
-        ("USDT0", "USDT/USDC"),
-    ),
-)
-async def test_spot_accepts_ui_alias(protocol_name: str, alias: str) -> None:
+async def test_spot_aliases_are_derived_only_from_metadata() -> None:
     transport = MetadataTransport()
     base = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["tokens"])[1])
-    base["name"] = protocol_name
-    base["tokenId"] = "0x8f254b963e8468305d409b33aa137c67"
+    base["name"] = "UBTC"
     pair = cast(JsonObject, cast(list[JsonValue], transport.spot_meta["universe"])[0])
-    pair["name"] = "@11"
+    pair["name"] = "@142"
     info = build_info(transport)
 
-    assert await info.token_id(alias) == base["tokenId"]
-    assert (await info.spot_token_metadata(alias))["name"] == protocol_name
-
-
-async def test_spot_alias_overrides_legacy_symbol() -> None:
-    transport = MetadataTransport()
-    tokens = cast(list[JsonValue], transport.spot_meta["tokens"])
-    legacy = cast(JsonObject, tokens[1])
-    legacy["name"] = "PUMP"
-    legacy_pair = cast(
-        JsonObject, cast(list[JsonValue], transport.spot_meta["universe"])[0]
-    )
-    legacy_pair.update({"name": "@20", "index": 20})
-    tokens.append({**legacy, "name": "UPUMP", "index": 2, "tokenId": "0x02"})
-    cast(list[JsonValue], transport.spot_meta["universe"]).append(
-        {"name": "@188", "index": 188, "isCanonical": False, "tokens": [2, 0]}
-    )
-    info = build_info(transport)
-
-    assert await info.coin_name("PUMP/USDC") == "@188"
-    assert await info.token_id("PUMP/USDC") == "0x02"
+    assert await info.coin_name("UBTC/USDC") == "@142"
+    with pytest.raises(ValueError, match="unknown coin"):
+        await info.coin_name("BTC/USDC")
 
 
 async def test_purr_named_pair_is_its_protocol_coin() -> None:

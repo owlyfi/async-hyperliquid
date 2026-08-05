@@ -47,22 +47,10 @@ same entry provide a `BASE/QUOTE` alias:
 | `HYPE/USDC` | `@107` | `HYPE/USDC` |
 | `PURR/USDC` | `PURR/USDC` when that is the wire name | `PURR/USDC` |
 
-Some spot tokens retain a protocol-facing `U` prefix while the Hyperliquid UI
-omits it. The client accepts the UI spelling without changing the canonical
-wire name:
-
-| Metadata symbol | Accepted UI alias |
-|---|---|
-| `UBTC/USDC` | `BTC/USDC` |
-| `UETH/USDC` | `ETH/USDC` |
-| `USOL/USDC` | `SOL/USDC` |
-| `USDT0/USDC` | `USDT/USDC` |
-| `UPUMP/USDC` | `PUMP/USDC` |
-
-The UI alias takes precedence when it collides with an older metadata symbol.
-On current mainnet metadata, `PUMP/USDC` therefore resolves to the UPUMP market
-(`@188`). The legacy PUMP market remains addressable by its canonical wire name
-`@20`.
+Display aliases are derived only from the token names in `spotMeta`. The SDK
+does not reproduce the separate curated symbol aliases used by the Hyperliquid
+web frontend. For example, metadata token `UBTC` resolves as `UBTC/USDC`, not
+the frontend label `BTC/USDC`.
 
 Only pairs present in `spotMeta.universe` resolve. A quote token alias such as
 `USDC` can resolve token metadata without representing a tradable market.

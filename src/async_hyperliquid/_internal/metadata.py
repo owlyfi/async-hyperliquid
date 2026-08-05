@@ -12,15 +12,6 @@ from ..types import JsonObject, JsonValue
 from ..types.info import AllPerpMetas, SpotMeta, SpotToken
 
 
-_SPOT_SYMBOL_ALIASES = {
-    "UBTC/USDC": "BTC/USDC",
-    "UETH/USDC": "ETH/USDC",
-    "USOL/USDC": "SOL/USDC",
-    "USDT0/USDC": "USDT/USDC",
-    "UPUMP/USDC": "PUMP/USDC",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class _MarketInfo:
     coin: str
@@ -230,9 +221,6 @@ def _index_spot_metadata(
 
         index.coin_by_alias[coin] = coin
         index.coin_by_alias.setdefault(display_name, coin)
-        alias = _SPOT_SYMBOL_ALIASES.get(display_name)
-        if alias is not None:
-            index.coin_by_alias[alias] = coin
         index.coin_by_alias.setdefault(quote_name, quote_name)
         index.asset_by_coin[coin] = asset_id
         index.symbol_by_coin[coin] = display_name
