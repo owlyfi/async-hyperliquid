@@ -53,11 +53,11 @@ dev = [
 benchmark = ["ccxt==4.5.71", "coincurve==21.0.0"]
 
 [project.urls]
-Homepage = "https://github.com/traderfiapp/async-hyperliquid"
-Documentation = "https://github.com/traderfiapp/async-hyperliquid"
-Repository = "https://github.com/traderfiapp/async-hyperliquid"
-Issues = "https://github.com/traderfiapp/async-hyperliquid/issues"
-Changelog = "https://github.com/traderfiapp/async-hyperliquid/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/owlyfi/async-hyperliquid"
+Documentation = "https://github.com/owlyfi/async-hyperliquid"
+Repository = "https://github.com/owlyfi/async-hyperliquid"
+Issues = "https://github.com/owlyfi/async-hyperliquid/issues"
+Changelog = "https://github.com/owlyfi/async-hyperliquid/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

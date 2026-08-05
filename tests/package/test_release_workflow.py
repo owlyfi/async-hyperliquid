@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,3 +61,16 @@ def test_release_workflow_pins_every_external_action() -> None:
             ref = line.split("uses:", 1)[1].strip().split("#", 1)[0].strip()
             assert "@" in ref
             assert len(ref.rsplit("@", 1)[1]) == 40
+
+
+def test_ci_runs_for_pull_requests_and_branch_pushes_only() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "pull_request:" in workflow
+    assert 'branches: ["**"]' in workflow
+    assert "tags:" not in workflow
+
+
+def test_published_project_urls_use_current_repository() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    urls = project["urls"]
+    assert all("github.com/owlyfi/async-hyperliquid" in url for url in urls.values())
