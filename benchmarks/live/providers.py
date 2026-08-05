@@ -415,6 +415,7 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
             network=Network.TESTNET,
         )
         try:
+            await recovery_client.open()
             await recovery_client.info.refresh_metadata()
             market = await recovery_client.info._market_info("BTC")
         except BaseException:
@@ -435,6 +436,7 @@ async def build_providers(credentials: Credentials) -> ProviderSet:
             network=Network.TESTNET,
         )
         try:
+            await async_client.open()
             await async_client.info.refresh_metadata()
             measured_market = await async_client.info._market_info("BTC")
             api_role = await async_client.info.user_role(credentials.api_wallet_address)

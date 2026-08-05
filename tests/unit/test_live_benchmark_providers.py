@@ -325,6 +325,7 @@ async def test_factory_builds_recovery_first_and_closes_partial_clients(
             self.index = index
 
         async def refresh_metadata(self) -> None:
+            assert clients[self.index].opened is True, "metadata read before open"
             if self.index == 1:
                 raise RuntimeError("measured metadata failed")
 
@@ -339,8 +340,12 @@ async def test_factory_builds_recovery_first_and_closes_partial_clients(
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
             self.info = FakeInfo(len(clients))
+            self.opened = False
             self.closed = False
             clients.append(self)
+
+        async def open(self) -> None:
+            self.opened = True
 
         async def close(self) -> None:
             self.closed = True
@@ -357,6 +362,7 @@ async def test_factory_builds_recovery_first_and_closes_partial_clients(
         await provider_module.build_providers(credentials)
 
     assert len(clients) == 2
+    assert all(client.opened for client in clients)
     assert all(client.closed for client in clients)
 
 
@@ -393,8 +399,12 @@ async def test_factory_sets_finite_timeouts_and_closes_failed_ccxt_setup(
         def __init__(self, *args: object, **kwargs: object) -> None:
             del args, kwargs
             self.info = FakeInfo()
+            self.opened = False
             self.closed = False
             async_clients.append(self)
+
+        async def open(self) -> None:
+            self.opened = True
 
         async def close(self) -> None:
             self.closed = True
@@ -445,4 +455,5 @@ async def test_factory_sets_finite_timeouts_and_closes_failed_ccxt_setup(
     assert sdk_timeouts == [15.0]
     assert ccxt_configs[0]["timeout"] == 15_000
     assert all(session.closed for session in sdk_sessions)
+    assert all(client.opened for client in async_clients)
     assert all(client.closed for client in (*async_clients, *ccxt_clients))
