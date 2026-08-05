@@ -155,9 +155,17 @@ class AsyncHyperliquidProvider:
         )
         return cast(tuple[WireOrder, WireOrder], encoded)
 
+    async def place_many(
+        self, orders: Sequence[CanonicalOrder]
+    ) -> tuple[int, ...]:
+        if not orders:
+            raise ValueError("orders must not be empty")
+        requests = tuple(_async_request(order, self._coin) for order in orders)
+        response = await self._client.place_orders(requests)
+        return parse_resting_oids(response, expected=len(orders), provider=self.name)
+
     async def place(self, pair: OrderPair) -> tuple[int, int]:
-        response = await self._client.place_orders(self._requests(pair))
-        return parse_resting_oids(response, provider=self.name)
+        return cast(tuple[int, int], await self.place_many(pair.as_tuple()))
 
     async def cancel_oids(
         self, orders: Sequence[CanonicalOrder], oids: Sequence[int]
@@ -224,7 +232,10 @@ class SdkProvider:
 
     async def place(self, pair: OrderPair) -> tuple[int, int]:
         response = self._client.bulk_orders(_sdk_requests(pair, self._coin))
-        return parse_resting_oids(response, provider=self.name)
+        return cast(
+            tuple[int, int],
+            parse_resting_oids(response, expected=2, provider=self.name),
+        )
 
     async def cancel_oids(
         self, orders: Sequence[CanonicalOrder], oids: Sequence[int]

@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 
 import pytest
 
@@ -21,6 +22,10 @@ def _place_response(*statuses: object) -> dict[str, object]:
     }
 
 
+def _resting_place_response(oids: Sequence[int]) -> dict[str, object]:
+    return _place_response(*({"resting": {"oid": oid}} for oid in oids))
+
+
 def _cancel_response(*statuses: object) -> dict[str, object]:
     return {
         "status": "ok",
@@ -31,7 +36,18 @@ def _cancel_response(*statuses: object) -> dict[str, object]:
 def test_raw_place_parser_requires_two_resting_integer_oids() -> None:
     response = _place_response({"resting": {"oid": 101}}, {"resting": {"oid": 202}})
 
-    assert parse_resting_oids(response, provider="sdk") == (101, 202)
+    assert parse_resting_oids(response, expected=2, provider="sdk") == (101, 202)
+
+
+def test_parse_twenty_resting_oids_requires_exact_count() -> None:
+    response = _resting_place_response(range(100, 120))
+
+    assert parse_resting_oids(
+        response, expected=20, provider="async-hyperliquid"
+    ) == tuple(range(100, 120))
+
+    with pytest.raises(BenchmarkFailure, match="non-resting"):
+        parse_resting_oids(response, expected=19, provider="async-hyperliquid")
 
 
 @pytest.mark.parametrize(
@@ -45,7 +61,7 @@ def test_raw_place_parser_requires_two_resting_integer_oids() -> None:
 )
 def test_raw_place_parser_rejects_incomparable_results(response: object) -> None:
     with pytest.raises(BenchmarkFailure, match="sdk.*non-resting"):
-        parse_resting_oids(response, provider="sdk")
+        parse_resting_oids(response, expected=2, provider="sdk")
 
 
 def test_raw_cancel_parser_requires_exact_success_count() -> None:

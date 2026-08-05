@@ -67,24 +67,28 @@ def _positive_oid(value: object) -> int | None:
     return None
 
 
-def parse_resting_oids(response: object, *, provider: str) -> tuple[int, int]:
+def parse_resting_oids(
+    response: object, *, expected: int, provider: str
+) -> tuple[int, ...]:
+    if expected < 1:
+        raise ValueError("expected must be positive")
     statuses = _statuses(response, provider=provider, operation="placement")
     oids: list[int] = []
-    if len(statuses) == 2:
+    if len(statuses) == expected:
         for status in statuses:
             status_mapping = _mapping(status)
-            if status_mapping is None:
-                break
-            resting = _mapping(status_mapping.get("resting"))
-            if resting is None:
-                break
-            oid = _positive_oid(resting.get("oid"))
+            resting = (
+                _mapping(status_mapping.get("resting"))
+                if status_mapping is not None
+                else None
+            )
+            oid = _positive_oid(resting.get("oid")) if resting is not None else None
             if oid is None:
                 break
             oids.append(oid)
-    if len(oids) != 2:
+    if len(oids) != expected:
         raise BenchmarkFailure(f"{provider} produced a non-resting placement result")
-    return (oids[0], oids[1])
+    return tuple(oids)
 
 
 def parse_cancel_success(response: object, *, expected: int, provider: str) -> None:

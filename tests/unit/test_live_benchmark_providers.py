@@ -4,7 +4,7 @@ from typing import Any, cast
 import pytest
 
 import benchmarks.live.providers as provider_module
-from benchmarks.live.models import BenchmarkFailure, OrderPair
+from benchmarks.live.models import BenchmarkFailure, CanonicalOrder, OrderPair
 from benchmarks.live.preflight import Credentials
 from benchmarks.live.providers import (
     AsyncHyperliquidProvider,
@@ -42,7 +42,8 @@ def _pair() -> OrderPair:
 
 
 class AsyncClientStub:
-    def __init__(self) -> None:
+    def __init__(self, resting_oids: tuple[int, ...] = (101, 202)) -> None:
+        self.resting_oids = resting_oids
         self.placed: object = None
         self.cancelled_oids: object = None
         self.cancelled_cloids: object = None
@@ -50,7 +51,17 @@ class AsyncClientStub:
 
     async def place_orders(self, orders: object) -> object:
         self.placed = orders
-        return PLACE_RESPONSE
+        return {
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [
+                        {"resting": {"oid": oid}} for oid in self.resting_oids
+                    ]
+                },
+            },
+        }
 
     async def cancel_orders(self, orders: object) -> object:
         self.cancelled_oids = orders
@@ -96,6 +107,25 @@ async def test_async_provider_uses_public_batch_methods() -> None:
         str(order.cloid) for order in cast(tuple[Any, ...], client.cancelled_cloids)
     ] == [pair.buy.cloid]
     assert client.closed is True
+
+
+async def test_async_provider_places_arbitrary_order_batch() -> None:
+    client = AsyncClientStub(resting_oids=tuple(range(100, 120)))
+    provider = AsyncHyperliquidProvider(
+        cast(Any, client), coin="BTC", asset=0, size_decimals=5
+    )
+    orders = tuple(
+        CanonicalOrder(
+            is_buy=index % 2 == 0,
+            price=90_000.0 if index % 2 == 0 else 110_000.0,
+            size=0.00013 if index % 2 == 0 else 0.0001,
+            cloid=f"0x{index + 1:032x}",
+        )
+        for index in range(20)
+    )
+
+    assert await provider.place_many(orders) == tuple(range(100, 120))
+    assert len(cast(tuple[object, ...], client.placed)) == 20
 
 
 class SyncCloseStub:
