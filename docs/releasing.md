@@ -192,6 +192,13 @@ The GitHub Release remains a private, populated draft.
 - If PyPI reports that the version or filename already exists, inspect the
   public project before doing anything else. PyPI files cannot be replaced.
 
+If the action reports a **partial upload**—for example, the wheel exists on
+PyPI but the sdist does not—do not publish the GitHub draft and do not keep
+rerunning the complete upload. Record the uploaded filenames and hashes, yank
+the incomplete PyPI version, leave or remove the unpublished GitHub draft only
+after confirming its assets, and prepare a new corrective package version and
+tag. PyPI has no transaction that can roll the first uploaded file back.
+
 ### PyPI succeeded but GitHub publication failed
 
 This is the most important partial-success state. Do not delete the draft,

@@ -14,6 +14,8 @@ def test_release_workflow_is_tag_only_and_fail_closed() -> None:
     workflow = _release_text()
     assert 'tags: ["v*"]' in workflow
     assert "workflow_dispatch" not in workflow
+    assert "group: release-${{ github.repository }}" in workflow
+    assert "cancel-in-progress: false" in workflow
     assert "github.repository != 'owlyfi/async-hyperliquid'" in workflow
     assert '[[ "$tag" == "v$version" ]]' in workflow
     assert 'git merge-base --is-ancestor "$release_commit" origin/main' in workflow
@@ -27,6 +29,12 @@ def test_release_workflow_scopes_publish_permissions() -> None:
     assert "PYPI_API_TOKEN" not in workflow
     assert "password:" not in workflow
     assert "skip-existing" not in workflow
+    assert "enable-cache: true" not in workflow
+
+
+def test_ci_checkout_does_not_persist_push_credentials() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert workflow.count("persist-credentials: false") == 2
 
 
 def test_release_workflow_builds_and_shares_one_bundle() -> None:
@@ -43,6 +51,18 @@ def test_release_workflow_builds_and_shares_one_bundle() -> None:
     )[0]
     assert "- create_draft_release" in pypi_job
     assert "- publish_pypi" in github_job
+
+
+def test_github_assets_are_hash_verified_before_and_after_immutability() -> None:
+    workflow = _release_text()
+    publish_job = workflow.split("  publish_github_release:", 1)[1].split(
+        "  verify_release:", 1
+    )[0]
+    verify_job = workflow.split("  verify_release:", 1)[1]
+    for job in (publish_job, verify_job):
+        assert "sha256sum --check SHA256SUMS" in job
+        assert 'asset["digest"]' in job
+        assert '"sha256:" + hashlib.sha256' in job
 
 
 def test_release_workflow_pins_every_external_action() -> None:
@@ -112,6 +132,7 @@ def test_release_runbook_covers_setup_and_recovery() -> None:
         "git push origin",
         "Re-run failed jobs",
         "SHA256SUMS",
+        "partial upload",
         "yank",
     }
     for phrase in required:

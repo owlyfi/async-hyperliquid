@@ -42,8 +42,9 @@ order:
 5. `publish-github-release`
 6. `verify-release`
 
-Workflow-level concurrency is keyed by the tag and does not cancel an active
-release. All jobs use GitHub-hosted Ubuntu runners and explicit timeouts.
+Workflow-level concurrency is keyed by the repository and does not cancel an
+active release, so different release tags serialize instead of racing external
+writes. All jobs use GitHub-hosted Ubuntu runners and explicit timeouts.
 
 ### Validate the release identity
 

@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          enable-cache: true
+          enable-cache: false
           version: "0.11.32"
 
       - name: Validate tag, version, and main ancestry
@@ -84,7 +84,7 @@ jobs:
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          enable-cache: true
+          enable-cache: false
           version: "0.11.32"
 
       - name: Install locked dependencies
@@ -272,6 +272,50 @@ jobs:
       contents: write
 
     steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-bundle-${{ github.sha }}
+          path: release-bundle
+
+      - name: Verify release bundle
+        run: cd release-bundle && sha256sum --check SHA256SUMS
+
+      - name: Verify staged release asset digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.validate_release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets,isDraft,tagName > draft-release.json
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          release = json.loads(Path("draft-release.json").read_text())
+          paths = [
+              path
+              for path in Path("release-bundle/dist").iterdir()
+              if path.is_file()
+          ]
+          paths.append(Path("release-bundle/SHA256SUMS"))
+          expected = {
+              path.name: "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in paths
+          }
+          observed = {asset["name"]: asset["digest"] for asset in release["assets"]}
+
+          if release["tagName"] != os.environ["TAG"]:
+              raise SystemExit(f"unexpected draft tag: {release['tagName']}")
+          if not release["isDraft"]:
+              raise SystemExit("expected a draft before publication")
+          if observed != expected:
+              raise SystemExit(f"draft asset digests {observed} != expected {expected}")
+          PY
+
       - name: Publish populated draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -279,11 +323,6 @@ jobs:
           TAG: ${{ needs.validate_release.outputs.tag }}
         run: |
           set -euo pipefail
-          is_draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"
-          if [[ "$is_draft" != "true" ]]; then
-            echo "Expected $TAG to be a draft before publication" >&2
-            exit 1
-          fi
           gh release edit "$TAG" --draft=false
 
   verify_release:
@@ -349,7 +388,7 @@ jobs:
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          enable-cache: true
+          enable-cache: false
           version: "0.11.32"
 
       - name: Smoke-test package installed from PyPI
@@ -371,16 +410,25 @@ jobs:
           gh release view "$TAG" \
             --json assets,isDraft,isImmutable,isPrerelease,tagName > release.json
           python3 - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
           release = json.loads(Path("release.json").read_text())
-          expected_assets = {
-              path.name for path in Path("release-bundle/dist").iterdir() if path.is_file()
+          paths = [
+              path
+              for path in Path("release-bundle/dist").iterdir()
+              if path.is_file()
+          ]
+          paths.append(Path("release-bundle/SHA256SUMS"))
+          expected_digests = {
+              path.name: "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in paths
           }
-          expected_assets.add("SHA256SUMS")
-          observed_assets = {asset["name"] for asset in release["assets"]}
+          observed_digests = {
+              asset["name"]: asset["digest"] for asset in release["assets"]
+          }
 
           if release["tagName"] != os.environ["TAG"]:
               raise SystemExit(f"unexpected release tag: {release['tagName']}")
@@ -391,8 +439,9 @@ jobs:
           expected_prerelease = os.environ["PRERELEASE"] == "true"
           if release["isPrerelease"] != expected_prerelease:
               raise SystemExit("GitHub prerelease flag does not match the package version")
-          if observed_assets != expected_assets:
+          if observed_digests != expected_digests:
               raise SystemExit(
-                  f"GitHub assets {observed_assets} != expected {expected_assets}"
+                  "GitHub asset digests "
+                  f"{observed_digests} != expected {expected_digests}"
               )
           PY
