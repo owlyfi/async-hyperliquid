@@ -1,7 +1,11 @@
 from collections.abc import Mapping
+from unittest.mock import AsyncMock
 
 import pytest
 
+from async_hyperliquid import InfoClient
+from async_hyperliquid.errors import HttpError
+from async_hyperliquid.types import Network
 from async_hyperliquid.types.info import UserRole
 from tests.integration.config import (
     require_env,
@@ -9,6 +13,7 @@ from tests.integration.config import (
     validate_credentials,
     validate_roles,
 )
+from tests.integration.info_client import IntegrationInfoClient
 
 
 MASTER_KEY = "0x" + "11" * 32
@@ -29,6 +34,45 @@ def integration_env(**overrides: str) -> Mapping[str, str]:
     }
     values.update(overrides)
     return values
+
+
+async def test_info_retries_one_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    post = AsyncMock(side_effect=[HttpError(429), {"BTC": "100000"}])
+    sleep = AsyncMock()
+    monkeypatch.setattr(InfoClient, "_post", post)
+    monkeypatch.setattr("tests.integration.info_client.asyncio.sleep", sleep)
+    client = IntegrationInfoClient(Network.MAINNET)
+
+    assert await client._post({"type": "allMids"}) == {"BTC": "100000"}
+    sleep.assert_awaited_once_with(60)
+    assert post.await_count == 2
+
+
+async def test_info_skips_second_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        InfoClient, "_post", AsyncMock(side_effect=[HttpError(429), HttpError(429)])
+    )
+    monkeypatch.setattr("tests.integration.info_client.asyncio.sleep", AsyncMock())
+    with pytest.raises(pytest.skip.Exception, match="rate limited after retry"):
+        await IntegrationInfoClient(Network.TESTNET)._post({"type": "allMids"})
+
+
+async def test_testnet_info_warns_on_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(InfoClient, "_post", AsyncMock(side_effect=HttpError(503)))
+    with pytest.warns(RuntimeWarning, match="TESTNET allMids returned HTTP 503"):
+        with pytest.raises(pytest.skip.Exception):
+            await IntegrationInfoClient(Network.TESTNET)._post({"type": "allMids"})
+
+
+async def test_mainnet_info_fails_on_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(InfoClient, "_post", AsyncMock(side_effect=HttpError(503)))
+    with pytest.raises(HttpError) as error:
+        await IntegrationInfoClient(Network.MAINNET)._post({"type": "allMids"})
+    assert error.value.status == 503
 
 
 def test_required_env_names_only_the_missing_variable() -> None:
