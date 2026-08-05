@@ -1,4 +1,6 @@
 import csv
+import fcntl
+import subprocess
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, cast
@@ -34,7 +36,7 @@ from benchmarks.live.results import SampleRecorder, write_report
 PROVIDERS = ("ccxt", "sdk", "async-hyperliquid")
 
 
-def _valid_report() -> LiveBenchmarkReport:
+def _valid_report(*, revision: str = "a" * 40) -> LiveBenchmarkReport:
     config = BenchmarkConfig()
     recorder = SampleRecorder(
         config=config,
@@ -44,7 +46,7 @@ def _valid_report() -> LiveBenchmarkReport:
             "platform": "darwin-arm64",
         },
         versions={"async-hyperliquid": "1.0.0rc1", "sdk": "0.24.0", "ccxt": "4.5.71"},
-        git=GitMetadata(revision="a" * 40, dirty=False),
+        git=GitMetadata(revision=revision, dirty=False),
         workload=CONCURRENT_CANCEL_WORKLOAD,
     )
     for round_index in range(30):
@@ -70,6 +72,62 @@ def _valid_report() -> LiveBenchmarkReport:
         started_at="2026-08-05T00:00:00Z",
         completed_at="2026-08-05T00:01:00Z",
     )
+
+
+def _git(repository: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ("git", *args), cwd=repository, check=True, capture_output=True, text=True
+    )
+    return completed.stdout.strip()
+
+
+def _prepare_publish_repository(
+    tmp_path: Path, *, collision: bool = False
+) -> tuple[Path, Path, str, str]:
+    repository = tmp_path / "repository"
+    benchmarks = repository / "benchmarks"
+    benchmarks.mkdir(parents=True)
+    original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
+    original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
+    (repository / "README.md").write_text(original_root)
+    (benchmarks / "README.md").write_text(original_detail)
+    _git(repository, "init", "--quiet")
+    _git(repository, "config", "user.email", "benchmark-tests@example.invalid")
+    _git(repository, "config", "user.name", "Benchmark Tests")
+    _git(repository, "add", "README.md", "benchmarks/README.md")
+    _git(repository, "commit", "--quiet", "-m", "initial publication state")
+    if collision:
+        destination = benchmarks / "results" / "20260805T000100Z"
+        destination.mkdir(parents=True)
+        (destination / ".keep").write_text("existing publication\n")
+        _git(repository, "add", "benchmarks/results/20260805T000100Z/.keep")
+        _git(repository, "commit", "--quiet", "-m", "existing publication")
+
+    revision = _git(repository, "rev-parse", "HEAD")
+    source = tmp_path / "source"
+    source.mkdir()
+    report = _valid_report(revision=revision)
+    report_path = write_report(report, source, forbidden_values=())
+    write_csv(report, source)
+    for filename in FIGURE_FILENAMES[:2]:
+        (source / filename).write_bytes(b"source figure")
+    return repository, report_path, original_root, original_detail
+
+
+def _write_fake_publish_figures(
+    report: LiveBenchmarkReport, output_dir: Path
+) -> tuple[Path, ...]:
+    del report
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = tuple(output_dir / filename for filename in FIGURE_FILENAMES[:2])
+    for path in paths:
+        path.write_bytes(b"safe generated figure")
+    return paths
+
+
+def _assert_no_publication_debris(repository: Path) -> None:
+    results = repository / "benchmarks" / "results"
+    assert not results.exists() or list(results.iterdir()) == []
 
 
 def test_figure_series_keeps_operations_and_providers_separate() -> None:
@@ -501,24 +559,13 @@ def test_figures_render_cancel_request_and_round_maximum_views(tmp_path: Path) -
 def test_publish_updates_detailed_and_overall_markers_from_one_report(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "source"
-    source.mkdir()
-    report_path = write_report(_valid_report(), source, forbidden_values=())
-    write_csv(_valid_report(), source)
+    repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
+    source = report_path.parent
     (source / "samples.csv").write_text("tampered source CSV\n")
     for filename in FIGURE_FILENAMES[:2]:
         (source / filename).write_bytes(b"safe benchmark figure")
 
-    (tmp_path / "README.md").write_text(
-        f"root before\n{OVERALL_START}\nold overall\n{OVERALL_END}\nroot after\n"
-    )
-    benchmarks = tmp_path / "benchmarks"
-    benchmarks.mkdir()
-    (benchmarks / "README.md").write_text(
-        f"benchmark before\n{DETAIL_START}\nold detail\n{DETAIL_END}\nbenchmark after\n"
-    )
-
-    published = publish_report(report_path, tmp_path)
+    published = publish_report(report_path, repository)
 
     assert published.name == "20260805T000100Z"
     assert sorted(path.name for path in published.iterdir()) == sorted(
@@ -530,17 +577,15 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
         .startswith("suite,provider,operation,round_index,provider_order,duration_ns\n")
     )
     assert (published / "cancel-id-latency.png").read_bytes().startswith(b"\x89PNG")
-    root_readme = (tmp_path / "README.md").read_text()
-    detail_readme = (benchmarks / "README.md").read_text()
-    assert root_readme.startswith("root before\n")
-    assert root_readme.endswith("root after\n")
+    root_readme = (repository / "README.md").read_text()
+    detail_readme = (repository / "benchmarks" / "README.md").read_text()
+    assert root_readme.startswith("root\n")
     assert "old overall" not in root_readme
     assert "#### Published live Exchange result" in root_readme
     assert "OID" in root_readme
     assert "concurrency=20 (10 OID + 10 CLOID)" in root_readme
     assert "Overall equal-weight ranking" not in root_readme
-    assert detail_readme.startswith("benchmark before\n")
-    assert detail_readme.endswith("benchmark after\n")
+    assert detail_readme.startswith("detail\n")
     assert "old detail" not in detail_readme
     assert "240 weight/minute" in detail_readme
     assert "Per-round method maxima" in detail_readme
@@ -553,65 +598,45 @@ def test_publish_updates_detailed_and_overall_markers_from_one_report(
 
 
 def test_publish_requires_exactly_one_marker_pair(tmp_path: Path) -> None:
-    source = tmp_path / "source"
-    source.mkdir()
-    report_path = write_report(_valid_report(), source, forbidden_values=())
-    write_csv(_valid_report(), source)
-    for filename in FIGURE_FILENAMES[:2]:
-        (source / filename).write_bytes(b"safe benchmark figure")
-    (tmp_path / "README.md").write_text("missing markers\n")
-    benchmarks = tmp_path / "benchmarks"
-    benchmarks.mkdir()
-    (benchmarks / "README.md").write_text(f"{DETAIL_START}\nold\n{DETAIL_END}\n")
+    repository, report_path, _, _ = _prepare_publish_repository(tmp_path)
+    (repository / "README.md").write_text("missing markers\n")
+    _git(repository, "add", "README.md")
+    _git(repository, "commit", "--quiet", "-m", "missing root markers")
+    report = _valid_report(revision=_git(repository, "rev-parse", "HEAD"))
+    report_path = write_report(report, report_path.parent, forbidden_values=())
 
     with pytest.raises(BenchmarkFailure, match="README marker"):
-        publish_report(report_path, tmp_path)
+        publish_report(report_path, repository)
 
-    assert (tmp_path / "README.md").read_text() == "missing markers\n"
+    assert (repository / "README.md").read_text() == "missing markers\n"
 
 
 def test_publish_rejects_noncanonical_completion_timestamp_before_mutation(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "source"
-    source.mkdir()
-    report = _valid_report()
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    report = _valid_report(revision=_git(repository, "rev-parse", "HEAD"))
     report["completed_at"] = "0001-01-01T00:00:00+23:59"
-    report_path = write_report(report, source, forbidden_values=())
-    write_csv(report, source)
-    for filename in FIGURE_FILENAMES[:2]:
-        (source / filename).write_bytes(b"safe benchmark figure")
-    original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
-    original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
-    (tmp_path / "README.md").write_text(original_root)
-    benchmarks = tmp_path / "benchmarks"
-    benchmarks.mkdir()
-    (benchmarks / "README.md").write_text(original_detail)
+    report_path = write_report(report, report_path.parent, forbidden_values=())
 
     with pytest.raises(BenchmarkFailure, match="^report schema is not publishable$"):
-        publish_report(report_path, tmp_path)
+        publish_report(report_path, repository)
 
-    assert (tmp_path / "README.md").read_text() == original_root
-    assert (benchmarks / "README.md").read_text() == original_detail
-    assert not (benchmarks / "results").exists()
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results").exists()
 
 
 def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    pytest.importorskip("matplotlib")
-    source = tmp_path / "source"
-    source.mkdir()
-    report_path = write_report(_valid_report(), source, forbidden_values=())
-    write_csv(_valid_report(), source)
-    for filename in FIGURE_FILENAMES[:2]:
-        (source / filename).write_bytes(b"source figure")
-    original_root = f"root\n{OVERALL_START}\nold overall\n{OVERALL_END}\n"
-    original_detail = f"detail\n{DETAIL_START}\nold detail\n{DETAIL_END}\n"
-    (tmp_path / "README.md").write_text(original_root)
-    benchmarks = tmp_path / "benchmarks"
-    benchmarks.mkdir()
-    (benchmarks / "README.md").write_text(original_detail)
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    benchmark_readme = repository / "benchmarks" / "README.md"
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
     real_atomic_text = reporting._atomic_text
     calls = 0
 
@@ -625,8 +650,231 @@ def test_publish_rolls_back_both_readmes_and_artifacts_on_second_replace_failure
     monkeypatch.setattr(reporting, "_atomic_text", fail_second_replace)
 
     with pytest.raises(BenchmarkFailure, match="publication failed"):
-        publish_report(report_path, tmp_path)
+        publish_report(report_path, repository)
 
-    assert (tmp_path / "README.md").read_text() == original_root
-    assert (benchmarks / "README.md").read_text() == original_detail
-    assert not (benchmarks / "results" / "20260805T000100Z").exists()
+    assert (repository / "README.md").read_text() == original_root
+    assert benchmark_readme.read_text() == original_detail
+    _assert_no_publication_debris(repository)
+
+
+def test_publish_rejects_stale_report_revision_before_mutation(tmp_path: Path) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    report = _valid_report(revision="b" * 40)
+    report_path = write_report(report, report_path.parent, forbidden_values=())
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results").exists()
+
+
+@pytest.mark.parametrize("dirty_kind", ["tracked", "untracked"])
+def test_publish_rejects_dirty_or_untracked_repository_with_sanitized_failure(
+    tmp_path: Path, dirty_kind: str
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    if dirty_kind == "tracked":
+        (repository / "README.md").write_text(f"{original_root}private tracked text\n")
+    else:
+        (repository / "private-untracked.txt").write_text("private untracked text\n")
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ) as raised:
+        publish_report(report_path, repository)
+
+    assert "private" not in str(raised.value)
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results").exists()
+
+
+def test_publish_rejects_non_repository_root_without_path_details(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "not-a-repository"
+    repository.mkdir()
+    source = tmp_path / "source"
+    source.mkdir()
+    report = _valid_report()
+    report_path = write_report(report, source, forbidden_values=())
+    write_csv(report, source)
+    for filename in FIGURE_FILENAMES[:2]:
+        (source / filename).write_bytes(b"source figure")
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication repository is not publishable$"
+    ) as raised:
+        publish_report(report_path, repository)
+
+    assert str(repository) not in str(raised.value)
+    assert list(repository.iterdir()) == []
+
+
+def test_publish_fails_immediately_when_repository_lock_is_held(tmp_path: Path) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    git_dir = Path(_git(repository, "rev-parse", "--absolute-git-dir"))
+    lock_path = git_dir / "benchmark-publication.lock"
+
+    with lock_path.open("a+b") as held_lock:
+        fcntl.flock(held_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            BenchmarkFailure, match="^benchmark publication is already in progress$"
+        ):
+            publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert not (repository / "benchmarks" / "results").exists()
+
+
+def test_publish_detects_readme_compare_conflict_without_overwriting_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, _ = _prepare_publish_repository(tmp_path)
+    benchmark_readme = repository / "benchmarks" / "README.md"
+    conflicting_detail = (
+        f"external update\n{DETAIL_START}\nother detail\n{DETAIL_END}\n"
+    )
+
+    def generate_then_conflict(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        paths = _write_fake_publish_figures(report, output_dir)
+        benchmark_readme.write_text(conflicting_detail)
+        return paths
+
+    monkeypatch.setattr(reporting, "write_figures", generate_then_conflict)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication failed$"
+    ) as raised:
+        publish_report(report_path, repository)
+
+    assert "external" not in str(raised.value)
+    assert benchmark_readme.read_text() == conflicting_detail
+    assert (repository / "README.md").read_text() == original_root
+    _assert_no_publication_debris(repository)
+
+
+def test_keyboard_interrupt_during_second_replace_fully_compensates_and_retries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+    real_atomic_text = reporting._atomic_text
+    calls = 0
+
+    def interrupt_after_second_replace(path: Path, content: str) -> None:
+        nonlocal calls
+        calls += 1
+        real_atomic_text(path, content)
+        if calls == 2:
+            assert not destination.exists()
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+    monkeypatch.setattr(reporting, "_atomic_text", interrupt_after_second_replace)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    monkeypatch.setattr(reporting, "_atomic_text", real_atomic_text)
+    published = publish_report(report_path, repository)
+
+    assert published == destination
+    assert sorted(path.name for path in published.iterdir()) == sorted(
+        ("report.json", "samples.csv", *FIGURE_FILENAMES[:2])
+    )
+
+
+def test_artifact_generation_failure_removes_unique_staging_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+
+    def fail_generation(
+        report: LiveBenchmarkReport, output_dir: Path
+    ) -> tuple[Path, ...]:
+        del report
+        (output_dir / "partial-secret-path.png").write_bytes(b"partial")
+        raise OSError("sensitive artifact generator detail")
+
+    monkeypatch.setattr(reporting, "write_figures", fail_generation)
+
+    with pytest.raises(
+        BenchmarkFailure, match="^benchmark publication failed$"
+    ) as raised:
+        publish_report(report_path, repository)
+
+    assert "sensitive" not in str(raised.value)
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+
+
+def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path)
+    )
+    real_mkdir = Path.mkdir
+
+    def mkdir_then_interrupt(
+        path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        existed = path.exists()
+        real_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if not existed and path.name.endswith(".staging"):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(Path, "mkdir", mkdir_then_interrupt)
+    monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    _assert_no_publication_debris(repository)
+    assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_final_destination_collision_fails_before_readme_mutation(
+    tmp_path: Path,
+) -> None:
+    repository, report_path, original_root, original_detail = (
+        _prepare_publish_repository(tmp_path, collision=True)
+    )
+    destination = repository / "benchmarks" / "results" / "20260805T000100Z"
+
+    with pytest.raises(
+        BenchmarkFailure, match="^published benchmark timestamp already exists$"
+    ):
+        publish_report(report_path, repository)
+
+    assert (repository / "README.md").read_text() == original_root
+    assert (repository / "benchmarks" / "README.md").read_text() == original_detail
+    assert sorted(path.name for path in destination.iterdir()) == [".keep"]
+    assert sorted(path.name for path in destination.parent.iterdir()) == [
+        "20260805T000100Z"
+    ]
