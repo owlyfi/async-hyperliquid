@@ -41,6 +41,13 @@ _CANCEL_SUCCESS = cast(
     {"status": "ok", "response": {"type": "cancel", "data": {"statuses": ["success"]}}},
 )
 _OPEN_ORDER_STATUS = cast(OrderStatus, {"status": "order", "order": {"status": "open"}})
+_UNKNOWN_ORDER_STATUS = cast(OrderStatus, {"status": "unknownOid"})
+_FILLED_ORDER_STATUS = cast(
+    OrderStatus, {"status": "order", "order": {"status": "filled"}}
+)
+_CANCELED_ORDER_STATUS = cast(
+    OrderStatus, {"status": "order", "order": {"status": "canceled"}}
+)
 
 
 class _SubaccountOrderInfoStub:
@@ -192,7 +199,10 @@ async def _cleanup_subaccount_order(
 
         if status["status"] == "unknownOid":
             if attempt == 1:
-                return
+                failures.append(
+                    AssertionError("test order status remains unknown after cleanup")
+                )
+                break
             continue
         order_status = status["order"]["status"]
         if order_status == "filled":
@@ -348,6 +358,58 @@ async def test_subaccount_cleanup_preserves_original_and_cleanup_failures() -> N
     assert client.cancelled_cloids == [client.submitted_cloid, client.submitted_cloid]
     assert client.info.order_status_calls == 2
     assert client.mass_cancel_calls == 0
+
+
+async def test_subaccount_cleanup_second_unknown_is_inconclusive() -> None:
+    submit_error = ConnectionError("ambiguous submit")
+    client = _SubaccountOrderClientStub(
+        submit_error,
+        (ConnectionError("cleanup failed"), ConnectionError("retry failed")),
+        (_UNKNOWN_ORDER_STATUS, _UNKNOWN_ORDER_STATUS),
+    )
+
+    with pytest.raises(BaseExceptionGroup) as raised:
+        await _assert_subaccount_order(
+            cast(AsyncHyperliquid, client), "test-subaccount"
+        )
+
+    original, cleanup = raised.value.exceptions
+    assert original is submit_error
+    assert isinstance(cleanup, ExceptionGroup)
+    assert sum(isinstance(error, ConnectionError) for error in cleanup.exceptions) == 2
+    assert any(isinstance(error, AssertionError) for error in cleanup.exceptions)
+    assert len(client.cancelled_cloids) == 2
+    assert client.info.order_status_calls == 2
+
+
+async def test_subaccount_cleanup_filled_status_is_failure() -> None:
+    client = _SubaccountOrderClientStub(
+        _RESTING_RESPONSE,
+        (ConnectionError("cleanup failed"),),
+        (_OPEN_ORDER_STATUS, _FILLED_ORDER_STATUS),
+    )
+
+    with pytest.raises(ExceptionGroup) as raised:
+        await _assert_subaccount_order(
+            cast(AsyncHyperliquid, client), "test-subaccount"
+        )
+
+    assert any(isinstance(error, AssertionError) for error in raised.value.exceptions)
+    assert len(client.cancelled_cloids) == 1
+    assert client.info.order_status_calls == 2
+
+
+async def test_subaccount_cleanup_non_open_terminal_status_is_complete() -> None:
+    client = _SubaccountOrderClientStub(
+        _RESTING_RESPONSE,
+        (ConnectionError("cleanup failed"),),
+        (_OPEN_ORDER_STATUS, _CANCELED_ORDER_STATUS),
+    )
+
+    await _assert_subaccount_order(cast(AsyncHyperliquid, client), "test-subaccount")
+
+    assert len(client.cancelled_cloids) == 1
+    assert client.info.order_status_calls == 2
 
 
 async def test_outcome_minimum_notional_is_exchange_owned(hl: AsyncHyperliquid) -> None:
