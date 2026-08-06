@@ -79,6 +79,21 @@ GitHub Release jobs and `id-token: write` only to the PyPI job.
 
 ## Prepare a release
 
+### Prepare release notes
+
+`CHANGELOG.md` is the only source for the GitHub Release description. Before
+tagging, add exactly one dated `## [<version>] - YYYY-MM-DD` section with
+non-empty Markdown content. The repository's release-preparation convention is
+the dated form; the extractor also accepts the exact bare `## [<version>]`
+form. Either accepted form must appear exactly once and have non-empty content.
+The workflow publishes the section body without its version heading and does
+not append GitHub-generated notes.
+
+The release fails before draft creation and PyPI publication when the matching
+section is missing, duplicated, or empty. Because immutable Release notes
+cannot be corrected after publication, verify the changelog section in the
+same pull request that changes `project.version`.
+
 1. Update `project.version` in `pyproject.toml` to the intended PEP 440
    version and update `CHANGELOG.md` in a pull request.
 2. Merge the pull request into `main` and wait for the `CI` workflow to pass.
@@ -138,6 +153,8 @@ Check all of the following:
 - Prerelease versions such as `rc`, `a`, `b`, and `dev` are marked as
   prereleases, not latest stable releases.
 - The GitHub Release contains the wheel, sdist, and `SHA256SUMS`.
+- The GitHub Release description matches the corresponding `CHANGELOG.md`
+  section and contains no generated commit or contributor list.
 
 To download and verify the GitHub assets on Linux:
 
@@ -167,6 +184,13 @@ No package or Release was published. Fix the problem on `main` and publish a
 new version/tag. Do not move or reuse a release tag that has already been
 pushed. A plainly mistyped, unpublished tag may be deleted by a release
 maintainer, but its name should not be reused.
+
+### Release-note extraction failed
+
+No draft or PyPI upload has occurred. Correct the matching changelog section on
+`main`, run CI, increment the package version if the old tag has already been
+pushed, and create the next release tag. Never fall back to empty or generated
+notes.
 
 ### Draft creation or asset upload failed
 
