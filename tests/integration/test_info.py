@@ -361,9 +361,9 @@ async def test_token_details(info: IntegrationInfoClient) -> None:
         "deployerTradingFeeShare": "1.0",
     }
 
-    assert await info.token_id("BTC/USDC") == token_id
-    assert await info.spot_token_metadata("BTC/USDC") == token
-    assert await info.asset_id("BTC/USDC") == 10_142
+    assert await info.token_id("UBTC/USDC") == token_id
+    assert await info.spot_token_metadata("UBTC/USDC") == token
+    assert await info.asset_id("UBTC/USDC") == 10_142
     details = await info.token_details(token_id)
     assert details is not None
     assert {key: details[key] for key in ("name", "szDecimals", "weiDecimals")} == {
@@ -401,7 +401,7 @@ async def test_size_decimals(info: IntegrationInfoClient, markets: Markets) -> N
 
 
 @pytest.mark.parametrize(
-    ("coin", "decimals"), (("BTC", 5), ("BTC/USDC", 5), ("HYPE", 2), ("xyz:NVDA", 3))
+    ("coin", "decimals"), (("BTC", 5), ("UBTC/USDC", 5), ("HYPE", 2), ("xyz:NVDA", 3))
 )
 @_MAINNET_ONLY
 async def test_mainnet_size_decimals(
@@ -480,12 +480,12 @@ async def test_perp_network_prices() -> None:
 @pytest.mark.parametrize(
     ("perp", "spot"),
     (
-        ("BTC", "BTC/USDC"),
-        ("ETH", "ETH/USDC"),
-        ("SOL", "SOL/USDC"),
+        ("BTC", "UBTC/USDC"),
+        ("ETH", "UETH/USDC"),
+        ("SOL", "USOL/USDC"),
         ("HYPE", "HYPE/USDC"),
         ("PURR", "PURR/USDC"),
-        ("PUMP", "PUMP/USDC"),
+        ("PUMP", "UPUMP/USDC"),
     ),
 )
 @_MAINNET_ONLY
@@ -498,7 +498,7 @@ async def test_mainnet_price_parity(
     assert spot_price == pytest.approx(perp_price, rel=0.05)
 
 
-@pytest.mark.parametrize("coin", ("USDH/USDC", "USDT/USDC", "USDE/USDC"))
+@pytest.mark.parametrize("coin", ("USDH/USDC", "USDT0/USDC", "USDE/USDC"))
 @_MAINNET_ONLY
 async def test_mainnet_stablecoin_prices(
     info: IntegrationInfoClient, coin: str
