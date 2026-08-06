@@ -53,7 +53,7 @@ def test_mainnet_info_collects_once() -> None:
     assert "test_mainnet_metadata_mapping[mainnet-xyz:GOLD-110003]" in output
     assert "test_mainnet_metadata_mapping[mainnet-xyz:SILVER-110026]" in output
     assert "test_perp_network_prices" in output
-    assert "test_mainnet_price_parity[mainnet-BTC-BTC/USDC]" in output
+    assert "test_mainnet_price_parity[mainnet-BTC-UBTC/USDC]" in output
     assert "test_mainnet_price_parity[testnet-" not in output
     assert "test_mainnet_stablecoin_prices[mainnet-USDH/USDC]" in output
     assert "test_mainnet_stablecoin_prices[mainnet-USDE/USDC]" in output
