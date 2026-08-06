@@ -399,17 +399,41 @@ On an Apple M5 with Python 3.12.13 and CoinCurve 21.0.0, three independent
 complete runs produced this equal-weight, geometric-mean throughput across all
 five measured operations:
 
-| Library | Overall throughput | Relative to SDK | Relative to fastest |
-|---|---:|---:|---:|
-| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x | 100.0% |
-| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x | 68.5% |
-| CCXT 4.5.71 | 803 ops/s | 0.0476x | 3.3% |
+| Library | Overall throughput | Relative to SDK |
+|---|---:|---:|
+| async-hyperliquid 1.0.0rc1 | 24,641 ops/s | 1.460x |
+| hyperliquid-python-sdk 0.24.0 | 16,874 ops/s | 1.000x |
+| CCXT 4.5.71 | 803 ops/s | 0.0476x |
 
 Higher is better. This is a synthetic signing/payload-construction score, not
 end-to-end order latency. Every report used seven measured rounds after one
 warmup, and CCXT's CoinCurve signer was verified before timing. The detailed
 manual contains the machine specification, per-operation median/MAD/p95,
 throughput, aggregation formula, and exact reproduction command.
+
+### Live Exchange benchmark
+
+The repository also includes a rate-controlled BTC perpetual testnet benchmark
+for concurrent async-hyperliquid cancellation by order ID (OID) and client
+order ID (CLOID). Each logical round places 20 ALO orders in one batch: ten
+buys at 90% of mid and ten sells at 110%, approximately 11 USDC each. It then
+releases ten OID and ten CLOID independent single-order cancellations through a
+shared start gate. See the
+[live benchmark safety and reproduction manual](https://github.com/traderfiapp/async-hyperliquid/blob/master/benchmarks/README.md#live-exchange-benchmark)
+before running it because it submits real testnet orders.
+
+<!-- live-exchange-benchmark:overall:start -->
+#### Published live Exchange result
+
+The validated testnet run uses concurrency=20 (10 OID + 10 CLOID) single-order cancellation requests per measured round.
+
+| Identifier | Individual median (ms) | Individual p95 (ms) | Round-max median (ms) | Round-max p95 (ms) |
+|---|---:|---:|---:|---:|
+| OID | 916.78 | 1003.99 | 948.75 | 1131.51 |
+| CLOID | 913.98 | 1001.03 | 945.31 | 1026.93 |
+
+See the [detailed methodology, distributions, and artifacts](benchmarks/README.md#published-live-exchange-benchmark).
+<!-- live-exchange-benchmark:overall:end -->
 
 The credential-free Info command always runs the complete suite against both
 MAINNET and TESTNET:

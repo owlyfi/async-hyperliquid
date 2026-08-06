@@ -1,5 +1,212 @@
 # Benchmarks
 
+## Live Exchange benchmark
+
+This benchmark submits real BTC perpetual orders to Hyperliquid testnet. The
+publishable suite measures concurrent `async-hyperliquid` cancellation by
+order ID (OID) and client order ID (CLOID). It never targets mainnet, but it
+requires a funded testnet subaccount and should be treated as a live trading
+program. The `providers` and `all` commands remain available only for
+diagnostics; their reports are unpublishable.
+
+Each logical round fetches one mid-price snapshot and places 20 unique ALO
+orders in one batch: ten buys at `mid * 0.90` and ten sells at `mid * 1.10`,
+each approximately 11 USDC after exchange size rounding. All 20 responses must
+be `resting`. The runner splits them into balanced ten-order OID and CLOID
+groups, creates 20 independent single-order cancellation tasks (ten per
+method), and releases them simultaneously through a shared async start gate.
+Each method receives five buys and five sells; pair assignment and task launch
+slots swap every logical round for fairness.
+
+A fill, rejection, malformed response, rate-limit response, unsuccessful
+cancellation, or cleanup failure invalidates the whole run. Measured failures
+are never retried or dropped.
+
+### Safety prerequisites
+
+Install the locked opt-in dependencies:
+
+```bash
+uv sync --frozen --group benchmark
+```
+
+Create `.env.local` in the repository root with testnet-only credentials:
+
+```dotenv
+IS_MAINNET=false
+HL_ADDR=0x_master_account
+HL_AK=0x_api_wallet
+HL_SK=0x_api_wallet_private_key
+HL_SUB=0x_execution_subaccount
+```
+
+`HL_SK` must derive `HL_AK`; the API wallet and subaccount must both belong to
+`HL_ADDR`. The runner validates those roles before submitting an order. Do not
+run another process with the same API-wallet key: Exchange nonces are local to
+one client owner and concurrent submissions can make the run invalid. Verify
+that the testnet subaccount has adequate available margin and no unrelated
+open orders before starting.
+
+The runner loads `.env.local` without overriding environment variables already
+set by the shell. Credentials, addresses, OIDs, CLOIDs, signatures, request
+bodies, and response bodies are excluded from every persisted artifact.
+
+### Reproducible commands
+
+Use a fresh output directory for every run. The default, publishable shape is
+three untallied warmups followed by 30 measured rounds with 250 ms reserved per
+REST weight:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
+  --output-dir /tmp/hl-live-default
+```
+
+The provider commands are retained for diagnostics, but their reports cannot
+be published:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py cancel-id \
+  --output-dir /tmp/hl-live-cancel-id
+
+uv run --frozen --group benchmark python benchmarks/live_exchange.py providers \
+  --output-dir /tmp/hl-live-providers
+```
+
+`--rounds`, `--warmups`, and `--interval-ms` may be changed for smoke runs;
+`--interval-ms` cannot be lower than 250. Only a complete `cancel-id` report
+with the exact defaults, clean revision, locked library versions, successful
+cleanup, and exactly 300 samples for each method can update committed results.
+
+### Rate-limit budget
+
+Hyperliquid documents a 1,200 REST-weight/minute IP limit. One round reserves
+weight 2 for the mid snapshot, weight 1 for the one 20-order placement batch,
+and weight 20 once before the concurrent cancellation burst: 23 weight total.
+The global pacer reserves at least 250 ms for every unit of request weight,
+limiting the controlled workload to 240 weight/minute, or 20% of the documented
+IP allowance. The default 33-round run reserves 759 weight. Its reserved
+next-start horizon is about 189.75 seconds; in a zero-network model the final
+burst can launch at about 184.75 seconds, and completion then includes the
+final request latency.
+It places about 660 testnet orders including warmups. Metadata and role
+validation happen before timing and use the remaining headroom; avoid any other
+traffic from the same public IP while collecting a report. See the
+[official rate-limit documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits).
+
+Address-based cumulative limits still apply. The benchmark does not claim
+exchange capacity and cannot isolate other traffic sharing the IP, API wallet,
+or execution account.
+
+### Timing and fairness
+
+Each request sample starts after the shared gate opens, immediately before its
+public single-order cancel method, and ends after encoding, signing, HTTP
+transport, response parsing, and strict success validation. Imports, client
+construction, metadata, role checks, mid lookup, pacing sleep, recovery,
+serialization, and chart generation are outside the interval. The default run
+records 600 request samples: 300 OID and 300 CLOID. Reporting also derives 30
+per-round maxima per method, one maximum across that method's ten requests per
+round. Request distributions report median, MAD, p95, minimum, and maximum;
+round-max distributions report median and p95.
+
+### Cleanup, artifacts, and publication
+
+Each successful placement is tracked by CLOID until its cancellation has an
+explicit success response. All launched tasks are awaited, even after a
+failure. Failed, timed-out, malformed, or indeterminate requests invalidate
+the round and report; recovery then sends a targeted CLOID batch cancellation
+for the remaining orders. Any recovery or client-close failure sets
+`cleanup_ok=false`; inspect the testnet subaccount manually before another run
+whenever the command exits nonzero.
+
+Schema-v2 reports always include `failure_context`. It is `null` for a valid
+report. For an invalid runtime report it is an exact, allowlisted object with:
+
+- `phase` and `operation`: known enums identifying the safe lifecycle stage and
+  operation, never provider or exception text;
+- `logical_round`: a nonnegative round index or `null`, and `measured_round`: a
+  nonnegative measured index or `null` during warmup or outside a suite;
+- `launch_slot`: `null` or the first failed concurrent slot from 0 through 19;
+- `category`: one of `rate_limited`, `timeout`, `protocol`,
+  `unsuccessful_response`, `indeterminate_action`, `placement`, `recovery`,
+  `client_close`, `preflight`, or `internal`;
+- `failed_count` and `successful_count`: bounded operation counts from 0 through
+  20 (with at least one failure in an invalid context); and
+- `recovery_attempted`, `recovery_count`, and nullable `recovery_ok`: whether a
+  targeted recovery ran, how many orders it covered, and its outcome.
+
+The classifier examines only bounded exception groups, known exception classes,
+and typed integer HTTP status attributes. Exception messages, tracebacks,
+credentials, addresses, OIDs, CLOIDs, nonces, signatures, bodies, and responses
+are never copied into the report. If a transport status is no longer available,
+the action is `indeterminate_action`; the report does not guess that it was a
+rate limit. For `rate_limited`, do not immediately rerun: first allow the limit
+window to recover and check competing traffic. If `cleanup_ok=false` or
+`recovery_ok=false`, stop and perform manual inspection of the testnet
+subaccount before any rerun.
+
+A valid selected-suite run writes sanitized `report.json`, `samples.csv`, and
+the applicable PNG/SVG figures. An invalid run writes
+`report.invalid.json`, preserves already collected safe samples, and does not
+publish figures or CSV as a successful result. Exit status zero means all
+selected suites, cleanup, report, CSV, and figures completed.
+
+After inspecting a valid default-shape `cancel-id` run, publish it explicitly:
+
+```bash
+uv run --frozen --group benchmark python benchmarks/live_exchange.py publish \
+  --report /tmp/hl-live-default/report.json
+```
+
+Publication recomputes and validates the exact sample shape and summaries,
+requires clean completion, cleanup, revision, and pinned versions, copies the
+sanitized report, 600-sample CSV, and cancel-id PNG/SVG into
+`benchmarks/results/<UTC timestamp>/`, then updates the marker blocks below
+and in the repository README. Provider diagnostic reports are ineligible.
+
+<!-- live-exchange-benchmark:detail:start -->
+## Published live Exchange benchmark
+
+Validated testnet run completed `2026-08-05T19:26:21Z`. The runner used
+three warmup rounds, 30 measured rounds, and a maximum controlled rate of
+240 weight/minute. Initialization, market metadata, mid lookup, pacing, and
+cleanup are excluded from measured latency. Each measured round uses
+concurrency=20 (10 OID + 10 CLOID) single-order cancellation requests.
+
+| Environment | Value |
+|---|---|
+| network | testnet |
+| python | 3.12.13 |
+| platform | Darwin-arm64 |
+| async-hyperliquid | 1.0.0rc1 |
+| sdk | 0.24.0 |
+| ccxt | 4.5.71 |
+
+### OID versus CLOID cancellation
+
+All 300 individual request latencies per identifier are shown below.
+
+| Identifier | Median (ms) | MAD (ms) | p95 (ms) | Min (ms) | Max (ms) |
+|---|---:|---:|---:|---:|---:|
+| OID | 916.78 | 41.04 | 1003.99 | 804.46 | 1131.90 |
+| CLOID | 913.98 | 40.56 | 1001.03 | 802.30 | 1036.00 |
+
+### Per-round method maxima
+
+Each value is the slowest of that method's ten requests in one measured round.
+
+| Identifier | Rounds | Median (ms) | p95 (ms) |
+|---|---:|---:|---:|
+| OID | 30 | 948.75 | 1131.51 |
+| CLOID | 30 | 945.31 | 1026.93 |
+
+![OID and CLOID latency](results/20260805T192621Z/cancel-id-latency.svg)
+Artifacts: [sanitized JSON](results/20260805T192621Z/report.json), [sample CSV](results/20260805T192621Z/samples.csv).
+
+These measurements describe one testnet run, not exchange capacity. Shared-IP traffic, geography, testnet load, dependency versions, and network conditions can change results.
+<!-- live-exchange-benchmark:detail:end -->
+
 ## Signing benchmark
 
 This benchmark compares Hyperliquid signing and order-payload construction in
@@ -165,11 +372,11 @@ divided by the provider aggregate median, so higher is better.
 The overall score gives each of the five operations equal weight. It is the
 geometric mean of their aggregate throughputs:
 
-| Library | Geometric-mean throughput | Relative to SDK | Relative to fastest |
-|---|---:|---:|---:|
-| async-hyperliquid | 24,641 ops/s | 1.460x | 100.0% |
-| Official SDK | 16,874 ops/s | 1.000x | 68.5% |
-| CCXT | 803 ops/s | 0.0476x | 3.3% |
+| Library | Geometric-mean throughput | Relative to SDK |
+|---|---:|---:|
+| async-hyperliquid | 24,641 ops/s | 1.460x |
+| Official SDK | 16,874 ops/s | 1.000x |
+| CCXT | 803 ops/s | 0.0476x |
 
 The geometric mean prevents the much faster `action_hash` workload from
 dominating the result merely because it has a larger absolute ops/s value. The
