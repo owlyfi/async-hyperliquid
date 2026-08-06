@@ -71,7 +71,7 @@ def test_release_workflow_pins_every_external_action() -> None:
         "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
         "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b",
         "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
-        "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
         "pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e",
     }
     for action in expected:
