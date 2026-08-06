@@ -341,6 +341,26 @@ jobs:
           TAG: ${{ needs.validate_release.outputs.tag }}
         run: |
           set -euo pipefail
+          release_body_dir="$(mktemp -d)"
+          trap 'rm -rf "$release_body_dir"' EXIT
+          release_json="$release_body_dir/release.json"
+          release_body="$release_body_dir/release-body.md"
+
+          if ! gh api "repos/${GH_REPO}/releases/tags/${TAG}" > "$release_json"; then
+            echo "Could not fetch the staged GitHub Release body" >&2
+            exit 1
+          fi
+          if ! jq -e '.body | type == "string"' "$release_json" >/dev/null; then
+            echo "Staged GitHub Release body is not a string" >&2
+            exit 1
+          fi
+          jq -jr '.body' "$release_json" > "$release_body"
+          if ! cmp -s release-bundle/RELEASE_NOTES.md "$release_body"; then
+            echo "Staged GitHub Release body does not exactly match RELEASE_NOTES.md" >&2
+            wc -c release-bundle/RELEASE_NOTES.md "$release_body" >&2
+            exit 1
+          fi
+
           gh release edit "$TAG" --draft=false
 
   verify_release:
@@ -425,6 +445,26 @@ jobs:
           TAG: ${{ needs.validate_release.outputs.tag }}
         run: |
           set -euo pipefail
+          release_body_dir="$(mktemp -d)"
+          trap 'rm -rf "$release_body_dir"' EXIT
+          release_api_json="$release_body_dir/release-api.json"
+          release_body="$release_body_dir/release-body.md"
+
+          if ! gh api "repos/${GH_REPO}/releases/tags/${TAG}" > "$release_api_json"; then
+            echo "Could not fetch the published GitHub Release body" >&2
+            exit 1
+          fi
+          if ! jq -e '.body | type == "string"' "$release_api_json" >/dev/null; then
+            echo "Published GitHub Release body is not a string" >&2
+            exit 1
+          fi
+          jq -jr '.body' "$release_api_json" > "$release_body"
+          if ! cmp -s release-bundle/RELEASE_NOTES.md "$release_body"; then
+            echo "Published GitHub Release body does not exactly match RELEASE_NOTES.md" >&2
+            wc -c release-bundle/RELEASE_NOTES.md "$release_body" >&2
+            exit 1
+          fi
+
           gh release view "$TAG" \
             --json assets,isDraft,isImmutable,isPrerelease,tagName > release.json
           python3 - <<'PY'

@@ -65,6 +65,29 @@ def test_github_assets_are_hash_verified_before_and_after_immutability() -> None
         assert '"sha256:" + hashlib.sha256' in job
 
 
+def test_release_body_is_compared_raw_before_and_after_publication() -> None:
+    workflow = _release_text()
+    publish_job = workflow.split("  publish_github_release:", 1)[1].split(
+        "  verify_release:", 1
+    )[0]
+    verify_job = workflow.split("  verify_release:", 1)[1]
+    raw_api = 'gh api "repos/${GH_REPO}/releases/tags/${TAG}"'
+    extract_body = "jq -jr '.body'"
+    compare_body = "cmp -s release-bundle/RELEASE_NOTES.md"
+
+    for job in (publish_job, verify_job):
+        assert raw_api in job
+        assert extract_body in job
+        assert compare_body in job
+        assert "mktemp -d" in job
+        assert "set -euo pipefail" in job
+
+    assert workflow.count(raw_api) == 2
+    assert workflow.count(extract_body) == 2
+    assert workflow.count(compare_body) == 2
+    assert "--jq .body" not in workflow
+
+
 def test_release_workflow_pins_every_external_action() -> None:
     workflow = _release_text()
     expected = {
@@ -100,6 +123,20 @@ def test_workflows_install_the_benchmark_group_before_type_checking_it() -> None
     sync = "uv sync --locked --dev --group benchmark"
     assert sync in ci_test_job
     assert sync in release_build_job
+    assert release_build_job.index(sync) < release_build_job.index(
+        "scripts/extract_release_notes.py"
+    )
+
+
+def test_markdown_parser_is_a_dev_only_dependency() -> None:
+    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    dependency = "markdown-it-py>=4.2.0,<5.0.0"
+
+    assert dependency in configuration["dependency-groups"]["dev"]
+    assert all(
+        not item.startswith("markdown-it-py")
+        for item in configuration["project"]["dependencies"]
+    )
 
 
 def test_workflow_smoke_tests_import_the_current_public_types() -> None:

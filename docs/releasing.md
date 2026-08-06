@@ -90,9 +90,11 @@ The workflow publishes the section body without its version heading and does
 not append GitHub-generated notes.
 
 The release fails before draft creation and PyPI publication when the matching
-section is missing, duplicated, or empty. Because immutable Release notes
-cannot be corrected after publication, verify the changelog section in the
-same pull request that changes `project.version`.
+section is missing, duplicated, or empty. An immutable Release still permits
+editing its title and notes; its tag and assets are protected. Any notes repair
+must restore the exact body from the tagged `CHANGELOG.md`. A wrong tagged
+changelog or package artifact requires a new version. Verify the changelog
+section in the same pull request that changes `project.version`.
 
 1. Update `project.version` in `pyproject.toml` to the intended PEP 440
    version and update `CHANGELOG.md` in a pull request.
@@ -156,21 +158,39 @@ Check all of the following:
 - The GitHub Release description matches the corresponding `CHANGELOG.md`
   section and contains no generated commit or contributor list.
 
-To download and verify the GitHub assets on Linux:
+To download and verify the GitHub assets on Linux, start from a clean, current
+`main` checkout. Read the changelog from the tag, but use the reviewed current
+extractor: older tags such as `v1.0.0rc1` predate that script.
 
 ```bash
 release_tag="v1.0.0rc1"
+release_version="${release_tag#v}"
 release_verify_dir="$(mktemp -d)"
+trap 'rm -rf "$release_verify_dir"' EXIT
 gh release download "$release_tag" \
   --repo owlyfi/async-hyperliquid \
   --dir "$release_verify_dir"
 (cd "$release_verify_dir" && sha256sum -c SHA256SUMS)
+
+git show "${release_tag}^{commit}:CHANGELOG.md" > "$release_verify_dir/CHANGELOG.md"
+uv run --frozen python scripts/extract_release_notes.py \
+  --changelog "$release_verify_dir/CHANGELOG.md" \
+  --version "$release_version" \
+  --output "$release_verify_dir/RELEASE_NOTES.md"
+gh api "repos/owlyfi/async-hyperliquid/releases/tags/${release_tag}" \
+  > "$release_verify_dir/release.json"
+jq -jr '.body' "$release_verify_dir/release.json" \
+  > "$release_verify_dir/github-release-notes.md"
+cmp "$release_verify_dir/RELEASE_NOTES.md" \
+  "$release_verify_dir/github-release-notes.md"
 ```
 
-On macOS, use `shasum -a 256 -c SHA256SUMS` for the last command. The workflow
+On macOS, use `shasum -a 256 -c SHA256SUMS` for the checksum command. A silent,
+successful `cmp` proves byte-for-byte release-body equality; do not substitute
+`gh release view --jq .body`, which formats the value for display. The workflow
 also compares the PyPI filenames and SHA-256 digests with this same build
-bundle, installs the exact version from PyPI in a clean environment, and
-checks the public imports.
+bundle, installs the exact version from PyPI in a clean environment, and checks
+the public imports.
 
 ## Failure recovery
 
@@ -231,7 +251,9 @@ failed jobs**; GitHub will skip the successful PyPI job and retry draft
 finalization and verification.
 
 If an operator must finalize it after diagnosing GitHub Actions, verify that
-the draft assets match `SHA256SUMS`, then run:
+the draft assets match `SHA256SUMS` and use the raw-body procedure above to
+confirm that the draft body is byte-for-byte equal to the tagged changelog
+section. Only then run:
 
 ```bash
 release_tag="v1.0.0rc1"
@@ -244,13 +266,19 @@ gh release edit "$release_tag" \
 
 Both publication channels may already be public and immutable. First identify
 whether the failure is temporary PyPI propagation; if so, use **Re-run failed
-jobs**. If the published package is genuinely bad, publish a new corrective
-version. Never overwrite or reuse the old version.
+jobs**. Published GitHub Release titles and notes remain editable, while tags
+and assets are protected. If only the title or notes are wrong, repair the
+metadata and restore the notes exactly from the tagged changelog, then repeat
+the raw-body equality check above. If the tagged changelog or published package
+artifact is wrong, publish a new corrective version. Never overwrite or reuse
+the old version.
 
 When necessary, an Owner can **yank** the affected version from the PyPI
 project's release management page. Yanking discourages new resolver choices
-but preserves files and audit history. Keep the immutable GitHub Release and
-explain the superseding version in its release notes and changelog.
+but preserves files and audit history. Keep the immutable GitHub Release;
+document the superseding version in the new version's changelog and release
+notes without changing the old release away from its exact tagged changelog
+body.
 
 ## References
 
@@ -258,3 +286,4 @@ explain the superseding version in its release notes and changelog.
 - [PyPA GitHub Actions publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/)
 - [GitHub Environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
 - [GitHub immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
+- [Editing a GitHub Release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository#editing-a-release)

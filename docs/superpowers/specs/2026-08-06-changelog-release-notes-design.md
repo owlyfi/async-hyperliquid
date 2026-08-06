@@ -35,12 +35,16 @@ version, or expose `RELEASE_NOTES.md` as a downloadable Release asset.
 A repository-owned Python script extracts release notes before publication.
 This is preferred over inline workflow Python because the parser can be tested
 directly with controlled changelog inputs. It is preferred over a third-party
-changelog action because it adds no release-time supply-chain dependency.
+changelog action because the release behavior remains repository-owned and
+reviewable. The script uses `markdown-it-py` from the development dependency
+group for CommonMark block tokenization; the library is not a package runtime
+dependency, and the release workflow installs the locked development group
+before extraction.
 
-The script uses only the Python standard library and has this interface:
+The script has this interface from a locked development environment:
 
 ```text
-python scripts/extract_release_notes.py \
+uv run --frozen python scripts/extract_release_notes.py \
   --changelog CHANGELOG.md \
   --version 1.0.0rc1 \
   --output RELEASE_NOTES.md
@@ -55,8 +59,10 @@ The selected section begins at an exact level-two version heading:
 ```
 
 The date suffix is optional, but the bracketed version must exactly equal the
-validated package version. The section ends immediately before the next
-level-two Markdown heading or at end of file.
+validated package version. CommonMark block tokens identify headings by source
+line only; the section ends immediately before the next top-level level-two
+Markdown heading or at end of file. The extracted body is sliced from the
+normalized original source rather than rendered token content.
 
 The generated body excludes the version heading because the GitHub Release
 already has `v<version>` as its title. It preserves the section's Markdown

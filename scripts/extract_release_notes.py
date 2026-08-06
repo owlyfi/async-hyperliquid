@@ -2,11 +2,17 @@ import argparse
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
+import re
 import sys
+
+from markdown_it import MarkdownIt
 
 
 class ReleaseNotesError(ValueError):
     """Raised when a changelog cannot produce one release-note section."""
+
+
+_COMMONMARK = MarkdownIt("commonmark")
 
 
 def _matches_version_heading(line: str, version: str) -> bool:
@@ -16,7 +22,7 @@ def _matches_version_heading(line: str, version: str) -> bool:
     if not line.startswith(f"{prefix} - "):
         return False
     date_text = line.removeprefix(f"{prefix} - ")
-    if len(date_text) != 10:
+    if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date_text) is None:
         return False
     try:
         date.fromisoformat(date_text)
@@ -25,26 +31,36 @@ def _matches_version_heading(line: str, version: str) -> bool:
     return True
 
 
+def _level_two_heading_lines(markdown: str) -> list[int]:
+    return [
+        token.map[0]
+        for token in _COMMONMARK.parse(markdown)
+        if token.type == "heading_open"
+        and token.tag == "h2"
+        and token.level == 0
+        and token.map is not None
+    ]
+
+
 def extract_release_notes(changelog: str, version: str) -> str:
-    lines = changelog.splitlines()
+    normalized = changelog.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    heading_lines = _level_two_heading_lines(normalized)
     matches = [
         index
-        for index, line in enumerate(lines)
-        if _matches_version_heading(line, version)
+        for index in heading_lines
+        if _matches_version_heading(lines[index], version)
     ]
     if not matches:
         raise ReleaseNotesError(f"changelog section [{version}] was not found")
     if len(matches) > 1:
         raise ReleaseNotesError(f"changelog section [{version}] appears more than once")
     start = matches[0] + 1
-    end = next(
-        (index for index in range(start, len(lines)) if lines[index].startswith("## ")),
-        len(lines),
-    )
+    end = next((index for index in heading_lines if index >= start), len(lines))
     section = lines[start:end]
-    while section and not section[0].strip():
+    while section and not section[0].strip(" \t"):
         section.pop(0)
-    while section and not section[-1].strip():
+    while section and not section[-1].strip(" \t"):
         section.pop()
     if not section:
         raise ReleaseNotesError(f"changelog section [{version}] is empty")
