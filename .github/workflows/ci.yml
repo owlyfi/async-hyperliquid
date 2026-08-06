@@ -32,7 +32,10 @@ jobs:
         run: uv run ruff format --check
 
       - name: Lint
-        run: uv run ruff check src tests benchmarks
+        run: uv run ruff check src tests benchmarks scripts
+
+      - name: Type-check release tooling
+        run: uv run ty check scripts
 
       - name: Type-check package
         run: uv run ty check src/async_hyperliquid

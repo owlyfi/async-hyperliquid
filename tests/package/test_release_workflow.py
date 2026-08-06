@@ -137,3 +137,28 @@ def test_release_runbook_covers_setup_and_recovery() -> None:
     }
     for phrase in required:
         assert phrase in runbook
+
+
+def test_release_workflow_uses_only_changelog_release_notes() -> None:
+    workflow = _release_text()
+    build_job = workflow.split("  test_and_build:", 1)[1].split(
+        "  create_draft_release:", 1
+    )[0]
+    draft_job = workflow.split("  create_draft_release:", 1)[1].split(
+        "  publish_pypi:", 1
+    )[0]
+    assert "--generate-notes" not in workflow
+    assert "scripts/extract_release_notes.py" in build_job
+    assert '--version "$VERSION"' in build_job
+    assert "--output RELEASE_NOTES.md" in build_job
+    assert "\n            RELEASE_NOTES.md" in build_job
+    assert "--notes-file release-bundle/RELEASE_NOTES.md" in draft_job
+    assert "release-bundle/RELEASE_NOTES.md \\" not in draft_job
+
+
+def test_ci_and_release_static_check_release_tooling() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    release = _release_text()
+    for workflow in (ci, release):
+        assert "uv run ruff check src tests benchmarks scripts" in workflow
+        assert "uv run ty check scripts" in workflow

@@ -90,11 +90,23 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --dev --group benchmark
 
+      - name: Generate release notes
+        env:
+          VERSION: ${{ needs.validate_release.outputs.version }}
+        run: |
+          uv run python scripts/extract_release_notes.py \
+            --changelog CHANGELOG.md \
+            --version "$VERSION" \
+            --output RELEASE_NOTES.md
+
       - name: Check formatting
         run: uv run ruff format --check
 
       - name: Lint
-        run: uv run ruff check src tests benchmarks
+        run: uv run ruff check src tests benchmarks scripts
+
+      - name: Type-check release tooling
+        run: uv run ty check scripts
 
       - name: Type-check package
         run: uv run ty check src/async_hyperliquid
@@ -183,6 +195,7 @@ jobs:
           name: release-bundle-${{ github.sha }}
           path: |
             dist
+            RELEASE_NOTES.md
             SHA256SUMS
           if-no-files-found: error
           retention-days: 14
@@ -221,7 +234,12 @@ jobs:
             exit 1
           fi
 
-          flags=(--draft --verify-tag --generate-notes --title "$TAG")
+          flags=(
+            --draft
+            --verify-tag
+            --title "$TAG"
+            --notes-file release-bundle/RELEASE_NOTES.md
+          )
           if [[ "$PRERELEASE" == "true" ]]; then
             flags+=(--prerelease)
           fi
