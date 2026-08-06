@@ -17,6 +17,7 @@ build/
 AGENTS.md
 .agent/
 skills/
+.worktrees/
 
 # local test file
 tests/test_local.py
