@@ -352,7 +352,7 @@ jobs:
           release_json="$release_body_dir/release.json"
           release_body="$release_body_dir/release-body.md"
 
-          if ! gh api "repos/${GH_REPO}/releases/tags/${TAG}" > "$release_json"; then
+          if ! gh release view "$TAG" --json body > "$release_json"; then
             echo "Could not fetch the staged GitHub Release body" >&2
             exit 1
           fi

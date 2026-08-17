@@ -74,17 +74,23 @@ def test_release_body_is_compared_raw_before_and_after_publication() -> None:
     )[0]
     verify_job = workflow.split("  verify_release:", 1)[1]
     raw_api = 'gh api "repos/${GH_REPO}/releases/tags/${TAG}"'
+    draft_cli = 'gh release view "$TAG" --json body'
     extract_body = "jq -jr '.body'"
     compare_body = "cmp -s release-bundle/RELEASE_NOTES.md"
 
+    assert draft_cli in publish_job
+    assert raw_api not in publish_job
+    assert raw_api in verify_job
+    assert draft_cli not in verify_job
+
     for job in (publish_job, verify_job):
-        assert raw_api in job
         assert extract_body in job
         assert compare_body in job
         assert "mktemp -d" in job
         assert "set -euo pipefail" in job
 
-    assert workflow.count(raw_api) == 2
+    assert workflow.count(draft_cli) == 1
+    assert workflow.count(raw_api) == 1
     assert workflow.count(extract_body) == 2
     assert workflow.count(compare_body) == 2
     assert "--jq .body" not in workflow
