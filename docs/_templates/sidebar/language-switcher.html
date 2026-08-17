@@ -1,7 +1,7 @@
 <nav class="sidebar-language-switch" aria-label="Documentation language">
-  <a href="https://async-hyperliquid.readthedocs.io/en/{{ documentation_version }}/{{ pagename }}.html"
+  <a href="https://async-hyperliquid.readthedocs.io/en/{{ documentation_version|e }}/{{ pagename|e }}.html"
      lang="en"{% if documentation_language == "en" %} aria-current="page"{% endif %}>English</a>
   <span aria-hidden="true">|</span>
-  <a href="https://async-hyperliquid.readthedocs.io/zh-cn/{{ documentation_version }}/{{ pagename }}.html"
+  <a href="https://async-hyperliquid.readthedocs.io/zh-cn/{{ documentation_version|e }}/{{ pagename|e }}.html"
      lang="zh-CN"{% if documentation_language == "zh-cn" %} aria-current="page"{% endif %}>简体中文</a>
 </nav>

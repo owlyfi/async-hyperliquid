@@ -1,4 +1,5 @@
 import os
+import re
 from importlib.metadata import metadata, version as package_version
 
 
@@ -38,6 +39,11 @@ _HOSTED_TO_SPHINX_LANGUAGE = {"en": "en", "zh-cn": "zh_CN"}
 _SPHINX_TO_HOSTED_LANGUAGE = {
     value: key for key, value in _HOSTED_TO_SPHINX_LANGUAGE.items()
 }
+_READTHEDOCS_VERSION = os.environ.get("READTHEDOCS_VERSION", "latest")
+if not re.fullmatch(r"[a-z0-9._-]+", _READTHEDOCS_VERSION, flags=re.ASCII):
+    raise RuntimeError(
+        "READTHEDOCS_VERSION must be a non-empty Read the Docs version slug"
+    )
 
 rtd_language = os.environ.get("READTHEDOCS_LANGUAGE")
 if rtd_language is not None:
@@ -77,7 +83,7 @@ def _add_documentation_context(app, pagename, templatename, context, doctree):
         raise RuntimeError(
             f"unsupported Sphinx documentation language: {rendered_language}"
         ) from exc
-    context["documentation_version"] = os.environ.get("READTHEDOCS_VERSION", "latest")
+    context["documentation_version"] = _READTHEDOCS_VERSION
 
 
 def setup(app):

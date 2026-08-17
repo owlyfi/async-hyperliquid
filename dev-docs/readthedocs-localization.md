@@ -42,7 +42,9 @@ repository, and keep both projects on the repository's `main` branch and the
 1. Import `https://github.com/owlyfi/async-hyperliquid.git` as
    `async-hyperliquid-zh-cn`.
 2. Set its language to Simplified Chinese, default branch to `main`, and default
-   version to `latest`; use `/.readthedocs.yaml` from the repository root.
+   version to `latest`. The root `.readthedocs.yaml` is auto-discovered: leave
+   the Build configuration file/path field at its default, or enter
+   `.readthedocs.yaml` without a leading slash.
 3. Add `async-hyperliquid-zh-cn` under the parent project's **Translations**
    page.
 4. Require successful `latest` builds for both projects.
@@ -50,8 +52,10 @@ repository, and keep both projects on the repository's `main` branch and the
    `https://async-hyperliquid.readthedocs.io/zh-cn/latest/`, including the root
    and nested pages, then click both sidebar language links. Confirm that each
    link preserves the current page and points to the corresponding language.
-6. If the Chinese build fails, unlink the translation before removing the
-   repository language fragment; never change `v1.0.0`.
+6. For a custom sidebar/layout regression, remove or hide the custom language
+   fragment, publish English, and verify the custom anchor is absent. Keep the
+   Translation relationship so Read the Docs' native language UI remains
+   usable; never change `v1.0.0`.
 
 For the validation in step 5, check the English and Chinese roots plus nested
 pages such as `reference/index.html` and `migration-0.5-to-1.0.html` under each
@@ -59,10 +63,12 @@ language's `/latest/` path. The language switch must lead from English to
 `/zh-cn/latest/` and back to `/en/latest/`; a missing target or failed build is
 not a successful publication.
 
-If rollback is needed, first unlink `async-hyperliquid-zh-cn` from the English
-parent project's **Translations** page, then remove only the Read the Docs
-language-specific repository fragment. Leave the English project, repository
-configuration, `main`, `latest`, and the immutable `v1.0.0` release unchanged.
+Unlink `async-hyperliquid-zh-cn` from the English parent project's
+**Translations** page only when Chinese hosting is being retired or remains
+unusable. Before unlinking, remove or hide the custom language fragment,
+publish English, and verify the custom anchor is absent from published English
+HTML. Leave the English project, repository configuration, `main`, `latest`,
+and the immutable `v1.0.0` release unchanged.
 
 Do not put credentials or email addresses in this runbook or in repository
 configuration. See the official

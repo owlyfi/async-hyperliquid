@@ -3,6 +3,8 @@ from pathlib import Path
 import re
 import subprocess
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DOC_SUFFIXES = {".md", ".rst"}
@@ -144,14 +146,17 @@ def test_translation_catalogs_do_not_publish_email_metadata() -> None:
         )
 
 
-def _build_docs(language: str, output_dir: Path) -> None:
+def _run_docs(
+    language: str, output_dir: Path, documentation_version: str | None = "latest"
+) -> subprocess.CompletedProcess[str]:
     hosted_language = "zh-cn" if language == "zh_CN" else "en"
-    environment = {
-        **os.environ,
-        "READTHEDOCS_LANGUAGE": hosted_language,
-        "READTHEDOCS_VERSION": "latest",
-    }
-    result = subprocess.run(
+    environment = {**os.environ, "READTHEDOCS_LANGUAGE": hosted_language}
+    if documentation_version is None:
+        environment.pop("READTHEDOCS_VERSION", None)
+    else:
+        environment["READTHEDOCS_VERSION"] = documentation_version
+
+    return subprocess.run(
         [
             "uv",
             "run",
@@ -176,6 +181,12 @@ def _build_docs(language: str, output_dir: Path) -> None:
         text=True,
         check=False,
     )
+
+
+def _build_docs(
+    language: str, output_dir: Path, documentation_version: str | None = "latest"
+) -> None:
+    result = _run_docs(language, output_dir, documentation_version)
 
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -220,6 +231,40 @@ def test_english_docs_build_with_warnings_as_errors(tmp_path: Path) -> None:
     assert chinese_index in english_index_html
     assert 'lang="en" aria-current="page"' in english_index_html
     assert "yuqi.lyle@gmail.com" not in rendered_site
+
+
+def test_docs_version_falls_back_to_latest_when_environment_is_absent(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "fallback"
+    _build_docs("en", output_dir, documentation_version=None)
+
+    index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+    assert "https://async-hyperliquid.readthedocs.io/en/latest/index.html" in index_html
+    assert (
+        "https://async-hyperliquid.readthedocs.io/zh-cn/latest/index.html" in index_html
+    )
+
+
+@pytest.mark.parametrize(
+    "documentation_version",
+    ["", 'latest"/../../hostile'],
+    ids=["empty", "quote-and-path"],
+)
+def test_docs_build_rejects_empty_or_malformed_custom_version(
+    tmp_path: Path, documentation_version: str
+) -> None:
+    result = _run_docs(
+        "en", tmp_path / "malformed", documentation_version=documentation_version
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    assert (
+        "READTHEDOCS_VERSION must be a non-empty Read the Docs version slug" in output
+    )
+    if documentation_version:
+        assert documentation_version not in output
 
 
 def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(

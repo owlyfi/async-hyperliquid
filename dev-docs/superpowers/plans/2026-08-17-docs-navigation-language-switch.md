@@ -508,13 +508,18 @@ Document these steps explicitly:
 1. Import `https://github.com/owlyfi/async-hyperliquid.git` as
    `async-hyperliquid-zh-cn`.
 2. Set its language to Simplified Chinese, default branch to `main`, and default
-   version to `latest`; use `/.readthedocs.yaml` from the repository root.
+   version to `latest`. Leave the Build configuration file/path field at its
+   default so the root `.readthedocs.yaml` is auto-discovered, or enter
+   `.readthedocs.yaml` without a leading slash.
 3. Add `async-hyperliquid-zh-cn` under the parent project's Translations page.
 4. Require successful `latest` builds for both projects.
 5. Verify `/en/latest/` and `/zh-cn/latest/` root and nested pages, then click
    both sidebar language links.
-6. If the Chinese build fails, unlink the translation before removing the
-   repository language fragment; never change `v1.0.0`.
+6. For a custom sidebar/layout regression, remove or hide the custom language
+   fragment, publish and verify English without the custom anchor, and retain
+   the Translation relationship for Read the Docs' native language UI. Unlink
+   only if Chinese hosting is being retired or remains unusable, and only after
+   the custom anchor is absent; never change `v1.0.0`.
 ```
 
 - [ ] **Step 2: Review the runbook as human operational prose**
