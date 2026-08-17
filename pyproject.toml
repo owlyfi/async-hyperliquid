@@ -67,7 +67,7 @@ docs = [
 
 [project.urls]
 Homepage = "https://github.com/owlyfi/async-hyperliquid"
-Documentation = "https://async-hyperliquid.readthedocs.io/"
+Documentation = "https://async-hyperliquid.readthedocs.io/en/latest/"
 Repository = "https://github.com/owlyfi/async-hyperliquid"
 Issues = "https://github.com/owlyfi/async-hyperliquid/issues"
 Changelog = "https://github.com/owlyfi/async-hyperliquid/blob/main/CHANGELOG.md"

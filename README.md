@@ -1,8 +1,8 @@
 # Async Hyperliquid
 
 [![CI](https://github.com/owlyfi/async-hyperliquid/actions/workflows/ci.yml/badge.svg)](https://github.com/owlyfi/async-hyperliquid/actions/workflows/ci.yml)
-[![Documentation Status](https://readthedocs.org/projects/async-hyperliquid/badge/?version=latest)](https://async-hyperliquid.readthedocs.io/en/latest/?badge=latest)
-[![PyPI](https://img.shields.io/pypi/v/async-hyperliquid.svg)](https://pypi.org/project/async-hyperliquid/)
+[![Documentation Status](https://readthedocs.org/projects/async-hyperliquid/badge/?version=latest)](https://async-hyperliquid.readthedocs.io/en/latest/)
+[![PyPI](https://img.shields.io/pypi/v/async-hyperliquid.svg?v=1.0.0)](https://pypi.org/project/async-hyperliquid/)
 
 `async-hyperliquid` is a typed, asynchronous Python client for the Hyperliquid
 REST API. It provides credential-free market and account queries through
@@ -59,7 +59,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Learn more in the [Read the Docs documentation](https://async-hyperliquid.readthedocs.io/),
+Learn more in the [Read the Docs documentation](https://async-hyperliquid.readthedocs.io/en/latest/),
 [API reference](https://async-hyperliquid.readthedocs.io/en/latest/reference/index.html),
 [migration guide](https://async-hyperliquid.readthedocs.io/en/latest/migration-0.5-to-1.0.html),
 [changelog](CHANGELOG.md), and [license](LICENSE).

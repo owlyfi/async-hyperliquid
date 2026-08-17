@@ -186,7 +186,10 @@ def test_published_project_urls_use_current_repository() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     urls = project["urls"]
 
-    assert urls["Documentation"] == "https://async-hyperliquid.readthedocs.io/"
+    assert (
+        urls["Documentation"]
+        == "https://async-hyperliquid.readthedocs.io/en/latest/"
+    )
     assert all(
         "github.com/owlyfi/async-hyperliquid" in url
         for name, url in urls.items()
