@@ -26,7 +26,10 @@ jobs:
           version: "0.11.32"
 
       - name: Install locked dependencies
-        run: uv sync --locked --dev --group benchmark
+        run: uv sync --locked --dev --group benchmark --group docs
+
+      - name: Build documentation
+        run: uv run --frozen --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 
       - name: Check formatting
         run: uv run ruff format --check

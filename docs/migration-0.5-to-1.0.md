@@ -89,11 +89,6 @@ through the protocol-specific subaccount fields used by USD class and asset
 transfers. Root-scoped administration actions still sign as the main account.
 Omitting it targets the main account everywhere.
 
-For the integration-role convention, `HL_ADDR`/`HL_PK` identify the master
-account, `HL_AK`/`HL_SK` identify the API wallet's public/private key pair, and
-`HL_SUB` is the subaccount. Use `HL_ADDR` or `HL_SUB` for Info portfolio
-queries. `HL_AK` proves the signer role but has no master/subaccount portfolio.
-
 ## Read-only clients no longer need fake credentials
 
 Do not generate an ephemeral private key or placeholder address to read Info:
@@ -201,11 +196,12 @@ attribution is passed separately as `builder=Builder(...)`.
 
 `place_orders` now owns every batch placement path, including market orders;
 the provisional RC1 `place_market_orders` helper was removed. A batch may mix
-outer market and non-market requests within one venue, but cannot mix spot and
-perpetual markets. Builder fees are capped at `100` tenths of a basis point for
-perpetuals and `1000` for spot/outcome after metadata resolution. Outcome
-prices use a `0.00001` USDC tick in the `0.00001..0.99999` range. The Exchange,
-not the SDK, validates minimum order notional.
+outer market and non-market requests, and a perpetual batch may span the base
+and HIP-3 DEXes. It cannot mix perpetual markets with spot or outcome markets.
+Builder fees are capped at `100` tenths of a basis point for perpetuals and
+`1000` for spot/outcome after metadata resolution. Outcome prices use a
+`0.00001` USDC tick in the `0.00001..0.99999` range. The Exchange, not the SDK,
+validates minimum order notional.
 
 Common write mappings:
 
@@ -321,39 +317,6 @@ service.
 The REST client no longer imports or initializes `hl-web3`. Existing EVM users
 should depend on and construct `hl-web3` directly. There is no adapter in the
 v1 core.
-
-## Copycat is a separate repository migration
-
-No Copycat file is changed by the async-hyperliquid v1 branch. Its migration
-must be reviewed and committed in the Copycat repository.
-
-Before stable v1 is allowed into the existing integration, Copycat should first
-pin its legacy dependency to `async-hyperliquid>=0.4.8,<1`.
-
-The later Copycat v1 migration should:
-
-1. use a standalone `InfoClient(info_url=HL_INFO)` for local/self-hosted reads;
-2. remove ephemeral or dummy key generation from that read-only path after
-   proving no remaining call needs Exchange capability;
-3. pass all endpoints at construction and remove `info.base_url` mutation and
-   session reassignment;
-4. construct its authenticated trading client with `network=Network.*`, pass
-   the existing vault or subaccount as `vault_address=`, use `.info` for reads,
-   root methods for Info+Exchange workflows, and `.exchange` for direct
-   Info-independent actions;
-5. preserve local-first, official-Info fallback and supported-request
-   whitelisting in Copycat, not in this library;
-6. add an Exchange override only if Copycat explicitly configures a compatible
-   third-party Exchange provider;
-7. validate local Info success, official fallback, unsupported local request
-   rejection, vault/subaccount signing and routing parity, testnet
-   order/cancel, reinitialization, and deterministic session closure.
-8. rename public request arguments from `perp_dexs`/`perp_dexes` to `dexs`,
-   migrate direct and batch orders to `PlaceOrderRequest`, and remove size or
-   slippage arguments from root close workflows.
-
-Keep the dependency guard, v1 API migration, and unrelated bot changes in
-separate Copycat commits.
 
 ## Rollback
 

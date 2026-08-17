@@ -251,6 +251,28 @@ async def test_place_orders_dispatches_one_typed_batch(
     assert len(call.args[0]) == 2
 
 
+async def test_place_orders_accepts_perpetuals_from_multiple_dexs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    market_infos = AsyncMock(
+        return_value=(
+            _MarketInfo("BTC", 0, 5, False, ""),
+            _MarketInfo("xyz:NVDA", 110_000, 3, False, "xyz"),
+        )
+    )
+    submit_orders = AsyncMock(return_value=RESPONSE)
+    monkeypatch.setattr(InfoClient, "_market_infos", market_infos)
+    monkeypatch.setattr(ExchangeClient, "_submit_orders", submit_orders)
+    client = AsyncHyperliquid(ADDRESS, KEY)
+
+    response = await client.place_orders((_limit_request(), _limit_request("xyz:NVDA")))
+
+    assert response == RESPONSE
+    call = submit_orders.await_args
+    assert call is not None
+    assert [order["a"] for order in call.args[0]] == [0, 110_000]
+
+
 async def test_outer_market_mode_cannot_replace_a_trigger(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

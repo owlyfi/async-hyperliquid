@@ -70,12 +70,23 @@ def test_built_wheel_contract() -> None:
 @pytest.mark.skipif(
     not SDISTS, reason="build an sdist or set ASYNC_HYPERLIQUID_WHEEL_DIR"
 )
-def test_sdist_contains_release_and_migration_documentation() -> None:
+def test_sdist_contains_public_docs_but_excludes_internal_docs() -> None:
     assert len(SDISTS) == 1
     with tarfile.open(SDISTS[0]) as sdist:
         names = sdist.getnames()
 
-    assert any(name.endswith("/CHANGELOG.md") for name in names)
-    assert any(name.endswith("/docs/coin-name-mapping.md") for name in names)
-    assert any(name.endswith("/docs/migration-0.5-to-1.0.md") for name in names)
-    assert not any("/docs/superpowers/" in name for name in names)
+    expected_docs = {
+        "docs/conf.py",
+        "docs/index.rst",
+        "docs/introduction/quickstart.rst",
+        "docs/reference/async-hyperliquid.rst",
+        "docs/coin-name-mapping.md",
+        "docs/migration-0.5-to-1.0.md",
+    }
+    archive_docs = {
+        name.split("/", maxsplit=1)[1] for name in names if "/docs/" in name
+    }
+
+    assert expected_docs <= archive_docs
+    assert not any("/dev-docs/" in name for name in names)
+    assert not any("/docs/_build/" in name for name in names)

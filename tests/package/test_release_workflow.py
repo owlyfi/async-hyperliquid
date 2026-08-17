@@ -1,6 +1,8 @@
 from pathlib import Path
 import tomllib
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = ROOT / ".github" / "workflows" / "release.yml"
@@ -139,6 +141,27 @@ def test_markdown_parser_is_a_dev_only_dependency() -> None:
     )
 
 
+def test_workflows_install_locked_docs_and_build_warning_free_html() -> None:
+    expected_sync = "uv sync --locked --dev --group benchmark --group docs"
+    expected_build = (
+        "uv run --frozen --group docs sphinx-build -W --keep-going -b html "
+        "docs docs/_build/html"
+    )
+    workflows = (
+        (ROOT / ".github" / "workflows" / "ci.yml", "test"),
+        (RELEASE, "test_and_build"),
+    )
+
+    for path, job_name in workflows:
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+        runs = {
+            step["run"] for step in workflow["jobs"][job_name]["steps"] if "run" in step
+        }
+
+        assert expected_sync in runs
+        assert expected_build in runs
+
+
 def test_workflow_smoke_tests_import_the_current_public_types() -> None:
     workflows = "\n".join(
         (ROOT / ".github" / "workflows" / name).read_text()
@@ -154,11 +177,17 @@ def test_workflow_smoke_tests_import_the_current_public_types() -> None:
 def test_published_project_urls_use_current_repository() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     urls = project["urls"]
-    assert all("github.com/owlyfi/async-hyperliquid" in url for url in urls.values())
+
+    assert urls["Documentation"] == "https://async-hyperliquid.readthedocs.io/"
+    assert all(
+        "github.com/owlyfi/async-hyperliquid" in url
+        for name, url in urls.items()
+        if name != "Documentation"
+    )
 
 
 def test_release_runbook_covers_setup_and_recovery() -> None:
-    runbook = (ROOT / "docs" / "releasing.md").read_text()
+    runbook = (ROOT / "dev-docs" / "releasing.md").read_text()
     required = {
         "Trusted Publishing",
         "owlyfi",

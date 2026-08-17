@@ -548,7 +548,7 @@ def test_legacy_tag_changelog_uses_the_current_extractor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The rc1 runbook path must not depend on tooling absent from that tag."""
-    runbook = (ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "dev-docs" / "releasing.md").read_text(encoding="utf-8")
     assert (
         'git show "${release_tag}^{commit}:scripts/extract_release_notes.py"'
         not in runbook

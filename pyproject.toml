@@ -56,10 +56,17 @@ benchmark = [
     "coincurve==21.0.0",
     "matplotlib>=3.10,<4",
 ]
+docs = [
+    "furo",
+    "myst-parser",
+    "sphinx",
+    "sphinx-copybutton",
+    "sphinx-inline-tabs",
+]
 
 [project.urls]
 Homepage = "https://github.com/owlyfi/async-hyperliquid"
-Documentation = "https://github.com/owlyfi/async-hyperliquid"
+Documentation = "https://async-hyperliquid.readthedocs.io/"
 Repository = "https://github.com/owlyfi/async-hyperliquid"
 Issues = "https://github.com/owlyfi/async-hyperliquid/issues"
 Changelog = "https://github.com/owlyfi/async-hyperliquid/blob/main/CHANGELOG.md"
@@ -74,9 +81,9 @@ src-layout = true
 source-include = [
     "benchmarks/**",
     "CHANGELOG.md",
-    "docs/coin-name-mapping.md",
-    "docs/migration-0.5-to-1.0.md",
+    "docs/**",
 ]
+source-exclude = ["dev-docs/**", "docs/_build/**"]
 
 
 [tool.pytest.ini_options]
