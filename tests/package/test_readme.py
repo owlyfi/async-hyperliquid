@@ -24,11 +24,11 @@ def _readme_destinations(readme: str) -> tuple[set[str], set[str]]:
         for child in token.children or ():
             if child.type == "link_open":
                 href = child.attrGet("href")
-                if href is not None:
+                if isinstance(href, str):
                     links.add(href)
             elif child.type == "image":
                 src = child.attrGet("src")
-                if src is not None:
+                if isinstance(src, str):
                     images.add(src)
     return links, images
 
@@ -47,8 +47,7 @@ def test_readme_uses_current_release_badge_and_explicit_latest_docs() -> None:
     )
     assert (
         "https://async-hyperliquid.readthedocs.io/en/latest/"
-        "migration-0.5-to-1.0.html"
-        in links
+        "migration-0.5-to-1.0.html" in links
     )
     assert "https://async-hyperliquid.readthedocs.io/" not in links
 

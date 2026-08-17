@@ -187,8 +187,7 @@ def test_published_project_urls_use_current_repository() -> None:
     urls = project["urls"]
 
     assert (
-        urls["Documentation"]
-        == "https://async-hyperliquid.readthedocs.io/en/latest/"
+        urls["Documentation"] == "https://async-hyperliquid.readthedocs.io/en/latest/"
     )
     assert all(
         "github.com/owlyfi/async-hyperliquid" in url
