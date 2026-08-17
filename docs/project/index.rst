@@ -8,6 +8,7 @@ here:
    :maxdepth: 1
 
    about
+   benchmarks
    license
    ../coin-name-mapping
    ../migration-0.5-to-1.0

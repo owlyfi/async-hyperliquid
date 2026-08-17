@@ -1,0 +1,111 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 18:38+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../project/benchmarks.md:1
+#: 51560202a0504aaa8f8fe1ef6e2e91a9
+msgid "Signing benchmark"
+msgstr "签名基准测试"
+
+#: ../../project/benchmarks.md:3
+#: 9224e67e3b5a4f658807b6b682d605ab
+msgid ""
+"The overall signing benchmark values below are from a parity-gated "
+"`1.0.0rc1` local CPU reference run. They are not network latency or "
+"exchange throughput. See the detailed "
+"[benchmarks/README.md](https://github.com/owlyfi/async-"
+"hyperliquid/blob/main/benchmarks/README.md) manual for the full "
+"methodology, parity gate, and per-operation results."
+msgstr ""
+"以下整体签名基准测试数值来自经一致性门控的 `1.0.0rc1` 本地 CPU 参考结果。它们不是网络延迟或交易所吞吐量。"
+"完整方法、一致性门控和每项操作结果请参阅详细的 "
+"[benchmarks/README.md](https://github.com/owlyfi/async-hyperliquid/blob/main/benchmarks/README.md) 手册。"
+
+#: ../../project/benchmarks.md:8
+#: 213e3adc59de4d9d8522c747421397b0
+msgid "Overall comparison"
+msgstr "总体比较"
+
+#: ../../project/benchmarks.md
+#: f5106e29f1074e0593b6180344296517
+msgid "Library"
+msgstr "库"
+
+#: ../../project/benchmarks.md
+#: 52ce0296c0ab4fd6a3006c2481843243
+msgid "Geometric-mean throughput"
+msgstr "几何平均吞吐量"
+
+#: ../../project/benchmarks.md
+#: 39cba405d0054e15ac5275029eb0511b
+msgid "Relative to SDK"
+msgstr "相对 SDK"
+
+#: ../../project/benchmarks.md
+#: fa502aef09de44789e18219c90f5655e
+msgid "async-hyperliquid"
+msgstr "async-hyperliquid"
+
+#: ../../project/benchmarks.md
+#: 81796c0a6331464a8db682722a96510f
+msgid "24,641 ops/s"
+msgstr "24,641 ops/s"
+
+#: ../../project/benchmarks.md
+#: 1fe433c6db1c4ccf9ceb111cac4a5034
+msgid "1.460x"
+msgstr "1.460x"
+
+#: ../../project/benchmarks.md
+#: 9228a5a608a74284bf7dbe219fab984a
+msgid "Official SDK"
+msgstr "Official SDK"
+
+#: ../../project/benchmarks.md
+#: 04c2723c51044b7aa750305f83794e1c
+msgid "16,874 ops/s"
+msgstr "16,874 ops/s"
+
+#: ../../project/benchmarks.md
+#: 3b5ce91570794532b2c4f03a2d5593f1
+msgid "1.000x"
+msgstr "1.000x"
+
+#: ../../project/benchmarks.md
+#: ecf705d7ce0546da95986f81d4727f57
+msgid "CCXT"
+msgstr "CCXT"
+
+#: ../../project/benchmarks.md
+#: cdd953ef4dee4661845006c6bb05d404
+msgid "803 ops/s"
+msgstr "803 ops/s"
+
+#: ../../project/benchmarks.md
+#: 30d67a317219473ba6bacca1cf234dd9
+msgid "0.0476x"
+msgstr "0.0476x"
+
+#: ../../project/benchmarks.md:17
+#: f9775e27c9fe4209931cf98a33340407
+msgid ""
+"The geometric mean gives each of the five operations equal weight, "
+"preventing the faster `action_hash` workload from dominating the score."
+msgstr ""
+"几何平均值使五项操作具有相同权重，防止更快的 `action_hash` 工作负载主导评分。"

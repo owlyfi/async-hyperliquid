@@ -7,6 +7,14 @@ import tomllib
 
 
 ROOT = Path(__file__).parents[2]
+SIGNING_OVERALL_START = "<!-- signing-benchmark:overall:start -->"
+SIGNING_OVERALL_END = "<!-- signing-benchmark:overall:end -->"
+
+
+def _marked_block(text: str, start: str, end: str) -> str:
+    assert text.count(start) == 1
+    assert text.count(end) == 1
+    return text.split(start, 1)[1].split(end, 1)[0].strip()
 
 
 def _readme_destinations(readme: str) -> tuple[set[str], set[str]]:
@@ -75,3 +83,21 @@ def test_benchmark_manual_documents_safe_failure_context_and_operator_actions() 
     assert "do not immediately rerun" in manual
     assert "`recovery_ok=false`" in manual
     assert "manual inspection" in manual
+
+
+def test_public_signing_benchmark_overall_blocks_match() -> None:
+    sources = (
+        ROOT / "benchmarks" / "README.md",
+        ROOT / "README.md",
+        ROOT / "docs" / "project" / "benchmarks.md",
+    )
+    blocks = {
+        _marked_block(path.read_text(), SIGNING_OVERALL_START, SIGNING_OVERALL_END)
+        for path in sources
+    }
+
+    assert len(blocks) == 1
+    block = blocks.pop()
+    assert "| async-hyperliquid | 24,641 ops/s | 1.460x |" in block
+    assert "| Official SDK | 16,874 ops/s | 1.000x |" in block
+    assert "| CCXT | 803 ops/s | 0.0476x |" in block

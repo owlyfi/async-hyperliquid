@@ -20,6 +20,7 @@ NARRATIVE_CATALOGS = (
     "introduction/quickstart.po",
     "migration-0.5-to-1.0.po",
     "project/about.po",
+    "project/benchmarks.po",
     "project/index.po",
     "project/license.po",
     "reference/async-hyperliquid.po",
@@ -180,12 +181,27 @@ def test_english_docs_build_with_warnings_as_errors(tmp_path: Path) -> None:
     assert (output_dir / "index.html").is_file()
 
     about_html = (output_dir / "project" / "about.html").read_text(encoding="utf-8")
+    benchmarks_html = (output_dir / "project" / "benchmarks.html").read_text(
+        encoding="utf-8"
+    )
     license_html = (output_dir / "project" / "license.html").read_text(encoding="utf-8")
     rendered_site = "\n".join(
         path.read_text(encoding="utf-8") for path in output_dir.rglob("*.html")
     )
 
     assert "Yuki" in about_html
+    assert "Overall comparison" in benchmarks_html
+    assert "local CPU reference" in benchmarks_html
+    assert "not network latency or exchange throughput" in benchmarks_html
+    assert "async-hyperliquid" in benchmarks_html
+    assert "Official SDK" in benchmarks_html
+    assert "CCXT" in benchmarks_html
+    assert "24,641 ops/s" in benchmarks_html
+    assert "1.460x" in benchmarks_html
+    assert "16,874 ops/s" in benchmarks_html
+    assert "1.000x" in benchmarks_html
+    assert "803 ops/s" in benchmarks_html
+    assert "0.0476x" in benchmarks_html
     assert "MIT License" in license_html
     assert "yuqi.lyle@gmail.com" not in rendered_site
 
@@ -206,6 +222,9 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
     )
     types_html = (output_dir / "reference" / "types.html").read_text(encoding="utf-8")
     errors_html = (output_dir / "reference" / "errors.html").read_text(encoding="utf-8")
+    benchmarks_html = (output_dir / "project" / "benchmarks.html").read_text(
+        encoding="utf-8"
+    )
     rendered_site = "\n".join(
         path.read_text(encoding="utf-8") for path in output_dir.rglob("*.html")
     )
@@ -213,6 +232,17 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
     assert "异步、带类型的 Python 客户端" in index_html
     assert "单笔和批量操作" in orders_html
     assert "错误" in errors_html
+    assert "总体比较" in benchmarks_html
+    assert "本地 CPU 参考结果" in benchmarks_html
+    assert "async-hyperliquid" in benchmarks_html
+    assert "Official SDK" in benchmarks_html
+    assert "CCXT" in benchmarks_html
+    assert "24,641 ops/s" in benchmarks_html
+    assert "1.460x" in benchmarks_html
+    assert "16,874 ops/s" in benchmarks_html
+    assert "1.000x" in benchmarks_html
+    assert "803 ops/s" in benchmarks_html
+    assert "0.0476x" in benchmarks_html
     assert "AsyncHyperliquid" in async_client_html
     assert "InfoClient" in info_client_html
     assert "PlaceOrderRequest" in types_html
