@@ -1,0 +1,228 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../coin-name-mapping.md:1 9165a9407c5545f0ad2c4fa8dab5d920
+msgid "Coin and asset mapping"
+msgstr "币种与资产映射"
+
+#: ../../coin-name-mapping.md:3 98e6ba121ae74b7084432f865327365c
+msgid ""
+"`InfoClient` builds one immutable metadata snapshot from `perpDexs`, "
+"`allPerpMetas`, and `spotMeta`. Public helpers read that snapshot "
+"directly:"
+msgstr ""
+"`InfoClient` 根据 `perpDexs`、`allPerpMetas` 和 `spotMeta` 构建一个不可变的元数据快照。"
+"公共辅助方法直接读取该快照："
+
+#: ../../coin-name-mapping.md:6 cfa1d00daa394e03bd79b3fc315cc2ab
+msgid "`coin_name(coin)` returns the canonical market name used by Hyperliquid."
+msgstr "`coin_name(coin)` 返回 Hyperliquid 使用的规范市场名称。"
+
+#: ../../coin-name-mapping.md:7 f92ac863c4d243429c0916179a5a844c
+msgid "`coin_symbol(coin)` returns the display symbol."
+msgstr "`coin_symbol(coin)` 返回显示符号。"
+
+#: ../../coin-name-mapping.md:8 31dfb1620516455b90491edf4fbc568e
+msgid "`asset_id(coin)` returns the integer encoded in Exchange actions."
+msgstr "`asset_id(coin)` 返回编码在 Exchange 操作中的整数。"
+
+#: ../../coin-name-mapping.md:9 25d0dd55c77248acbd067fe8d42f52c5
+msgid "`size_decimals(coin)` returns the market size precision."
+msgstr "`size_decimals(coin)` 返回市场数量精度。"
+
+#: ../../coin-name-mapping.md:10 386878a79c4446e8ab04940a38a73212
+msgid ""
+"`spot_token_metadata(coin)` returns the base-token metadata for a spot "
+"pair."
+msgstr "`spot_token_metadata(coin)` 返回 spot 交易对的基础代币元数据。"
+
+#: ../../coin-name-mapping.md:12 ed74ddb75e504963921f8a76d4cabdf7
+msgid ""
+"The first lookup loads metadata. Concurrent cold lookups share one load; "
+"`refresh_metadata()` explicitly replaces the last complete snapshot. A "
+"partial or inconsistent response is rejected without publishing partial "
+"state."
+msgstr ""
+"首次查询会加载元数据。并发冷查询共享同一次加载；`refresh_metadata()` 会显式替换最近一次完整快照。"
+"不完整或不一致的响应会被拒绝，且不会发布部分状态。"
+
+#: ../../coin-name-mapping.md:16 667c70e0123949059329339edf3f8ca6
+msgid "Asset spaces"
+msgstr "资产编号空间"
+
+#: ../../coin-name-mapping.md 77f548c7bdc34bc683c19ea1f3ffc404
+msgid "Market"
+msgstr "市场"
+
+#: ../../coin-name-mapping.md af8ee4032b6147a49927a2c13ef1e429
+msgid "Asset ID"
+msgstr "资产 ID"
+
+#: ../../coin-name-mapping.md 50463a75f2b24f659a64400fe83ea935
+msgid "Base perpetual"
+msgstr "基础 perpetual"
+
+#: ../../coin-name-mapping.md 6da57ac2dcac4b7faab64d3e385fabb6
+msgid "index in the base perpetual universe"
+msgstr "基础 perpetual universe 中的索引"
+
+#: ../../coin-name-mapping.md 2528e844a20041d99ccc5d90facf93e7
+msgid "Spot"
+msgstr "Spot"
+
+#: ../../coin-name-mapping.md 5ea9c2aba0274eaa9460f339301c6770
+msgid "`10_000 + spotMeta.universe[].index`"
+msgstr "`10_000 + spotMeta.universe[].index`"
+
+#: ../../coin-name-mapping.md 9b566ca53fcb4db5afc43797c0dec8f2
+msgid "HIP-3 perpetual"
+msgstr "HIP-3 perpetual"
+
+#: ../../coin-name-mapping.md e12f37f2175941d5a1fb72db6aa36bd8
+msgid "`110_000 + (dex position - 1) * 10_000 + universe index`"
+msgstr "`110_000 + (dex position - 1) * 10_000 + universe index`"
+
+#: ../../coin-name-mapping.md:24 eb6c1731a0b2456ab50ad1778e387558
+msgid ""
+"The DEX position comes from `perpDexs`, whose first entry must be the "
+"base DEX. Every declared DEX must have exactly one matching "
+"`allPerpMetas` object."
+msgstr ""
+"DEX 位置来自 `perpDexs`，其首个条目必须是基础 DEX。每个声明的 DEX 都必须恰好有一个匹配的 "
+"`allPerpMetas` 对象。"
+
+#: ../../coin-name-mapping.md:27 20e3d5b2c9d4479cb31f3a2a210cbfc7
+msgid "Perpetual markets"
+msgstr "Perpetual 市场"
+
+#: ../../coin-name-mapping.md:29 c17fe9d278b342f9b10af47ef9ed5505
+msgid "Perpetual names are already canonical:"
+msgstr "Perpetual 名称已经是规范名称："
+
+#: ../../coin-name-mapping.md 165ca1668eb34e398d91e2c2e54f7ea4
+#: ec5650054eea4208bc0fb286b2e2eb50
+msgid "Input"
+msgstr "输入"
+
+#: ../../coin-name-mapping.md 3e12a63fe7284c1597212aa19fae8814
+#: d05db642d07447848b51c3f5de39929d
+msgid "Canonical name"
+msgstr "规范名称"
+
+#: ../../coin-name-mapping.md 26c4af1ebc6944008341460c10169d9b
+msgid "Example asset ID"
+msgstr "资产 ID 示例"
+
+#: ../../coin-name-mapping.md cc12d870ce1a4f77b4cb40d88d14c3f9
+#: d5ae14dfcefc4500be2d429ccfa423ea
+msgid "`BTC`"
+msgstr "`BTC`"
+
+#: ../../coin-name-mapping.md 1a29531e10294e17b0bc6b54fb8d7a66
+msgid "base universe index, commonly `0`"
+msgstr "基础 universe 索引，通常为 `0`"
+
+#: ../../coin-name-mapping.md 019d2a9f17304ce29b9a8bb02824723b
+#: 6032625994b9449ab8e9a2df4f318955
+msgid "`xyz:NVDA`"
+msgstr "`xyz:NVDA`"
+
+#: ../../coin-name-mapping.md 2224d839f10c4b559b300bc2e3d07e77
+msgid "first HIP-3 offset plus its universe index"
+msgstr "第一个 HIP-3 偏移量加上其 universe 索引"
+
+#: ../../coin-name-mapping.md:36 23cfe457f437466594655d125623f52c
+msgid "The prefix before `:` identifies an HIP-3 DEX."
+msgstr "`:` 之前的前缀用于标识 HIP-3 DEX。"
+
+#: ../../coin-name-mapping.md:38 b1863bbe22a84bc2b71e3ed13092ab6b
+msgid "Spot markets"
+msgstr "Spot 市场"
+
+#: ../../coin-name-mapping.md:40 6341d78a5bed49bfb2d6f0945c5af513
+msgid ""
+"`spotMeta.universe[].name` is the canonical market name. It may be an "
+"internal name such as `@107` or an already readable pair name. The token "
+"indexes in the same entry provide a `BASE/QUOTE` alias:"
+msgstr ""
+"`spotMeta.universe[].name` 是规范市场名称。它可能是 `@107` 这样的内部名称，也可能是已可读的交易对名称。"
+"同一条目中的代币索引提供一个 `BASE/QUOTE` 别名："
+
+#: ../../coin-name-mapping.md 98030f65ebc341a18b306b494b4ab518
+msgid "Display symbol"
+msgstr "显示符号"
+
+#: ../../coin-name-mapping.md 1974ae6cfd9e4ae6a84d1bb646d0a730
+#: b14217d8e15e46e982550c0f7322957d c6f7420571bf431499a5bca394e99363
+msgid "`@107`"
+msgstr "`@107`"
+
+#: ../../coin-name-mapping.md 1b869b9a9257473e8ad4eda1649e6d92
+#: 9d59d63912f44b67be53181c4cc78582 afef0547122d4048bf1414d03553a1c6
+msgid "`HYPE/USDC`"
+msgstr "`HYPE/USDC`"
+
+#: ../../coin-name-mapping.md 50347bff894146468af79beaa13d3792
+#: fbb148e0ec0d4c54b6cf746826794e7b
+msgid "`PURR/USDC`"
+msgstr "`PURR/USDC`"
+
+#: ../../coin-name-mapping.md 4664973a391f4040b497de1d1617eb6c
+msgid "`PURR/USDC` when that is the wire name"
+msgstr "wire 名称为 `PURR/USDC` 时"
+
+#: ../../coin-name-mapping.md:50 2fc8ad7fac954748be81c01fa8acef3b
+msgid ""
+"Display aliases are derived only from the token names in `spotMeta`. The "
+"SDK does not reproduce the separate curated symbol aliases used by the "
+"Hyperliquid web frontend. For example, metadata token `UBTC` resolves as "
+"`UBTC/USDC`, not the frontend label `BTC/USDC`."
+msgstr ""
+"显示别名仅根据 `spotMeta` 中的代币名称派生。SDK 不会复刻 Hyperliquid Web 前端另行维护的符号别名。"
+"例如，元数据代币 `UBTC` 会解析为 `UBTC/USDC`，而不是前端标签 `BTC/USDC`。"
+
+#: ../../coin-name-mapping.md:55 73b7c11bc98a489980c312bd629dfd4b
+msgid ""
+"Only pairs present in `spotMeta.universe` resolve. A quote token alias "
+"such as `USDC` can resolve token metadata without representing a tradable"
+" market."
+msgstr ""
+"只有存在于 `spotMeta.universe` 中的交易对才能解析。`USDC` 这样的报价代币别名可以解析代币元数据，"
+"但并不代表一个可交易市场。"
+
+#: ../../coin-name-mapping.md:58 120bf45cb3c2436b91c75d561deba3b9
+msgid ""
+"Do not derive `@...` names or asset IDs in application code; they are "
+"runtime metadata and can change."
+msgstr "不要在应用代码中推导 `@...` 名称或资产 ID；它们是运行时元数据，可能发生变化。"
+
+#: ../../coin-name-mapping.md:61 88e04782fa5d4e8baed9954ce23273f7
+msgid "Usage"
+msgstr "用法"
+
+#: ../../coin-name-mapping.md:81 87fcbfe7ea4b40f686e5db6cdc516d3d
+msgid ""
+"The same helpers are available as `client.info.*` when using an "
+"authenticated `AsyncHyperliquid` client. Exchange order and cancel "
+"methods resolve these IDs internally; callers pass typed commands with "
+"market names, not integer asset IDs."
+msgstr ""
+"使用已认证的 `AsyncHyperliquid` 客户端时，也可以通过 `client.info.*` 使用相同的辅助方法。"
+"Exchange 下单和撤单方法会在内部解析这些 ID；调用方传入包含市场名称的类型化命令，而不是整数资产 ID。"

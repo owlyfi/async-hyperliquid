@@ -1,0 +1,51 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/exchange-client.rst:2 03c643131fb04acc9f7b10421004275c
+msgid "ExchangeClient"
+msgstr ""
+
+#: ../../reference/exchange-client.rst:6 19a9c94d59a040638ce161f1571f15e2
+msgid ""
+"This reference includes fund-moving, paid, authority-changing, outcome, "
+"and validator actions. Some actions are irreversible and user-signed fund"
+" actions have no ``expires_after`` protection. Do not invoke a method "
+"from its signature alone. Read :doc:`../howto/orders`, "
+":doc:`../howto/routing`, :doc:`../howto/transfers-administration`, and "
+":doc:`../howto/lifecycle-reconciliation` first."
+msgstr ""
+"本参考包含资金转移、付费、权限变更、outcome 和验证者操作。一些操作不可逆，用户签名的资金操作"
+"没有 ``expires_after`` 保护。请勿仅依据方法签名调用方法。请先阅读 :doc:`../howto/orders`、"
+":doc:`../howto/routing`、:doc:`../howto/transfers-administration` 和 "
+":doc:`../howto/lifecycle-reconciliation`。"
+
+#: async_hyperliquid.exchange.ExchangeClient:1 fcaaf3bbb60a401a94b5beef6a97dfcc
+#: of
+msgid "Transport-bound signed action client owned by ``AsyncHyperliquid``."
+msgstr ""
+
+#: ../../reference/exchange-client.rst:17 b102081cc9484f25b38ceeed6e139a77
+msgid ""
+"Applications normally obtain this object from "
+"``AsyncHyperliquid.exchange`` so it shares lifecycle, transport, routing,"
+" and nonce ownership with the root client."
+msgstr ""
+"应用程序通常从 ``AsyncHyperliquid.exchange`` 获取此对象，使其与 root client 共享生命周期、"
+"传输、路由和 nonce 所有权。"

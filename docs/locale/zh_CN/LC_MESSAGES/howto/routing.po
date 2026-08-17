@@ -1,0 +1,132 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../howto/routing.rst:2 2fcd152ec1cb4a6db380940185a262ec
+msgid "Route accounts and endpoints"
+msgstr "路由账户和端点"
+
+#: ../../howto/routing.rst:5 552da30e75b745979f8658aa195a326c
+msgid "Account, signer, and execution target"
+msgstr "账户、签名者与执行目标"
+
+#: ../../howto/routing.rst:7 1e1a1c9ffdc04478b8f60439286163ba
+msgid ""
+"``account_address`` is the main account. ``signing_key`` may be the main "
+"key or an approved API-wallet key. The signing key's public address is "
+"not the portfolio address to use for ordinary Info queries."
+msgstr ""
+"``account_address`` 是 main account。``signing_key`` 可以是主密钥或已获批的 API wallet 密钥。"
+"签名密钥的公开地址不是常规 Info 查询应使用的投资组合地址。"
+
+#: ../../howto/routing.rst:11 5b4b038a12c54025951cf1aebe301445
+msgid ""
+"When ``vault_address`` is omitted, execution targets the main account. "
+"When it is supplied, ``client.exchange.execution_address`` is that vault "
+"or subaccount, and execution-scoped actions and position queries target "
+"it. Root-scoped administration actions still apply to the main account. "
+"Protocol-specific USD class and asset transfers include the configured "
+"subaccount field."
+msgstr ""
+"省略 ``vault_address`` 时，执行以 main account 为目标。提供该值时，"
+"``client.exchange.execution_address`` 即为对应的 vault 或 subaccount，"
+"且执行范围内的操作和持仓查询都以它为目标。根范围的管理操作仍作用于 main account。"
+"协议特定的 USD 类别和 asset 转账会包含已配置的 subaccount 字段。"
+
+#: ../../howto/routing.rst:17 2bc187f1d75c4b89988b227c22862b0e
+msgid "Use ``InfoClient.user_role()`` to verify relationships before signing:"
+msgstr "签名前使用 ``InfoClient.user_role()`` 验证关系："
+
+#: ../../howto/routing.rst:19 9bc524719dfa4b4c953a6191584d16ae
+msgid "an API wallet reports the agent role and its owning user;"
+msgstr "API wallet 会报告 agent 角色及其所属用户；"
+
+#: ../../howto/routing.rst:20 2288056267114c1f910bde3483607fa6
+msgid "a subaccount reports the subaccount role and its master;"
+msgstr "subaccount 会报告 subaccount 角色及其主账户；"
+
+#: ../../howto/routing.rst:21 6350e914c1c24067a9d80825e5d59f7a
+msgid ""
+"portfolio queries use the main, subaccount, or vault address, not the API"
+" wallet address."
+msgstr "投资组合查询使用 main account、subaccount 或 vault 地址，而非 API wallet 地址。"
+
+#: ../../howto/routing.rst:24 b6b7f1ea57284ad99b46bcb786915780
+msgid ""
+"Create a separate immutable client for each execution target. Do not "
+"mutate routing state between actions."
+msgstr "为每个执行目标创建单独的不可变客户端。不要在操作之间修改路由状态。"
+
+#: ../../howto/routing.rst:28 8ad3d6928d654b039d68b120c14654eb
+msgid "Network and URLs"
+msgstr "网络与 URL"
+
+#: ../../howto/routing.rst:30 9ab4c0cff44346269be460b2aae9f5ee
+msgid ""
+"``Network.MAINNET`` and ``Network.TESTNET`` choose both official defaults"
+" and the signing domain. Custom ``info_url`` and ``exchange_url`` values "
+"are exact, independent endpoints; they do not change the signing domain."
+msgstr ""
+"``Network.MAINNET`` 和 ``Network.TESTNET`` 同时选择官方默认值和签名域。"
+"自定义 ``info_url`` 与 ``exchange_url`` 的值是精确且独立的端点；它们不会改变签名域。"
+
+#: ../../howto/routing.rst:36 e5b8ca3f395644748f4dcc3e661f3944
+msgid ""
+"A custom Exchange endpoint is a trusted execution boundary. It sees "
+"replayable signed envelopes and can delay, censor, or fabricate a "
+"plausible acknowledgement. The private key stays local, but this does not"
+" make the provider harmless."
+msgstr ""
+"自定义 Exchange 端点是可信执行边界。它能看到可重放的签名封装，并可延迟、审查或伪造看似合理的确认。"
+"私钥留在本地，但这并不使提供方无害。"
+
+#: ../../howto/routing.rst:43 621ce2f6e1ad4393adca5caf6a206c9b
+msgid ""
+"A custom Info endpoint attached to ``AsyncHyperliquid`` is trusted order-"
+"construction input. Its metadata and prices determine asset IDs, "
+"precision, market-order limits, and close sizes used in signed actions."
+msgstr ""
+"附加到 ``AsyncHyperliquid`` 的自定义 Info 端点是受信任的订单构造输入。"
+"其元数据和价格决定签名操作所用的 asset ID、精度、市价订单限制和平仓数量。"
+
+#: ../../howto/routing.rst:47 1ab1fc05dbad41cebeb718d9a95fd00b
+msgid ""
+"Reconcile signed outcomes through an independently trusted Info endpoint."
+" ``expires_after`` is available only on methods whose protocol supports "
+"it and does not add expiry to user-signed fund actions."
+msgstr ""
+"通过独立可信的 Info 端点核对签名结果。``expires_after`` 仅适用于其协议支持该字段的方法，"
+"不会为用户签名的资金操作添加到期时间。"
+
+#: ../../howto/routing.rst:52 12c5cbc006b24bedbf1390621852a67c
+msgid "Sessions across origins"
+msgstr "跨源会话"
+
+#: ../../howto/routing.rst:54 2cb3dadc9eb44d279c0c6337b0873a2f
+msgid ""
+"``client.info`` and ``client.exchange`` share the supplied ``aiohttp`` "
+"session. Do not attach session-wide authorization headers or cookies when"
+" Info and Exchange URLs use different origins. Use host-scoped middleware"
+" or separately owned clients and sessions. Endpoint fallback, provider "
+"authentication, health checks, and routing policy remain application "
+"responsibilities."
+msgstr ""
+"``client.info`` 和 ``client.exchange`` 共享提供的 ``aiohttp`` 会话。"
+"当 Info 与 Exchange URL 使用不同源时，不要附加会话范围的授权头或 cookie。"
+"请使用主机范围的中间件，或分别拥有的客户端和会话。端点回退、提供方认证、健康检查和路由策略仍由应用负责。"

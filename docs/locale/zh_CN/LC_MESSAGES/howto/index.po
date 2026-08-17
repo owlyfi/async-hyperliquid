@@ -1,0 +1,62 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../howto/index.rst:2 3ebd365965044ee3ab23fd7c85a325a3
+msgid "How-to guides"
+msgstr "操作指南"
+
+#: ../../howto/index.rst:4 b1387b008e774611a025e539be02ecca
+msgid "These guides group public operations by workflow:"
+msgstr "这些指南按工作流归类公开操作："
+
+#: ../../howto/index.rst:6 909a2fabaa7e4948bc110dc59aa1672d
+msgid ":doc:`info-queries` covers credential-free market and account reads."
+msgstr ":doc:`info-queries` 介绍无需凭证的市场与账户查询。"
+
+#: ../../howto/index.rst:7 5349d7153032488a9730e40e06ac7805
+msgid ":doc:`markets` explains canonical coin names and metadata-derived IDs."
+msgstr ":doc:`markets` 说明规范 coin 名称和由元数据派生的 ID。"
+
+#: ../../howto/index.rst:8 a69caaca64d64aa3821e85b0400d1738
+msgid ""
+":doc:`orders` covers order placement, triggers, TP/SL, TWAP, "
+"modification, cancellation, and closing."
+msgstr ":doc:`orders` 介绍下单、触发器、TP/SL、TWAP、修改、取消和平仓。"
+
+#: ../../howto/index.rst:10 c8d90b5cf6ce42c89c77fce819408ec7
+msgid ""
+":doc:`routing` explains main accounts, API wallets, subaccounts, vaults, "
+"and endpoint trust boundaries."
+msgstr ":doc:`routing` 说明 main account、API wallet、subaccount、vault 与端点信任边界。"
+
+#: ../../howto/index.rst:12 50766b4eafff4c59b59a00e9ae868466
+msgid ""
+":doc:`transfers-administration` identifies fund-moving, paid, "
+"administrative, outcome, and validator actions without presenting ready-"
+"to-run destructive snippets."
+msgstr ""
+":doc:`transfers-administration` 列出资金转移、付费、管理、outcome 和验证者操作，"
+"但不提供可直接运行的破坏性代码片段。"
+
+#: ../../howto/index.rst:15 a4b2071ed9e04015aac72461358b173a
+msgid ""
+":doc:`lifecycle-reconciliation` covers sessions, errors, nonce ownership,"
+" and ambiguous signed outcomes."
+msgstr ":doc:`lifecycle-reconciliation` 介绍会话、错误、nonce 所有权以及不确定的签名结果。"

@@ -1,0 +1,109 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../introduction/index.rst:2 363ee94fb24e4b2b81bcd95cc3d83c81
+msgid "Introduction"
+msgstr "介绍"
+
+#: ../../introduction/index.rst:4 bd3acb00b6f44bea851b5fbdc75a442f
+msgid "The package has three main public entry points:"
+msgstr "该软件包有三个主要的公共入口："
+
+#: ../../introduction/index.rst:6 b201098c4a76475a8953207dbeab4fd0
+msgid "``InfoClient``"
+msgstr "``InfoClient``"
+
+#: ../../introduction/index.rst:7 56c2354ed5a345109a6d39541486316f
+msgid ""
+"Credential-free reads, market metadata, prices, orders, fills, portfolio,"
+" staking, vault, and deployment information."
+msgstr "无需凭据的读取，以及市场元数据、价格、订单、成交、投资组合、staking、vault 和部署信息。"
+
+#: ../../introduction/index.rst:10 efa68cf3428b4ba6b53a166eaa3a9a20
+msgid "``AsyncHyperliquid``"
+msgstr "``AsyncHyperliquid``"
+
+#: ../../introduction/index.rst:11 a8b5d0c76f4d40e6a7e07d0549713b45
+msgid ""
+"The lifecycle owner for authenticated use. It combines ``.info`` and "
+"``.exchange`` and implements workflows that must resolve market metadata,"
+" prices, or positions before signing."
+msgstr ""
+"用于已认证使用的生命周期管理者。它结合 ``.info`` 和 ``.exchange``，并实现必须在签名之前"
+"解析市场元数据、价格或持仓的工作流。"
+
+#: ../../introduction/index.rst:15 b36a0d63f6244aad88f592e5fff083cb
+msgid "``ExchangeClient``"
+msgstr "``ExchangeClient``"
+
+#: ../../introduction/index.rst:16 0a3a2e0a09ff41fc89906b32baa7f567
+msgid ""
+"Available as ``client.exchange``. It exposes Info-independent signed "
+"actions such as transfers and account administration. Applications "
+"normally create ``AsyncHyperliquid`` rather than constructing it "
+"directly."
+msgstr ""
+"可通过 ``client.exchange`` 使用。它提供独立于 Info 的已签名操作，例如转账和账户管理。"
+"应用程序通常创建 ``AsyncHyperliquid``，而不是直接构造它。"
+
+#: ../../introduction/index.rst:20 1e963d597fa046f69bca6e04083aa7fd
+msgid ""
+"All network I/O is asynchronous. Constructors do not allocate an HTTP "
+"session; ``open()`` or an async context manager does. The client never "
+"automatically retries a signed action."
+msgstr ""
+"所有网络 I/O 均为异步。构造函数不会分配 HTTP 会话；``open()`` 或异步上下文管理器会分配。"
+"客户端绝不自动重试已签名操作。"
+
+#: ../../introduction/index.rst:25 820d9e663abe485a820cc9154145dd47
+msgid "Choosing a client"
+msgstr "选择客户端"
+
+#: ../../introduction/index.rst:27 c64a6e1a246a4a4e80ec432a3942103e
+msgid ""
+"Use ``InfoClient`` whenever no signed action is needed. It requires "
+"neither an account address nor a private key. Account-specific Info "
+"methods accept the address to query."
+msgstr ""
+"无需已签名操作时，应使用 ``InfoClient``。它既不需要账户地址，也不需要私钥。"
+"特定账户的 Info 方法接受要查询的地址。"
+
+#: ../../introduction/index.rst:31 2fac90ef171240f39ebc395c1c5f5699
+msgid ""
+"Use ``AsyncHyperliquid`` only when the process must sign. Keep the "
+"signing key in a secret store, prefer an API wallet with narrowly scoped "
+"funds, and begin on testnet. The ``account_address`` identifies the main "
+"account while ``signing_key`` may belong to its approved API wallet."
+msgstr ""
+"仅当进程必须签名时才使用 ``AsyncHyperliquid``。请将签名密钥保存在机密存储中，优先使用"
+"资金范围受限的 API wallet，并从 testnet 开始。``account_address`` 标识 main account，而"
+"``signing_key`` 可以属于其获批准的 API wallet。"
+
+#: ../../introduction/index.rst:36 433d7130959a4933946a9f5cc353fcff
+msgid ""
+"The package root intentionally exports only ``AsyncHyperliquid``, "
+"``InfoClient``, and ``HyperliquidError``. Commands and enums are in "
+"``async_hyperliquid.types``; detailed wire response types are in "
+"``async_hyperliquid.types.info`` and "
+"``async_hyperliquid.types.exchange``."
+msgstr ""
+"软件包根有意只导出 ``AsyncHyperliquid``、``InfoClient`` 和 ``HyperliquidError``。"
+"命令和枚举位于 ``async_hyperliquid.types``；详细的 wire 响应类型位于 "
+"``async_hyperliquid.types.info`` 和 ``async_hyperliquid.types.exchange``。"

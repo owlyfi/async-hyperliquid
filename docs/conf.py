@@ -26,5 +26,9 @@ extensions = [
     "sphinx_inline_tabs",
 ]
 
+locale_dirs = ["locale/"]
+gettext_compact = False
+gettext_uuid = True
+
 exclude_patterns = ["_build"]
 html_theme = "furo"

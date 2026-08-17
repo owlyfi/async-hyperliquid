@@ -1,0 +1,69 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/response-types.rst:2 306dd14eb09f44df8d7e1900679c5e7e
+msgid "Detailed response types"
+msgstr "详细响应类型"
+
+#: ../../reference/response-types.rst:5 b93cc018209c44e988fde98a6e5b6336
+msgid "Info responses"
+msgstr "Info 响应"
+
+#: ../../reference/response-types.rst:7 e7eeea43fbb04901b118b271b8d99c3f
+msgid ""
+"Info response objects are ``TypedDict`` classes and type aliases "
+"preserving Hyperliquid's wire field names. Numeric wire fields remain "
+"strings."
+msgstr ""
+"Info 响应对象是保留 Hyperliquid wire 字段名称的 ``TypedDict`` 类和类型别名。"
+"数值 wire 字段仍为字符串。"
+
+#: ../../reference/response-types.rst:15 ca555036e9d943a990c57daa1547066a
+msgid "Exchange response envelopes"
+msgstr "Exchange 响应封装"
+
+#: ../../reference/response-types.rst:17 7a5ca19cac584ae5864a28bc305ec638
+msgid ""
+"Every Exchange response has a top-level ``status``. Successful order, "
+"cancel, and TWAP responses contain operation-specific data; a default "
+"success contains only the default acknowledgement. A protocol rejection "
+"is an ``ExchangeError`` with ``status == \"err\"`` and a string "
+"``response``."
+msgstr ""
+"每个 Exchange 响应都有顶层 ``status``。成功的订单、取消和 TWAP 响应包含特定于操作的数据；"
+"默认成功响应仅包含默认确认。协议拒绝是 ``ExchangeError``，其 ``status == \"err\"``，"
+"且 ``response`` 为字符串。"
+
+#: ../../reference/response-types.rst:22 84d47dcd02d541a18de2f3d23aa4e267
+msgid ""
+"The public aliases :data:`async_hyperliquid.types.PlaceOrderResponse`, "
+":data:`async_hyperliquid.types.CancelOrderResponse`, "
+":data:`async_hyperliquid.types.PlaceTwapResponse`, "
+":data:`async_hyperliquid.types.CancelTwapResponse`, "
+":data:`async_hyperliquid.types.DefaultActionResponse`, and "
+":data:`async_hyperliquid.types.ActionResponse` compose the detailed "
+"shapes below."
+msgstr ""
+"公共别名 :data:`async_hyperliquid.types.PlaceOrderResponse`、"
+":data:`async_hyperliquid.types.CancelOrderResponse`、"
+":data:`async_hyperliquid.types.PlaceTwapResponse`、"
+":data:`async_hyperliquid.types.CancelTwapResponse`、"
+":data:`async_hyperliquid.types.DefaultActionResponse` 和 "
+":data:`async_hyperliquid.types.ActionResponse` 组成以下详细结构。"

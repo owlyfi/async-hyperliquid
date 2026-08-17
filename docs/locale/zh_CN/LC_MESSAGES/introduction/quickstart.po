@@ -1,0 +1,84 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../introduction/quickstart.rst:2 e0bbb0596d4b41229b50bfcc27177b9e
+msgid "Quickstart"
+msgstr "快速入门"
+
+#: ../../introduction/quickstart.rst:5 e9b6bd03b8514e3b98d1f8242a929d65
+msgid "Read market data safely"
+msgstr "安全读取市场数据"
+
+#: ../../introduction/quickstart.rst:7 9d4ac47e0c5745aa8c7b9c7d8250c5e3
+msgid "The safest first program is credential-free and performs no signed action:"
+msgstr "最安全的第一个程序不需要凭据，且不会执行任何已签名操作："
+
+#: ../../introduction/quickstart.rst:26 07fa949213bf434595fc043348ac5ca7
+msgid "Inspect an account without signing"
+msgstr "无需签名即可检查账户"
+
+#: ../../introduction/quickstart.rst:28 d673dde54021498daf0b552db1377e8d
+msgid "An address is public query input, not a credential:"
+msgstr "地址是公开查询输入，不是凭据："
+
+#: ../../introduction/quickstart.rst:50 dc787f43f7ce4121ae31f363d52b74c2
+msgid "Prepare an authenticated client"
+msgstr "准备已认证客户端"
+
+#: ../../introduction/quickstart.rst:54 6be143452fd346c6bcf161e83107e323
+msgid ""
+"A signing key authorizes real actions. Start with ``Network.TESTNET``, "
+"keep secrets out of source code and logs, and verify the account/API-"
+"wallet relationship before submitting anything."
+msgstr ""
+"签名密钥会授权真实操作。请从 ``Network.TESTNET`` 开始，使机密不出现在源码和日志中，"
+"并在提交任何内容前验证账户/API wallet 关系。"
+
+#: ../../introduction/quickstart.rst:58 1ef3694d765d4d558eb969d9b26a2798
+msgid ""
+"Creating the client does not submit an action. This pattern lets an "
+"application verify routing and read state before enabling a trading "
+"command:"
+msgstr ""
+"创建客户端不会提交操作。这种模式使应用程序能够在启用交易命令前验证路由并读取状态："
+
+#: ../../introduction/quickstart.rst:111 8d32f377a4fe4102b63d5a674a8c4881
+msgid ""
+"The signer address is derived locally from the key and is never confused "
+"with the execution address. A main-account key must derive to "
+"``account_address``; otherwise the signer must have the agent role owned "
+"by that account. When the optional subaccount is configured, its role "
+"must identify the same main account as master. A vault requires its own "
+"protocol-specific relationship checks; do not pass a vault through the "
+"subaccount variable."
+msgstr ""
+"签名者地址在本地由密钥派生，绝不会与执行地址混淆。main account 的密钥必须派生为 "
+"``account_address``；否则签名者必须具有由该账户拥有的 agent 角色。配置可选 subaccount 时，"
+"其角色必须将同一 main account 标识为 master。vault 需要自行执行特定协议关系检查；"
+"请勿通过 subaccount 变量传入 vault。"
+
+#: ../../introduction/quickstart.rst:118 dfffce466cbe4e70a0fb656d90ef250c
+msgid ""
+"Read :doc:`../howto/routing` before supplying a vault address or custom "
+"URL, and :doc:`../howto/lifecycle-reconciliation` before submitting "
+"signed actions."
+msgstr ""
+"在提供 vault 地址或自定义 URL 前，请阅读 :doc:`../howto/routing`；提交已签名操作前，请阅读 "
+":doc:`../howto/lifecycle-reconciliation`。"

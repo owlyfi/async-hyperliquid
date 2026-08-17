@@ -28,8 +28,11 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --dev --group benchmark --group docs
 
-      - name: Build documentation
-        run: uv run --frozen --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
+      - name: Build English documentation
+        run: uv run --frozen --group docs sphinx-build -E -a -W --keep-going -D language=en -b html docs docs/_build/html/en
+
+      - name: Build Simplified Chinese documentation
+        run: uv run --frozen --group docs sphinx-build -E -a -W --keep-going -D language=zh_CN -b html docs docs/_build/html/zh_CN
 
       - name: Check formatting
         run: uv run ruff format --check

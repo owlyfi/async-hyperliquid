@@ -1,0 +1,796 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../migration-0.5-to-1.0.md:1 e54778a893f840e1815626548c3305e6
+msgid "Migrating async-hyperliquid 0.5 to 1.0"
+msgstr "从 async-hyperliquid 0.5 迁移到 1.0"
+
+#: ../../migration-0.5-to-1.0.md:3 d1ebf89551be49a589734b1fbf25b3a4
+msgid ""
+"Version 1 is a deliberate API break. It removes the dynamic facade and "
+"replaces implicit state with two explicit clients:"
+msgstr ""
+"版本 1 有意引入了不兼容的 API 变更。它移除了动态门面，并用两个显式客户端取代隐式状态："
+
+#: ../../migration-0.5-to-1.0.md:6 3034963433ca41f4894b83556b0850fd
+msgid "use `InfoClient` for every credential-free read;"
+msgstr "所有无需凭据的读取都使用 `InfoClient`；"
+
+#: ../../migration-0.5-to-1.0.md:7 9f9aa11121d84d69930c822743fe3e3f
+msgid ""
+"use `AsyncHyperliquid` when signed Exchange actions are required; call "
+"root trading workflows when Info resolution is needed and `.exchange` "
+"only for Info-independent actions."
+msgstr ""
+"需要签名的 Exchange 操作时使用 `AsyncHyperliquid`；需要 Info 解析时调用根级交易工作流，"
+"仅对不依赖 Info 的操作使用 `.exchange`。"
+
+#: ../../migration-0.5-to-1.0.md:11 b1fd675ac63b41a98878e7b0f9a29ede
+msgid ""
+"There is no runtime compatibility wrapper. Migrate call sites "
+"mechanically and pin existing consumers to `<1` until their migration is "
+"reviewed."
+msgstr ""
+"没有运行时兼容包装器。请按规则逐一迁移调用点，并在迁移通过审查前将现有使用方固定到 `<1`。"
+
+#: ../../migration-0.5-to-1.0.md:14 bdd52dfac850491cbb898a6a0b56c8b1
+msgid "Imports"
+msgstr "导入"
+
+#: ../../migration-0.5-to-1.0.md:16 ../../migration-0.5-to-1.0.md:45
+#: ../../migration-0.5-to-1.0.md:152 5418a76cf7ec4dbaae13bde26e9545e3
+#: 7866ca8bd263464abb9015c643a09f03 d65abd64972d43a8bdd47357bdd3caa1
+msgid "Before:"
+msgstr "迁移前："
+
+#: ../../migration-0.5-to-1.0.md:24 ../../migration-0.5-to-1.0.md:58
+#: 00f7e7c6f090484aacbbbf0b31f85180 4e9ec3ab38f549b18c4e150b0228b48f
+msgid "After:"
+msgstr "迁移后："
+
+#: ../../migration-0.5-to-1.0.md:36 4b40a79f739e4c4e8e3daa4a8e98782a
+msgid ""
+"The package root exports exactly `AsyncHyperliquid`, `InfoClient`, and "
+"`HyperliquidError`. Commands and enums live in `async_hyperliquid.types`."
+" Detailed response types live in `async_hyperliquid.types.info` and "
+"`async_hyperliquid.types.exchange`."
+msgstr ""
+"包根目录仅导出 `AsyncHyperliquid`、`InfoClient` 和 `HyperliquidError`。命令和枚举位于 "
+"`async_hyperliquid.types`。详细响应类型位于 `async_hyperliquid.types.info` 和 "
+"`async_hyperliquid.types.exchange`。"
+
+#: ../../migration-0.5-to-1.0.md:41 6496f5ae541e49729b84934bfca7f08a
+msgid ""
+"Removed imports fail immediately. They do not resolve to deprecated "
+"aliases."
+msgstr "已移除的导入会立即失败，不会解析到已弃用的别名。"
+
+#: ../../migration-0.5-to-1.0.md:43 fd050f39a78149a58dfc25d0a66af4e1
+msgid "Constructor"
+msgstr "构造函数"
+
+#: ../../migration-0.5-to-1.0.md 80fd6a1e74b244149785ef30e11d41bd
+msgid "0.5 argument or state"
+msgstr "0.5 参数或状态"
+
+#: ../../migration-0.5-to-1.0.md b5c9cb9db2394279a7fef38fb3edb50d
+msgid "1.0 replacement"
+msgstr "1.0 替代项"
+
+#: ../../migration-0.5-to-1.0.md 2fac7abce1524f4196e3c613702bd8a5
+msgid "`address`"
+msgstr "`address`"
+
+#: ../../migration-0.5-to-1.0.md 0e4f3aab6230436ea87ac7d82cd63d42
+msgid "`account_address`"
+msgstr "`account_address`"
+
+#: ../../migration-0.5-to-1.0.md fb718f2a31d5437bac0ae6c7d582e249
+msgid "`api_key`"
+msgstr "`api_key`"
+
+#: ../../migration-0.5-to-1.0.md 8650264ca0024fb698e2d8414a2c07b6
+msgid "`signing_key`"
+msgstr "`signing_key`"
+
+#: ../../migration-0.5-to-1.0.md 4290474877d74094b8e20523a13bc838
+msgid "`is_mainnet=True`"
+msgstr "`is_mainnet=True`"
+
+#: ../../migration-0.5-to-1.0.md 111e9d57bda24336ba939553ab1c8d4f
+msgid "`network=Network.MAINNET`"
+msgstr "`network=Network.MAINNET`"
+
+#: ../../migration-0.5-to-1.0.md 562d07bfa0b54df68208db30411194b7
+msgid "`is_mainnet=False`"
+msgstr "`is_mainnet=False`"
+
+#: ../../migration-0.5-to-1.0.md cb7db95431dd4409ac41dbeb1654ddfa
+msgid "`network=Network.TESTNET`"
+msgstr "`network=Network.TESTNET`"
+
+#: ../../migration-0.5-to-1.0.md bcadd2a4afe64dcea49441882280c859
+msgid "mutable `base_url`"
+msgstr "可变的 `base_url`"
+
+#: ../../migration-0.5-to-1.0.md ecff8f9c52da416e8bf5c521cb3cdf64
+msgid "immutable constructor-time `info_url` and/or `exchange_url`"
+msgstr "构造时确定且不可变的 `info_url` 和/或 `exchange_url`"
+
+#: ../../migration-0.5-to-1.0.md 80e10f65d1954255bb2188ee590df186
+msgid "`perp_dexs: list[str]`"
+msgstr "`perp_dexs: list[str]`"
+
+#: ../../migration-0.5-to-1.0.md 7eab06a3edfb40d2a7b135fd69e14fe5
+msgid "`dexs: tuple[str, ...]`"
+msgstr "`dexs: tuple[str, ...]`"
+
+#: ../../migration-0.5-to-1.0.md 038b7e7042a848a19dad407c2feead95
+msgid "`connector`"
+msgstr "`connector`"
+
+#: ../../migration-0.5-to-1.0.md 8cd6bca6a3234b2a976aa178cad42ae3
+msgid ""
+"construct an `aiohttp.ClientSession` with that connector and pass "
+"`session=`"
+msgstr "使用该 connector 构造 `aiohttp.ClientSession`，并通过 `session=` 传入"
+
+#: ../../migration-0.5-to-1.0.md 18e1c19fd3d245d5bad52c81fe4beddb
+msgid "`enable_evm`, `evm_rpc_url`, `private_key`"
+msgstr "`enable_evm`、`evm_rpc_url`、`private_key`"
+
+#: ../../migration-0.5-to-1.0.md ee82c2bab18e4caf82c223f1bee05f47
+msgid "use `hl-web3` directly"
+msgstr "直接使用 `hl-web3`"
+
+#: ../../migration-0.5-to-1.0.md a54b7be66eb9456aa222fd3a810699cd
+msgid "client-wide `vault`"
+msgstr "客户端级 `vault`"
+
+#: ../../migration-0.5-to-1.0.md 46f7879ddac54cb7a474ac5a1b85d0c5
+msgid "immutable constructor-time `vault_address`"
+msgstr "构造时确定且不可变的 `vault_address`"
+
+#: ../../migration-0.5-to-1.0.md d25aa6cba7724057b4d545d38c198f41
+msgid "mutable `expires`"
+msgstr "可变的 `expires`"
+
+#: ../../migration-0.5-to-1.0.md 82be7233a00349a69005107aaca62ad4
+msgid "pass `expires_after=` to each supported action"
+msgstr "向每个支持的操作传入 `expires_after=`"
+
+#: ../../migration-0.5-to-1.0.md:83 15deb14bd30a4fa8807f736de41a73b1
+msgid ""
+"`Network` selects the signing domain and the official URL defaults. "
+"Neither custom URL can change the signing domain."
+msgstr ""
+"`Network` 选择签名域和官方默认 URL。任何自定义 URL 都不能改变签名域。"
+
+#: ../../migration-0.5-to-1.0.md:86 d88f2e8d766844c4b5cf20c50383e15b
+msgid ""
+"`vault_address` is the immutable execution target for the client. It is "
+"carried through execution-scoped L1 signing/envelopes and position "
+"lookup, and through the protocol-specific subaccount fields used by USD "
+"class and asset transfers. Root-scoped administration actions still sign "
+"as the main account. Omitting it targets the main account everywhere."
+msgstr ""
+"`vault_address` 是客户端不可变的执行目标。它会贯穿执行范围内的 L1 签名/信封与仓位查询，"
+"也会用于 USD 类别转账和资产转账所使用的协议特定 subaccount 字段。根范围的管理操作仍以 "
+"main account 签名。省略它时，所有操作都以 main account 为目标。"
+
+#: ../../migration-0.5-to-1.0.md:92 ae33f217d6d64291960d3419e3b35a16
+msgid "Read-only clients no longer need fake credentials"
+msgstr "只读客户端不再需要伪造凭据"
+
+#: ../../migration-0.5-to-1.0.md:94 70a425f19c434d4cad2349a5571926f4
+msgid ""
+"Do not generate an ephemeral private key or placeholder address to read "
+"Info:"
+msgstr "不要为了读取 Info 而生成临时私钥或占位地址："
+
+#: ../../migration-0.5-to-1.0.md:104 6d4f99e752674df39e9c03c96a855754
+msgid ""
+"Every account-specific Info method accepts the queried address "
+"explicitly. An `InfoClient` has no signer and no Exchange capability."
+msgstr ""
+"每个账户特定的 Info 方法都会显式接收待查询地址。`InfoClient` 没有签名器，也不具备 Exchange 能力。"
+
+#: ../../migration-0.5-to-1.0.md:107 98a5501d9b46426da93419e4e5c9c535
+msgid "Flat facade methods"
+msgstr "扁平门面方法"
+
+#: ../../migration-0.5-to-1.0.md:109 3330e9cccd524da5b84e13d8ccbff1b0
+msgid ""
+"`AsyncHyperliquid` is the lifecycle and cross-client orchestration owner."
+" It has no `__getattr__` and does not forward endpoint calls."
+msgstr ""
+"`AsyncHyperliquid` 负责生命周期和跨客户端编排。它没有 `__getattr__`，也不会转发端点调用。"
+
+#: ../../migration-0.5-to-1.0.md:112 1564024bc1c74000bae1a526f432d2c8
+msgid "Common read mappings:"
+msgstr "常用读取映射："
+
+#: ../../migration-0.5-to-1.0.md 12492ea66fe742419f92aa113218994b
+#: 7db011b0440c407ea9da533b2a43f2a2 d309b6dd291b49f6b69cd6f092aafaa3
+msgid "0.5"
+msgstr "0.5"
+
+#: ../../migration-0.5-to-1.0.md 924847bf88b84d0c93c3e5a23e0baa0f
+#: 9e305ae384724ba29c908cfa277c3660 e11aab3106de4ed29babb92244a4c7cd
+msgid "1.0"
+msgstr "1.0"
+
+#: ../../migration-0.5-to-1.0.md 6fba515bb50945eaa883df84b3998773
+msgid "`client.init_metas()`"
+msgstr "`client.init_metas()`"
+
+#: ../../migration-0.5-to-1.0.md 4cf20ed5beb34ad59df9ba36235fdec4
+msgid "`client.info.refresh_metadata()`"
+msgstr "`client.info.refresh_metadata()`"
+
+#: ../../migration-0.5-to-1.0.md 90ec8682ee094aa2aa2ed48b0af19d68
+msgid "`client.get_all_dex_name()`"
+msgstr "`client.get_all_dex_name()`"
+
+#: ../../migration-0.5-to-1.0.md 32cb082c0aa540d6a51e044f7cb16c10
+msgid "`client.info.perp_dex_names()`"
+msgstr "`client.info.perp_dex_names()`"
+
+#: ../../migration-0.5-to-1.0.md 5ccf1abc3bee47258016dbf2e4d898ef
+msgid "`client.get_coin_name(coin)`"
+msgstr "`client.get_coin_name(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 3a72bb2b09974c838345c71170ce2b41
+msgid "`client.info.coin_name(coin)`"
+msgstr "`client.info.coin_name(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 88e3676a60404f499c7a9c306f4b985b
+msgid "`client.get_coin_symbol(coin)`"
+msgstr "`client.get_coin_symbol(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 44481c33bb4248cba33c2a5c84bd663c
+msgid "`client.info.coin_symbol(coin)`"
+msgstr "`client.info.coin_symbol(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 88548703a4cb4097bfd405a5ea843060
+msgid "`client.get_coin_asset(coin)`"
+msgstr "`client.get_coin_asset(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 03057e4d4d6649069e5f901246687577
+msgid "`client.info.asset_id(coin)`"
+msgstr "`client.info.asset_id(coin)`"
+
+#: ../../migration-0.5-to-1.0.md a52f5356093a4ab79681082e0771d526
+msgid "`client.get_coin_sz_decimals(coin)`"
+msgstr "`client.get_coin_sz_decimals(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 4deef3c856044142887f9d8cf0ed6fab
+msgid "`client.info.size_decimals(coin)`"
+msgstr "`client.info.size_decimals(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 7f449b3da05b4872983bf14940ff6920
+msgid "`client.get_token_info(coin)`"
+msgstr "`client.get_token_info(coin)`"
+
+#: ../../migration-0.5-to-1.0.md fd6985612ca74c63ba7859355f1ba852
+msgid "`client.info.spot_token_metadata(coin)`"
+msgstr "`client.info.spot_token_metadata(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 7612ac49fb384f1ab80e151f2cfa5d9f
+msgid "`client.get_token_id(coin)`"
+msgstr "`client.get_token_id(coin)`"
+
+#: ../../migration-0.5-to-1.0.md ba2f4cdc441f4d3598c6c2b4faff3c96
+msgid "`client.info.token_id(coin)`"
+msgstr "`client.info.token_id(coin)`"
+
+#: ../../migration-0.5-to-1.0.md f1a086cb4cf945b3b65cf2b7c8e1cc83
+msgid "`client.get_mark_price(coin)`"
+msgstr "`client.get_mark_price(coin)`"
+
+#: ../../migration-0.5-to-1.0.md d5e0b9d6875c45469e36481a8fdd56e4
+msgid "`client.info.mark_price(coin)`"
+msgstr "`client.info.mark_price(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 9baaadeca055439dbc97dce8d52e6750
+msgid "`client.get_mid_price(coin)`"
+msgstr "`client.get_mid_price(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 15b767b55aa1419a861282fcf7eebaca
+msgid "`client.info.mid_price(coin)`"
+msgstr "`client.info.mid_price(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 7a1c244316da43b6b59790c05de4347f
+msgid "`client.get_account_state()`"
+msgstr "`client.get_account_state()`"
+
+#: ../../migration-0.5-to-1.0.md 9b7cc6f02e0d487e8ad0a946b9285b7c
+msgid "`client.info.account_state(account_address)`"
+msgstr "`client.info.account_state(account_address)`"
+
+#: ../../migration-0.5-to-1.0.md 8743a2db883b404da5cd772e3f998e46
+msgid "`client.get_user_open_orders()`"
+msgstr "`client.get_user_open_orders()`"
+
+#: ../../migration-0.5-to-1.0.md 47e2990b659e425ca619f75b089b8c05
+msgid "`client.info.open_orders(account_address)`"
+msgstr "`client.info.open_orders(account_address)`"
+
+#: ../../migration-0.5-to-1.0.md d7b16fec913c4a1aac584befead864f9
+msgid "`client.get_order_status(oid)`"
+msgstr "`client.get_order_status(oid)`"
+
+#: ../../migration-0.5-to-1.0.md e3f1b431fe8b4869babe80e662988642
+msgid "`client.info.order_status(account_address, oid)`"
+msgstr "`client.info.order_status(account_address, oid)`"
+
+#: ../../migration-0.5-to-1.0.md 2efcf4f17fef49c6b90876945ab91cc1
+msgid "`client.get_all_positions()`"
+msgstr "`client.get_all_positions()`"
+
+#: ../../migration-0.5-to-1.0.md 24bd107f09a042b88e3ee5915729d4c6
+msgid "`client.info.positions(account_address)`"
+msgstr "`client.info.positions(account_address)`"
+
+#: ../../migration-0.5-to-1.0.md d764037d0e89489e82dc8421facc0810
+msgid "`client.get_user_abstraction()`"
+msgstr "`client.get_user_abstraction()`"
+
+#: ../../migration-0.5-to-1.0.md 8aa3fdfed3094341a643782823c90664
+msgid "`client.info.user_abstraction(account_address)`"
+msgstr "`client.info.user_abstraction(account_address)`"
+
+#: ../../migration-0.5-to-1.0.md:132 9bbb4d5c382349719a585264688a0778
+msgid "Raw `InfoAPI.get_*` methods use the same direct naming rule:"
+msgstr "原始 `InfoAPI.get_*` 方法采用同样的直接命名规则："
+
+#: ../../migration-0.5-to-1.0.md d71551b383484f2f9af10de9ca94965e
+msgid "`get_all_mids`"
+msgstr "`get_all_mids`"
+
+#: ../../migration-0.5-to-1.0.md ba232b0ec24841f1b79ac2dbdcaef36e
+msgid "`all_mids`"
+msgstr "`all_mids`"
+
+#: ../../migration-0.5-to-1.0.md c2b2ae10517242b6942cd3476fb5c411
+msgid "`get_user_fills`"
+msgstr "`get_user_fills`"
+
+#: ../../migration-0.5-to-1.0.md 00bfee3d36044a4d8ed1b709df57cb8b
+msgid "`user_fills`"
+msgstr "`user_fills`"
+
+#: ../../migration-0.5-to-1.0.md 6d8a95ac7cad47ad8d6d70be7e76cac9
+msgid "`get_user_rate_limit`"
+msgstr "`get_user_rate_limit`"
+
+#: ../../migration-0.5-to-1.0.md 24d7339428a7472d8e377b8c1afa1914
+msgid "`user_rate_limit`"
+msgstr "`user_rate_limit`"
+
+#: ../../migration-0.5-to-1.0.md e4761c82a0a8445b891b2b4e44ef2489
+msgid "`get_depth`"
+msgstr "`get_depth`"
+
+#: ../../migration-0.5-to-1.0.md 0e17caefe53c4d7f96247194c2137100
+msgid "`l2_book`"
+msgstr "`l2_book`"
+
+#: ../../migration-0.5-to-1.0.md 33a605efed7f43d8876f22380bba5e14
+msgid "`get_candles`"
+msgstr "`get_candles`"
+
+#: ../../migration-0.5-to-1.0.md 1c6fb9c3cf4d4590b3132ee66055429d
+msgid "`candles`"
+msgstr "`candles`"
+
+#: ../../migration-0.5-to-1.0.md 864b40b39f114680a77ab914410e4f9d
+msgid "`get_perp_meta`"
+msgstr "`get_perp_meta`"
+
+#: ../../migration-0.5-to-1.0.md 5c3c75f2965d461480bd728447f40876
+msgid "`perp_meta`"
+msgstr "`perp_meta`"
+
+#: ../../migration-0.5-to-1.0.md 1e29d325a19d4ee8b3870299e2225949
+msgid "`get_perp_meta_ctx`"
+msgstr "`get_perp_meta_ctx`"
+
+#: ../../migration-0.5-to-1.0.md b803e4aa41824f8dba7f375f6bee9855
+msgid "`perp_meta_and_contexts`"
+msgstr "`perp_meta_and_contexts`"
+
+#: ../../migration-0.5-to-1.0.md d16ca4b44bcd40cb92bde47eb325002e
+msgid "`get_all_perp_metas`"
+msgstr "`get_all_perp_metas`"
+
+#: ../../migration-0.5-to-1.0.md a329149d4e004a9f965b3d05ff9f0013
+msgid "`all_perp_metas`"
+msgstr "`all_perp_metas`"
+
+#: ../../migration-0.5-to-1.0.md fa93a6a520b0457791b6482892526378
+msgid "`get_perp_dexs`"
+msgstr "`get_perp_dexs`"
+
+#: ../../migration-0.5-to-1.0.md 7e61a86338834b739cf39e1cfa34c09f
+msgid "`perp_dexes`"
+msgstr "`perp_dexes`"
+
+#: ../../migration-0.5-to-1.0.md 40a4ceaa923b4da1aea8fc484cb5437f
+msgid "`get_perp_clearinghouse_state`"
+msgstr "`get_perp_clearinghouse_state`"
+
+#: ../../migration-0.5-to-1.0.md cea0fa236ed7421f9f56dbe0d9fc3983
+msgid "`perp_account_state`"
+msgstr "`perp_account_state`"
+
+#: ../../migration-0.5-to-1.0.md 5fa73849972f4eaa9a44e7022490c44c
+msgid "`get_spot_meta`"
+msgstr "`get_spot_meta`"
+
+#: ../../migration-0.5-to-1.0.md 9bbc0735012c474da15a062715e0dee5
+msgid "`spot_meta`"
+msgstr "`spot_meta`"
+
+#: ../../migration-0.5-to-1.0.md 5eb1665a1af7447b93983e974c6e5ae9
+msgid "`get_spot_meta_ctx`"
+msgstr "`get_spot_meta_ctx`"
+
+#: ../../migration-0.5-to-1.0.md 7a0d14a3ab8b4765841ac74c0cb664e3
+msgid "`spot_meta_and_contexts`"
+msgstr "`spot_meta_and_contexts`"
+
+#: ../../migration-0.5-to-1.0.md 767f44af74dc431882049720ba6513d8
+msgid "`get_spot_clearinghouse_state`"
+msgstr "`get_spot_clearinghouse_state`"
+
+#: ../../migration-0.5-to-1.0.md 3e9e5e5179544d2a988a12156060fc9b
+msgid "`spot_account_state`"
+msgstr "`spot_account_state`"
+
+#: ../../migration-0.5-to-1.0.md:150 ea067455d81642aa9c283fd9a10b59fe
+msgid "One typed order-request vocabulary"
+msgstr "统一的类型化订单请求词汇"
+
+#: ../../migration-0.5-to-1.0.md:164 68e716ca4d7d46ecb14e144031a7d3ec
+msgid "After, the compatibility root call remains expanded:"
+msgstr "迁移后，兼容的根级调用仍采用展开参数："
+
+#: ../../migration-0.5-to-1.0.md:177 0210837256974ffc90344b475f24e57d
+msgid ""
+"Direct and batch root workflows use the same JSON-shaped `TypedDict` "
+"request:"
+msgstr "直接和批量根级工作流使用相同 JSON 结构的 `TypedDict` 请求："
+
+#: ../../migration-0.5-to-1.0.md:192 c717ac28714c418cb99857dfa130c269
+msgid ""
+"`LimitOrderOption` and `TriggerOrderOption` are singular because each "
+"order has one option object. `TimeInForce` is nested under `limit.tif`; "
+"it is not an order type. Use `is_buy: bool` for commands and `cloid` "
+"everywhere. Builder attribution is passed separately as "
+"`builder=Builder(...)`."
+msgstr ""
+"`LimitOrderOption` 和 `TriggerOrderOption` 使用单数形式，因为每个订单只有一个选项对象。"
+"`TimeInForce` 嵌套在 `limit.tif` 下；它不是订单类型。命令使用 `is_buy: bool`，并统一使用 "
+"`cloid`。Builder 归因通过 `builder=Builder(...)` 单独传入。"
+
+#: ../../migration-0.5-to-1.0.md:197 7f4f6071c2ee4b3ab03ad09ab92fe3c4
+msgid ""
+"`place_orders` now owns every batch placement path, including market "
+"orders; the provisional RC1 `place_market_orders` helper was removed. A "
+"batch may mix outer market and non-market requests, and a perpetual batch"
+" may span the base and HIP-3 DEXes. It cannot mix perpetual markets with "
+"spot or outcome markets. Builder fees are capped at `100` tenths of a "
+"basis point for perpetuals and `1000` for spot/outcome after metadata "
+"resolution. Outcome prices use a `0.00001` USDC tick in the "
+"`0.00001..0.99999` range. The Exchange, not the SDK, validates minimum "
+"order notional."
+msgstr ""
+"`place_orders` 现在负责所有批量下单路径，包括市价单；临时的 RC1 辅助方法 `place_market_orders` "
+"已移除。一个批次可以混合外层市价请求和非市价请求，perpetual 批次也可以跨越基础 DEX 和 HIP-3 "
+"DEX。它不能混合 perpetual 市场与 spot 或 outcome 市场。元数据解析后，perpetual 的 Builder "
+"费用上限为 `100` 个十分之一基点，spot/outcome 的上限为 `1000`。Outcome 价格在 "
+"`0.00001..0.99999` 范围内使用 `0.00001` USDC 的最小变动单位。最小订单名义金额由 Exchange "
+"而非 SDK 验证。"
+
+#: ../../migration-0.5-to-1.0.md:206 b5b6590659f74dabb0d7b48e3e2f13a1
+msgid "Common write mappings:"
+msgstr "常用写入映射："
+
+#: ../../migration-0.5-to-1.0.md 9909d104126e4f3d81cedf843b12c647
+msgid "`place_order(...)`, `place_typed_order(...)`"
+msgstr "`place_order(...)`、`place_typed_order(...)`"
+
+#: ../../migration-0.5-to-1.0.md 673f896c8ddf413992728401bdab2ef4
+msgid "root `place_order(...)` or root `place_*_order(request)`"
+msgstr "根级 `place_order(...)` 或根级 `place_*_order(request)`"
+
+#: ../../migration-0.5-to-1.0.md 90af2603a7bc435cba9463d27934f4e4
+msgid "`batch_place_orders(items)`"
+msgstr "`batch_place_orders(items)`"
+
+#: ../../migration-0.5-to-1.0.md 888da93a33f04d228242ea7efe7a95ab
+msgid "root `place_orders(requests)` / identical `batch_place_orders` alias"
+msgstr "根级 `place_orders(requests)` / 等效的 `batch_place_orders` 别名"
+
+#: ../../migration-0.5-to-1.0.md b4ca65c480c547eb876111b501afeee8
+msgid "`cancel_order`, `batch_cancel_orders`"
+msgstr "`cancel_order`、`batch_cancel_orders`"
+
+#: ../../migration-0.5-to-1.0.md 63f83f3cace94820bb018f787851ab6e
+msgid "root `cancel_order(...)` / `cancel_orders(...)`"
+msgstr "根级 `cancel_order(...)` / `cancel_orders(...)`"
+
+#: ../../migration-0.5-to-1.0.md 4e9ad43100b84485bad4d2dea321e198
+msgid "`cancel_by_cloid`, `batch_cancel_by_cloid`"
+msgstr "`cancel_by_cloid`、`batch_cancel_by_cloid`"
+
+#: ../../migration-0.5-to-1.0.md 78c54b7ceb7d48a588dda1cdcfe4eaf2
+msgid "root `cancel_orders_by_cloid(tuple_of_CancelByCloid)`"
+msgstr "根级 `cancel_orders_by_cloid(tuple_of_CancelByCloid)`"
+
+#: ../../migration-0.5-to-1.0.md 9062d4f410b44cd88096260682260c1a
+msgid "`modify_order`, `batch_modify_orders`"
+msgstr "`modify_order`、`batch_modify_orders`"
+
+#: ../../migration-0.5-to-1.0.md 4e60c242add14e1ba23aca28e7c04e14
+msgid "root `modify_order(request)` / `modify_orders(requests)`"
+msgstr "根级 `modify_order(request)` / `modify_orders(requests)`"
+
+#: ../../migration-0.5-to-1.0.md 0ce87aeff1d1424eb1ad2b519ef3f493
+msgid "`close_position(coin)`"
+msgstr "`close_position(coin)`"
+
+#: ../../migration-0.5-to-1.0.md a4a5f3e9c38943fe8161836f47d6d265
+msgid "root `close_position(coin)`"
+msgstr "根级 `close_position(coin)`"
+
+#: ../../migration-0.5-to-1.0.md 6643f21952e24e5084f48222f2dea26a
+msgid "`close_all_positions()`"
+msgstr "`close_all_positions()`"
+
+#: ../../migration-0.5-to-1.0.md 58c6b8508157484ea7b82dd98cabeb6d
+msgid "root `close_all_positions()`"
+msgstr "根级 `close_all_positions()`"
+
+#: ../../migration-0.5-to-1.0.md 0d0245923a5d45858325d32f3f4eb920
+msgid "`close_dex_positions(dex)`"
+msgstr "`close_dex_positions(dex)`"
+
+#: ../../migration-0.5-to-1.0.md 3a01a159c8c94fc58ee8c2ff33f07803
+msgid "root `close_all_positions(dexs=(dex,))`"
+msgstr "根级 `close_all_positions(dexs=(dex,))`"
+
+#: ../../migration-0.5-to-1.0.md a91fb7adadea4b90b2ab751a03628af3
+msgid "`initiate_withdrawal(amount)`"
+msgstr "`initiate_withdrawal(amount)`"
+
+#: ../../migration-0.5-to-1.0.md 7118640a200640b391f3a83b845571e4
+msgid "`exchange.withdraw(amount)`"
+msgstr "`exchange.withdraw(amount)`"
+
+#: ../../migration-0.5-to-1.0.md 45c849d99f634a1996ac306c7e4a8ee0
+msgid "`use_big_block(enabled)`"
+msgstr "`use_big_block(enabled)`"
+
+#: ../../migration-0.5-to-1.0.md 57d9697ff4c34e43898b1978240d1078
+msgid "`exchange.use_big_blocks(enabled)`"
+msgstr "`exchange.use_big_blocks(enabled)`"
+
+#: ../../migration-0.5-to-1.0.md:221 7b16917643bc47ec96839c6997560a97
+msgid ""
+"`modify_order(request)` returns the Exchange's default acknowledgement. "
+"`modify_orders(requests)` returns per-order statuses because "
+"`batchModify` uses the order response envelope."
+msgstr ""
+"`modify_order(request)` 返回 Exchange 的默认确认。`modify_orders(requests)` 返回逐订单状态，"
+"因为 `batchModify` 使用订单响应信封。"
+
+#: ../../migration-0.5-to-1.0.md:225 e1c9bbd50b2448a6b5a8fdf8e8eb872d
+msgid ""
+"Info-independent actions such as `usd_transfer`, `vault_transfer`, "
+"`approve_agent`, `approve_builder_fee`, staking, delegation, and "
+"abstraction remain on `.exchange`. Coin-resolving token transfers, TWAP, "
+"leverage, and margin workflows live on the root client."
+msgstr ""
+"`usd_transfer`、`vault_transfer`、`approve_agent`、`approve_builder_fee`、质押、委托和抽象等不依赖 "
+"Info 的操作仍位于 `.exchange`。需要解析币种的代币转账、TWAP、杠杆和保证金工作流位于根客户端。"
+
+#: ../../migration-0.5-to-1.0.md:230 ecfba7176dbb477590292c99f5506d11
+msgid ""
+"Close workflows always read the current full position size and submit one"
+" reduce-only market batch. The removed `size` and `slippage` parameters "
+"are not replaced; use `place_order(..., ro=True)` for a partial "
+"reduction."
+msgstr ""
+"平仓工作流始终读取当前完整仓位大小，并提交一个仅减仓市价批次。已移除的 `size` 和 `slippage` "
+"参数没有替代项；如需部分减仓，请使用 `place_order(..., ro=True)`。"
+
+#: ../../migration-0.5-to-1.0.md:234 ed30c09a64f945419f36a8db145cdda3
+msgid ""
+"Public request parameters use `dex`/`dexs`. The method "
+"`InfoClient.perp_dexes()` keeps its name only because it calls the "
+"official `perpDexs` Info endpoint."
+msgstr ""
+"公共请求参数使用 `dex`/`dexs`。`InfoClient.perp_dexes()` 保留该名称，只因它调用官方 "
+"`perpDexs` Info 端点。"
+
+#: ../../migration-0.5-to-1.0.md:238 1b3313a0f2af487184fc49a3114e834a
+msgid "Endpoint routing"
+msgstr "端点路由"
+
+#: ../../migration-0.5-to-1.0.md:240 0f4b58b850e541ac926b8d715ce99004
+msgid "Post-construction mutation is removed:"
+msgstr "构造后的修改已被移除："
+
+#: ../../migration-0.5-to-1.0.md:247 c3524eca5a26452197ce3b336c763bed
+msgid "Construct the endpoint you intend to use:"
+msgstr "请构造你准备使用的端点："
+
+#: ../../migration-0.5-to-1.0.md:261 7b8774e78a07413fbac68c9df15edeee
+msgid "URLs are independent and exact:"
+msgstr "各 URL 相互独立，并按原样使用："
+
+#: ../../migration-0.5-to-1.0.md:263 07476b089f96472ba73e82ba4cfeaa57
+msgid "`info_url` receives unsigned Info payloads only;"
+msgstr "`info_url` 仅接收未签名的 Info payload；"
+
+#: ../../migration-0.5-to-1.0.md:264 c272c7f32b5e43c4996cf8d8d89f49fe
+msgid "`exchange_url` receives signed action envelopes only;"
+msgstr "`exchange_url` 仅接收已签名的操作信封；"
+
+#: ../../migration-0.5-to-1.0.md:265 ba1f7743372943708c72efe62d861e18
+msgid "the signing key never leaves the process;"
+msgstr "签名密钥绝不会离开进程；"
+
+#: ../../migration-0.5-to-1.0.md:266 4a3709ea43644eaabb7032e6edb71cb0
+msgid "`network` remains the signing source even when either URL is custom."
+msgstr "即使任一 URL 为自定义地址，`network` 仍是签名来源。"
+
+#: ../../migration-0.5-to-1.0.md:268 3dcf878e4cb04309b393878e43f46067
+msgid ""
+"The application remains responsible for provider headers, fallback, "
+"health checks, and routing policy."
+msgstr "应用程序仍负责提供商请求头、回退、健康检查和路由策略。"
+
+#: ../../migration-0.5-to-1.0.md:271 3e9ae83db6c1402899fa3da057967bbc
+msgid ""
+"A custom Exchange URL is a trusted execution boundary: the provider sees "
+"replayable signed envelopes and can delay, censor, or fabricate a well-"
+"shaped acknowledgement. A custom Info endpoint attached to "
+"`AsyncHyperliquid` is also trusted order-construction input because its "
+"metadata and prices determine the asset ids, precision, and limit prices "
+"used in signed actions. Reconcile signed outcomes through an "
+"independently trusted Info endpoint. `expires_after` applies only to L1 "
+"methods that expose it; it does not add expiry semantics to user-signed "
+"fund actions."
+msgstr ""
+"自定义 Exchange URL 是受信任的执行边界：提供商可以看到可重放的已签名信封，也可以延迟、审查，"
+"或伪造格式正确的确认。挂接到 `AsyncHyperliquid` 的自定义 Info 端点同样是受信任的订单构造输入，"
+"因为其元数据和价格决定已签名操作所使用的资产 ID、精度和限价。请通过独立受信任的 Info 端点核对"
+"已签名操作的 outcome。`expires_after` 仅适用于公开该参数的 L1 方法；它不会为用户签名的资金操作"
+"增加到期语义。"
+
+#: ../../migration-0.5-to-1.0.md:280 103ab88ae4544447bf546724b49fee17
+msgid ""
+"Because `.info` and `.exchange` share the supplied session, never use "
+"session-wide authorization headers or cookies across different origins. "
+"Authenticate with host-scoped aiohttp middleware, or use separately owned"
+" clients and sessions."
+msgstr ""
+"由于 `.info` 和 `.exchange` 共享传入的 session，切勿跨不同源使用 session 级授权请求头或 cookie。"
+"请使用主机范围的 aiohttp 中间件进行认证，或使用各自独立拥有的客户端和 session。"
+
+#: ../../migration-0.5-to-1.0.md:285 94c476dd6fc044a5918e73bd528830c9
+msgid "Lifecycle"
+msgstr "生命周期"
+
+#: ../../migration-0.5-to-1.0.md:287 ac407b86f022422a938c8f04e6ab5594
+msgid ""
+"0.5 could create `ClientSession` during synchronous construction. Version"
+" 1 does not allocate asynchronous resources until `open()` or `async "
+"with`."
+msgstr ""
+"0.5 可以在同步构造期间创建 `ClientSession`。版本 1 在调用 `open()` 或进入 `async with` 前"
+"不会分配异步资源。"
+
+#: ../../migration-0.5-to-1.0.md:295 43595a34f4684348a01e961f52fb4b6e
+msgid ""
+"An internally created session is owned and closed by the client. A "
+"supplied session is borrowed and remains the caller's responsibility. "
+"Closing is idempotent; reopening a closed client is an error."
+msgstr ""
+"客户端拥有并关闭内部创建的 session。传入的 session 仅供借用，仍由调用方负责。关闭操作是幂等的；"
+"重新打开已关闭的客户端会报错。"
+
+#: ../../migration-0.5-to-1.0.md:299 107f98cbf7c24c32a413ee2bc2f521bb
+msgid "Signed-action failures"
+msgstr "已签名操作失败"
+
+#: ../../migration-0.5-to-1.0.md:301 9dfe1d67a28a4a15bc7d2fffa6104de1
+msgid ""
+"Version 1 never retries signed actions automatically. If the request may "
+"have reached the Exchange but no trusted acknowledgement was received, "
+"`IndeterminateActionError` includes the action type and nonce."
+msgstr ""
+"版本 1 从不自动重试已签名操作。如果请求可能已到达 Exchange，但未收到可信确认，"
+"`IndeterminateActionError` 会包含操作类型和 nonce。"
+
+#: ../../migration-0.5-to-1.0.md:305 a2c3e7aed88445f789dfa2cb4b43ab14
+msgid ""
+"Reconcile the outcome through Info before submitting a replacement. "
+"Depending on the action, use `order_status`, `open_orders`, `user_fills`,"
+" account state, or the corresponding action-specific Info query."
+msgstr ""
+"提交替代请求前，请先通过 Info 核对 outcome。根据具体操作，使用 `order_status`、`open_orders`、"
+"`user_fills`、账户状态或相应的操作特定 Info 查询。"
+
+#: ../../migration-0.5-to-1.0.md:309 adf5129aec6c4c53bd2773f51d362dcc
+msgid ""
+"Nonce monotonicity is guaranteed only within one `ExchangeClient`. Keep "
+"exactly one live Exchange owner per API wallet private key. If several "
+"processes or services must share a key, the application must serialize "
+"submissions and coordinate the nonce stream; version 1 does not add a "
+"distributed nonce service."
+msgstr ""
+"nonce 单调性仅在单个 `ExchangeClient` 内得到保证。每个 API wallet 私钥必须恰好只有一个存活的 "
+"Exchange 所有者。如果多个进程或服务必须共享一个密钥，应用程序必须串行提交并协调 nonce 流；"
+"版本 1 不提供分布式 nonce 服务。"
+
+#: ../../migration-0.5-to-1.0.md:315 088c9fad0267402fb5aefafee7aad85b
+msgid "Embedded EVM removal"
+msgstr "移除内嵌 EVM"
+
+#: ../../migration-0.5-to-1.0.md:317 bf336cf89caf435f8a382fb1ab805352
+msgid ""
+"The REST client no longer imports or initializes `hl-web3`. Existing EVM "
+"users should depend on and construct `hl-web3` directly. There is no "
+"adapter in the v1 core."
+msgstr ""
+"REST 客户端不再导入或初始化 `hl-web3`。现有 EVM 用户应直接依赖并构造 `hl-web3`。"
+"v1 核心中没有适配器。"
+
+#: ../../migration-0.5-to-1.0.md:321 148d789823d04190bf36a0cd02341a37
+msgid "Rollback"
+msgstr "回滚"
+
+#: ../../migration-0.5-to-1.0.md:323 0b5d9f1fd73d49048aa603728cf304e5
+msgid ""
+"The v1 package contains no legacy execution path. Roll back an "
+"application by:"
+msgstr "v1 包不包含旧版执行路径。回滚应用程序时："
+
+#: ../../migration-0.5-to-1.0.md:325 b544ed9c309a4e0491bc23a4b7e651b4
+msgid "reverting its v1 call-site migration;"
+msgstr "还原其 v1 调用点迁移；"
+
+#: ../../migration-0.5-to-1.0.md:326 97425e3ea76d42abbdc0b98359ed15a7
+msgid "pinning `async-hyperliquid<1`;"
+msgstr "固定使用 `async-hyperliquid<1`；"
+
+#: ../../migration-0.5-to-1.0.md:327 173155c31bc246ada0b3135d184480b8
+msgid "restoring the previously reviewed lock file."
+msgstr "恢复之前已审查的 lock 文件。"
+
+#: ../../migration-0.5-to-1.0.md:329 2747eb183d0d4cb0bfc8ae3869ace513
+msgid ""
+"Do not attempt to make one process support both object topologies through"
+" runtime method detection or forwarding wrappers."
+msgstr "不要试图通过运行时方法检测或转发包装器，让同一进程同时支持两种对象拓扑。"

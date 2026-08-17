@@ -1,0 +1,52 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/errors.rst:2 f858e2803ec040b9ba5494f010585290
+msgid "Errors"
+msgstr "错误"
+
+#: async_hyperliquid.errors.HttpError:1 ee39e93e26524b878a03cc46bcd5a91c of
+msgid "An HTTP request failure or non-success response."
+msgstr ""
+
+#: 65f42b384005420f9e8718b55ccd5bcf async_hyperliquid.errors.HyperliquidError:1
+#: of
+msgid "Base exception for failures reported by async-hyperliquid."
+msgstr ""
+
+#: async_hyperliquid.errors.IndeterminateActionError:1
+#: f99884e9555742208acbff93fa289e5b of
+msgid "A signed action may have reached the exchange without a trusted reply."
+msgstr ""
+
+#: async_hyperliquid.errors.ProtocolError:1 f1e3af586ced482da46c52e3653e161e of
+msgid "A response that does not match the Hyperliquid JSON protocol."
+msgstr ""
+
+#: ../../reference/errors.rst:8 8bea3ece512940c18aa9e58b3c99f6ef
+msgid ""
+"``HttpError`` can occur on unsigned Info calls. For signed calls, "
+"ambiguous timeout, HTTP, and protocol failures are converted to "
+"``IndeterminateActionError`` so applications do not mistake them for "
+"confirmed rejections. See :doc:`../howto/lifecycle-reconciliation`."
+msgstr ""
+"``HttpError`` 可能出现在未签名的 Info 调用中。对于已签名调用，含糊的超时、HTTP 和协议失败"
+"会转换为 ``IndeterminateActionError``，以便应用程序不会将其误认为已确认的拒绝。"
+"请参阅 :doc:`../howto/lifecycle-reconciliation`。"

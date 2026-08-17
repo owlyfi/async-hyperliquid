@@ -1,0 +1,55 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../index.rst:11
+msgid "Introduction"
+msgstr "介绍"
+
+#: ../../index.rst:19
+msgid "How-to guides"
+msgstr "操作指南"
+
+#: ../../index.rst:31
+msgid "API reference"
+msgstr "API 参考"
+
+#: ../../index.rst:43
+msgid "Project"
+msgstr "项目"
+
+#: ../../index.rst:2 40796f00288a43e9852c930d0a6cb338
+msgid "async-hyperliquid"
+msgstr "async-hyperliquid"
+
+#: ../../index.rst:4 e004092927284c0bad4a33bf67d8a106
+msgid ""
+"``async-hyperliquid`` is an asynchronous, typed Python client for "
+"Hyperliquid's HTTP Info and Exchange APIs. It separates credential-free "
+"reads from signed actions and makes network, endpoint, account, and vault"
+" routing explicit."
+msgstr ""
+"``async-hyperliquid`` 是用于 Hyperliquid HTTP Info 和 Exchange API 的异步、带类型的 Python 客户端。"
+"它将无需凭据的读取与已签名操作分离，并明确网络、端点、账户和 vault 的路由。"
+
+#: ../../index.rst:8 82e3ffaef8f6458eaaf3c6c991660d66
+msgid ""
+"Start with the read-only quickstart. Before enabling signed actions, read"
+" the account-routing, endpoint-trust, and reconciliation guidance."
+msgstr "请从只读快速入门开始。在启用已签名操作前，请阅读账户路由、端点信任与对账指南。"

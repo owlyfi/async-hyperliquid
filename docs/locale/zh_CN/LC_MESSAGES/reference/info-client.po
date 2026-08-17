@@ -1,0 +1,33 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/info-client.rst:2 ba2741dbbd624af8b554dfd32d4f7537
+msgid "InfoClient"
+msgstr ""
+
+#: async_hyperliquid.info.InfoClient:1 b164f8ec51f5454a98c8532f73159860 of
+msgid "Asynchronous, credential-free client for Hyperliquid Info endpoints."
+msgstr ""
+
+#: ../../reference/info-client.rst:8 1f63a6171904471ba052394ab30924db
+msgid ""
+"Info methods return the typed wire shape and do not require credentials. "
+"Account addresses are query parameters; they do not become client state."
+msgstr "Info 方法返回带类型的 wire 结构，且不需要凭据。账户地址是查询参数；不会成为客户端状态。"

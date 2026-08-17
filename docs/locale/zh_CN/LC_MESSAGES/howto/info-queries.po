@@ -1,0 +1,123 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../howto/info-queries.rst:2 4db1f0cdf50b49e4853a8e8f322f6f0b
+msgid "Query Info endpoints"
+msgstr "查询 Info 端点"
+
+#: ../../howto/info-queries.rst:4 04c947c3f2e74d1b894a0cc14a83bca6
+msgid ""
+"``InfoClient`` sends unsigned requests and can use mainnet, testnet, or "
+"an exact custom Info URL. Prefer one long-lived context for a related set"
+" of reads."
+msgstr ""
+"``InfoClient`` 发送未签名请求，可使用 mainnet、testnet 或精确指定的自定义 Info URL。"
+"对于相关的一组查询，优先使用一个长生命周期的上下文。"
+
+#: ../../howto/info-queries.rst:8 2cfe0de6ca4d4d829e07f53a76fd078a
+msgid "Market data"
+msgstr "市场数据"
+
+#: ../../howto/info-queries.rst:10 770198b85dec4d6fafccac5e5cb93e71
+msgid ""
+"The raw market methods preserve Hyperliquid response fields and numeric "
+"strings:"
+msgstr "原始市场方法会保留 Hyperliquid 响应字段和数值字符串："
+
+#: ../../howto/info-queries.rst:28 c5f2c85c6a734a4aadfac55ce57c482e
+msgid ""
+"Use ``perp_meta()``, ``perp_meta_and_contexts()``, ``all_perp_metas()``, "
+"``perp_dexes()``, ``spot_meta()``, and ``spot_meta_and_contexts()`` for "
+"venue metadata and contexts. Funding and capacity reads include "
+"``funding_history()``, ``predicted_fundings()``, "
+"``perps_at_open_interest_cap()``, and ``perp_deploy_auction_status()``."
+msgstr ""
+"使用 ``perp_meta()``、``perp_meta_and_contexts()``、``all_perp_metas()``、"
+"``perp_dexes()``、``spot_meta()`` 和 ``spot_meta_and_contexts()`` 获取交易场所元数据和上下文。"
+"资金费率和容量查询包括 ``funding_history()``、``predicted_fundings()``、"
+"``perps_at_open_interest_cap()`` 和 ``perp_deploy_auction_status()``。"
+
+#: ../../howto/info-queries.rst:35 c1c5e19043fc4cb6ba3a96b182b10032
+msgid "Account data"
+msgstr "账户数据"
+
+#: ../../howto/info-queries.rst:37 b764d7a85d044fde8ef35fed4acbdc82
+msgid ""
+"Pass the portfolio owner, subaccount, or vault address explicitly. An "
+"API-wallet address identifies a signing role and normally has no "
+"portfolio of its own."
+msgstr ""
+"请显式传入投资组合所有者、subaccount 或 vault 地址。API wallet 地址标识签名角色，"
+"通常并不拥有自己的投资组合。"
+
+#: ../../howto/info-queries.rst:48 f3f2780980904ac8a09bde8170642eb0
+msgid ""
+"``account_state()`` combines spot state, base perpetual state, and the "
+"requested HIP-3 DEX states. ``positions()`` flattens position entries "
+"from those DEXs. Use ``perp_account_state()`` or ``spot_account_state()``"
+" when only one venue is needed."
+msgstr ""
+"``account_state()`` 合并 spot 状态、基础 perpetual 状态及请求的 HIP-3 DEX 状态。"
+"``positions()`` 会将这些 DEX 中的持仓条目展平。仅需一个交易场所时，请使用 "
+"``perp_account_state()`` 或 ``spot_account_state()``。"
+
+#: ../../howto/info-queries.rst:53 3db753f82924490992fb4df2293e57fe
+msgid ""
+"Other account methods cover historical orders and TWAP fills; portfolio, "
+"fees, rate limits, referrals, and ledger updates; subaccounts and vault "
+"equities; staking summaries, history, rewards, and delegations; and "
+"account-abstraction state. See :doc:`../reference/info-client` for exact "
+"signatures."
+msgstr ""
+"其他账户方法涵盖历史订单和 TWAP 成交；投资组合、费用、速率限制、推荐和账本更新；"
+"subaccount 与 vault 权益；质押摘要、历史、奖励和委托；以及账户抽象状态。"
+"确切签名请参见 :doc:`../reference/info-client`。"
+
+#: ../../howto/info-queries.rst:59 444ad963d04846dab2ccc1c3216b5de2
+msgid "Time ranges"
+msgstr "时间范围"
+
+#: ../../howto/info-queries.rst:61 bd492e33a2b44a899052b55bdca5a801
+msgid ""
+"Timestamps are integer milliseconds. ``user_fills()`` requires "
+"``start_time`` when ``end_time`` is supplied. Funding and non-funding "
+"ledger methods require a start time and accept an optional end time."
+msgstr ""
+"时间戳为整数毫秒。提供 ``end_time`` 时，``user_fills()`` 需要 ``start_time``。"
+"资金费率和非资金费率账本方法需要开始时间，并接受可选的结束时间。"
+
+#: ../../howto/info-queries.rst:66 d8d6df7564c24ddea735ab97225e857c
+msgid "Response handling"
+msgstr "响应处理"
+
+#: ../../howto/info-queries.rst:68 454dc9c7bfab480f99f80062176d3265
+msgid ""
+"Wire numeric fields such as prices, sizes, and balances remain strings in"
+" detailed response types. Convert them with ``Decimal`` when exact "
+"arithmetic is required. Info methods validate their expected top-level "
+"container or scalar, but detailed nested fields are typed contracts "
+"rather than universally runtime-validated data. Metadata and price "
+"helpers perform additional validation for the fields they consume and "
+"raise ``ProtocolError`` for malformed values."
+msgstr ""
+"价格、数量和余额等线上数值字段在详细响应类型中仍为字符串。需要精确算术时，"
+"请用 ``Decimal`` 转换它们。Info 方法会验证预期的顶层容器或标量，但详细的嵌套字段是类型化契约，"
+"而不是经过普遍运行时验证的数据。元数据和价格辅助方法会额外验证其使用的字段，"
+"并在值格式错误时引发 ``ProtocolError``。"

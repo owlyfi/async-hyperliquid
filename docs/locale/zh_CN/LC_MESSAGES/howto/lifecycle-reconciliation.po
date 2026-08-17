@@ -1,0 +1,148 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../howto/lifecycle-reconciliation.rst:2 a0c774957dec4751b1532c66dffed21a
+msgid "Lifecycle, errors, and reconciliation"
+msgstr "生命周期、错误与核对"
+
+#: ../../howto/lifecycle-reconciliation.rst:5 7b7fc19e81ab43d7b2b17d8e7cfde685
+msgid "Session ownership"
+msgstr "会话所有权"
+
+#: ../../howto/lifecycle-reconciliation.rst:7 1684d6b1f28c4833b3ac2fbf0f5ba2bf
+msgid "Use an async context manager whenever practical:"
+msgstr "在可行时使用异步上下文管理器："
+
+#: ../../howto/lifecycle-reconciliation.rst:14 51ef3d5f40874cdabedabe39759482f0
+msgid ""
+"``open()`` lazily opens internally managed resources. ``close()`` is "
+"idempotent. An internally created ``aiohttp.ClientSession`` is owned and "
+"closed by the client. A supplied session is borrowed and remains the "
+"caller's responsibility. A closed transport cannot be reopened; create a "
+"new client instead."
+msgstr ""
+"``open()`` 会延迟打开内部管理的资源。``close()`` 是幂等的。内部创建的 "
+"``aiohttp.ClientSession`` 由客户端拥有并关闭。提供的会话仅供借用，仍由调用方负责。"
+"已关闭的传输无法重新打开；请改为创建新的客户端。"
+
+#: ../../howto/lifecycle-reconciliation.rst:20 6b809e299aa04b65a1727f8cfcfcd08c
+msgid "Failure classes"
+msgstr "失败类别"
+
+#: ../../howto/lifecycle-reconciliation.rst:22 8d6853b352c74e42aa20b99bafd317a5
+msgid ""
+"``HyperliquidError`` is the package base exception. ``HttpError`` "
+"represents a request failure or non-success HTTP status and exposes "
+"``status`` when one is available. ``ProtocolError`` means a response did "
+"not match the expected JSON shape."
+msgstr ""
+"``HyperliquidError`` 是包的基异常。``HttpError`` 表示请求失败或非成功 HTTP 状态，"
+"并在可用时暴露 ``status``。``ProtocolError`` 表示响应不符合预期的 JSON 结构。"
+
+#: ../../howto/lifecycle-reconciliation.rst:27 7a21e67e51df41cf90d05f3d0b40aa41
+#, python-brace-format
+msgid ""
+"``ValueError`` is used for rejected local inputs such as unknown coins, "
+"empty batches, invalid slippage, negative IDs, malformed endpoints, or "
+"invalid ``Cloid`` values. Exchange-level rejections are returned as typed"
+" ``{\"status\": \"err\", \"response\": ...}`` values and must be checked "
+"explicitly."
+msgstr ""
+"``ValueError`` 用于被拒绝的本地输入，例如未知 coin、空批次、无效滑点、负 ID、"
+"格式错误的端点或无效的 ``Cloid`` 值。Exchange 级拒绝会以类型化 "
+"``{\"status\": \"err\", \"response\": ...}`` 值返回，必须显式检查。"
+
+#: ../../howto/lifecycle-reconciliation.rst:33 ae4ad3323ec7403284693a6d4b8a3d6a
+msgid "Signed actions are not retried"
+msgstr "不会重试签名操作"
+
+#: ../../howto/lifecycle-reconciliation.rst:35 aee3f946fc5e4de3b50861b4b1076bab
+msgid ""
+"The SDK never automatically retries a signed action. If a timeout, HTTP "
+"error, or malformed response occurs after submission may have happened, "
+"``IndeterminateActionError`` carries the signed ``action_type`` and "
+"``nonce``. It does not prove that the Exchange rejected the action."
+msgstr ""
+"SDK 绝不会自动重试签名操作。如果在可能已经提交后发生超时、HTTP 错误或格式错误的响应，"
+"``IndeterminateActionError`` 会携带已签名的 ``action_type`` 和 ``nonce``。"
+"这并不能证明 Exchange 已拒绝该操作。"
+
+#: ../../howto/lifecycle-reconciliation.rst:41 8b2e01e45134407cbc86139405b6b98c
+msgid "Reconcile before replacement"
+msgstr "替换前先核对"
+
+#: ../../howto/lifecycle-reconciliation.rst:43 8e4f0c8e6157477fad25cd6e863f6fa1
+msgid "After an indeterminate result:"
+msgstr "出现不确定结果后："
+
+#: ../../howto/lifecycle-reconciliation.rst:45 7452e24a665142cf965f45bc8d41bb52
+msgid "Stop automatic replacement for that intent."
+msgstr "停止对此意图的自动替换。"
+
+#: ../../howto/lifecycle-reconciliation.rst:46 0483652cd52e4b4eb2ca3a126f643af5
+msgid ""
+"Record the action type, nonce, intended execution address, and client "
+"order ID without logging the private key or signature."
+msgstr "记录操作类型、nonce、预期执行地址和客户端订单 ID，但不要记录私钥或签名。"
+
+#: ../../howto/lifecycle-reconciliation.rst:48 6ceb3b65e3404998b3f8ef459d6a071b
+msgid "Query an independently trusted Info endpoint."
+msgstr "查询独立可信的 Info 端点。"
+
+#: ../../howto/lifecycle-reconciliation.rst:49 373fc6a39b73401794fda1f59c2d8673
+msgid ""
+"For orders, inspect ``order_status()``, ``open_orders()``, "
+"``user_fills()``, or ``historical_orders()`` using the execution address."
+msgstr "对于订单，请使用执行地址检查 ``order_status()``、``open_orders()``、``user_fills()`` 或 ``historical_orders()``。"
+
+#: ../../howto/lifecycle-reconciliation.rst:51 605958dca0ae44d7b78d58a12cda1680
+msgid ""
+"For transfers or administrative actions, inspect the corresponding "
+"balance, ledger, role, vault, staking, or abstraction state."
+msgstr "对于转账或管理操作，请检查相应的余额、账本、角色、vault、质押或抽象状态。"
+
+#: ../../howto/lifecycle-reconciliation.rst:53 aa687c38a4d64f858b87ad6647c45bfa
+msgid ""
+"Submit a replacement only after application policy determines the "
+"original did not take effect."
+msgstr "仅在应用策略确认原操作未生效后，才提交替换操作。"
+
+#: ../../howto/lifecycle-reconciliation.rst:57 7db59cd552c043f5ac34191761666d85
+msgid "Nonce ownership"
+msgstr "Nonce 所有权"
+
+#: ../../howto/lifecycle-reconciliation.rst:59 0604f0c90bc54bd5a2908677d732944a
+msgid ""
+"Nonce monotonicity is local to one ``ExchangeClient``. Keep one live "
+"Exchange owner per API-wallet private key. If processes share a key, the "
+"application must serialize submissions and coordinate nonces across "
+"processes; the SDK is not a distributed nonce service."
+msgstr ""
+"Nonce 单调性仅限于一个 ``ExchangeClient``。每个 API wallet 私钥应只保留一个存活的 Exchange 所有者。"
+"若多个进程共享同一密钥，应用必须将提交串行化并跨进程协调 nonce；SDK 不是分布式 nonce 服务。"
+
+#: ../../howto/lifecycle-reconciliation.rst:64 5ddb1b09d0e84beab1f631f349db4086
+msgid ""
+"Cancellation itself can also become indeterminate. Use a ``Cloid`` where "
+"possible, verify final order state, and do not infer cancellation merely "
+"from a local exception."
+msgstr ""
+"取消操作本身也可能变得不确定。请尽可能使用 ``Cloid``，验证最终订单状态，"
+"且不要仅凭本地异常推断订单已取消。"

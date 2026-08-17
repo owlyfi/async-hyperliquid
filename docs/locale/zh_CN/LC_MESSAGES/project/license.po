@@ -1,0 +1,36 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../project/license.rst:2 a7a0cf9f2b484f2b8dd886309b7cc30c
+msgid "License"
+msgstr "许可证"
+
+#: ../../project/license.rst:4 a287c44620f543a3a2e2ee582622fff3
+msgid ""
+"``async-hyperliquid`` is distributed under the `MIT License "
+"<https://github.com/owlyfi/async-hyperliquid/blob/main/LICENSE>`_."
+msgstr ""
+"``async-hyperliquid`` 根据 `MIT License <https://github.com/owlyfi/async-hyperliquid/blob/main/LICENSE>`_ 发布。"
+
+#: ../../project/license.rst:7 e5f43481830845c998398ddca7266ea1
+msgid ""
+"The canonical license text included with this repository is reproduced "
+"below:"
+msgstr "仓库所附的规范许可证文本复现如下："

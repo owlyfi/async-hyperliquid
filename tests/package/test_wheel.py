@@ -82,6 +82,9 @@ def test_sdist_contains_public_docs_but_excludes_internal_docs() -> None:
         "docs/reference/async-hyperliquid.rst",
         "docs/coin-name-mapping.md",
         "docs/migration-0.5-to-1.0.md",
+        "docs/locale/zh_CN/LC_MESSAGES/index.po",
+        "docs/locale/zh_CN/LC_MESSAGES/howto/orders.po",
+        "docs/locale/zh_CN/LC_MESSAGES/migration-0.5-to-1.0.po",
     }
     archive_docs = {
         name.split("/", maxsplit=1)[1] for name in names if "/docs/" in name
@@ -90,3 +93,4 @@ def test_sdist_contains_public_docs_but_excludes_internal_docs() -> None:
     assert expected_docs <= archive_docs
     assert not any("/dev-docs/" in name for name in names)
     assert not any("/docs/_build/" in name for name in names)
+    assert not any(name.endswith(".mo") for name in names)

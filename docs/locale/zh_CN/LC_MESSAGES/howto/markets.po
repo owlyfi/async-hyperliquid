@@ -1,0 +1,100 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../howto/markets.rst:2 2602308fb1224f06aeb6cc93a9ec20de
+msgid "Work with market metadata"
+msgstr "使用市场元数据"
+
+#: ../../howto/markets.rst:4 0db080b0eb9944338b169f09142b8598
+msgid ""
+"Trading workflows accept a market name, not a numeric asset ID. Use "
+"metadata helpers instead of deriving protocol offsets in application "
+"code."
+msgstr "交易工作流接受市场名称，而非数字 asset ID。请使用元数据辅助方法，不要在应用代码中推导协议偏移量。"
+
+#: ../../howto/markets.rst:17 c057d211722c48f5b4e82c92f7de624f
+msgid ""
+"The first metadata lookup loads one immutable snapshot. Concurrent cold "
+"lookups share that load. ``refresh_metadata()`` atomically replaces the "
+"last complete snapshot; malformed or inconsistent metadata is rejected "
+"before it is published."
+msgstr ""
+"首次元数据查询会加载一个不可变快照。并发的冷查询会共享该加载。``refresh_metadata()`` 会原子地替换最后一个完整快照；"
+"格式错误或不一致的元数据会在发布前被拒绝。"
+
+#: ../../howto/markets.rst:23 a74ae47aabbf4ba5817d21a500d064ae
+msgid "Coin forms"
+msgstr "Coin 形式"
+
+#: ../../howto/markets.rst:25 e1016d9b646644d9a53a00c58b7c345c
+msgid "Base perpetuals use names such as ``BTC``."
+msgstr "基础 perpetual 使用如 ``BTC`` 的名称。"
+
+#: ../../howto/markets.rst:26 837dbc54e6d34093a03ee2ed5df2fa6a
+msgid "HIP-3 perpetuals use a DEX prefix such as ``xyz:NVDA``."
+msgstr "HIP-3 perpetual 使用如 ``xyz:NVDA`` 的 DEX 前缀。"
+
+#: ../../howto/markets.rst:27 86af8e0fabdd46f2a4d5da71764eeb8a
+msgid ""
+"Spot pairs may have an internal canonical name such as ``@107`` and a "
+"metadata-derived display alias such as ``HYPE/USDC``."
+msgstr "spot 交易对可能具有如 ``@107`` 的内部规范名称，以及如 ``HYPE/USDC`` 的元数据派生显示别名。"
+
+#: ../../howto/markets.rst:29 16a8fc3f228b4f7c8be67a8b639005c3
+msgid ""
+"Outcome markets use ``#<encoding>``; ``+<encoding>`` is accepted as an "
+"alias."
+msgstr "outcome 市场使用 ``#<encoding>``；也接受 ``+<encoding>`` 作为别名。"
+
+#: ../../howto/markets.rst:31 1c846199bb1d4de891737e126a2d1f93
+msgid ""
+"``coin_name()`` returns the canonical wire name. ``coin_symbol()`` "
+"returns the display symbol. ``spot_token_metadata()`` and ``token_id()`` "
+"resolve indexed spot-token metadata: a spot pair or canonical coin "
+"normally maps to its base token, while an indexed quote-token alias such "
+"as ``USDC`` can also resolve even though it is not itself a tradable "
+"market. Perpetual market names do not resolve as spot tokens. "
+"``mark_price()`` reads venue context; ``mid_price()`` reads the "
+"appropriate DEX mid-price response."
+msgstr ""
+"``coin_name()`` 返回规范线上名称。``coin_symbol()`` 返回显示符号。"
+"``spot_token_metadata()`` 和 ``token_id()`` 解析带索引的 spot-token 元数据：spot 交易对或规范 coin 通常映射到其基础 token，"
+"而如 ``USDC`` 的带索引报价 token 别名即使本身不是可交易市场也可解析。perpetual 市场名称不能解析为 spot token。"
+"``mark_price()`` 读取交易场所上下文；``mid_price()`` 读取相应 DEX 的中间价响应。"
+
+#: ../../howto/markets.rst:40 969b015d4f06459e8ef5f51b132e44ae
+msgid "Batch constraints"
+msgstr "批次限制"
+
+#: ../../howto/markets.rst:42 93153fbfa83f4da48d2582b0d0a087d2
+msgid ""
+"A placement batch may mix market and non-market orders and may span the "
+"base and HIP-3 perpetual DEXes. A batch cannot mix perpetual markets with"
+" spot or outcome markets. Market precision and builder-fee limits are "
+"resolved from the metadata snapshot."
+msgstr ""
+"下单批次可以混合市价与非市价订单，也可跨基础和 HIP-3 perpetual DEX。"
+"一个批次不能混合 perpetual 市场与 spot 或 outcome 市场。市场精度和 builder 费用限制从元数据快照中解析。"
+
+#: ../../howto/markets.rst:47 283548e3a65542be940b892e8ce737f8
+msgid ""
+"See :doc:`../coin-name-mapping` for the complete mapping and asset-space "
+"rules."
+msgstr "完整映射和资产空间规则请参见 :doc:`../coin-name-mapping`。"

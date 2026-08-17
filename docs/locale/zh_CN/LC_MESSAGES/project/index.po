@@ -1,0 +1,37 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../project/index.rst:2 b7d8660269e64a2494c1887675ad4c8b
+msgid "Project"
+msgstr "项目"
+
+#: ../../project/index.rst:4 e4c3f89599554eac907745f2900d1989
+msgid ""
+"Project information and user-facing compatibility references are "
+"collected here:"
+msgstr "项目资料和面向用户的兼容性参考在此汇集："
+
+#: ../../project/index.rst:15 f0a616b9c53c4089aa84042ed48ab3ad
+msgid ""
+"Source code, releases, and issue tracking are available from the "
+"project's `GitHub repository <https://github.com/owlyfi/async-"
+"hyperliquid>`_."
+msgstr ""
+"源码、发行版本和问题跟踪可从项目的 `GitHub 仓库 <https://github.com/owlyfi/async-hyperliquid>`_ 获取。"

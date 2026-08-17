@@ -1,0 +1,51 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/async-hyperliquid.rst:2 e52166d86ae34e848cd9d58bcfd997a0
+msgid "AsyncHyperliquid"
+msgstr ""
+
+#: ../../reference/async-hyperliquid.rst:6 961015f09d9d4830946171c3dbea7431
+msgid ""
+"This reference includes methods that place, modify, cancel, and close "
+"orders; change leverage or margin; and move assets. A signature is not a "
+"safety procedure. Before calling them, read :doc:`../howto/orders`, "
+":doc:`../howto/routing`, :doc:`../howto/transfers-administration`, and "
+":doc:`../howto/lifecycle-reconciliation`. Start on testnet and reconcile "
+"every ambiguous signed outcome before replacement."
+msgstr ""
+"本参考包含下单、修改、取消和关闭订单，更改杠杆或保证金，以及转移资产的方法。签名并非安全流程。"
+"调用这些方法前，请阅读 :doc:`../howto/orders`、:doc:`../howto/routing`、"
+":doc:`../howto/transfers-administration` 和 :doc:`../howto/lifecycle-reconciliation`。"
+"请从 testnet 开始，并在替换前对每个含糊的已签名结果进行对账。"
+
+#: 93b5ff567e0c48df8f0b681ae1229a40 async_hyperliquid.client.AsyncHyperliquid:1
+#: of
+msgid "Resource owner plus intent-level order workflows."
+msgstr ""
+
+#: ../../reference/async-hyperliquid.rst:17 77a68681846245adb56dc82b5613a6c8
+msgid ""
+"Use the root client for workflows that resolve coins, metadata, prices, "
+"token precision, or positions. Use ``.info`` for reads and ``.exchange`` "
+"for the Info-independent actions listed in :doc:`exchange-client`."
+msgstr ""
+"对于需要解析币种、元数据、价格、token 精度或持仓的工作流，请使用 root client。"
+"使用 ``.info`` 进行读取，使用 ``.exchange`` 执行 :doc:`exchange-client` 中列出的独立于 Info 的操作。"

@@ -143,9 +143,11 @@ def test_markdown_parser_is_a_dev_only_dependency() -> None:
 
 def test_workflows_install_locked_docs_and_build_warning_free_html() -> None:
     expected_sync = "uv sync --locked --dev --group benchmark --group docs"
-    expected_build = (
-        "uv run --frozen --group docs sphinx-build -W --keep-going -b html "
-        "docs docs/_build/html"
+    expected_builds = (
+        "uv run --frozen --group docs sphinx-build -E -a -W --keep-going "
+        "-D language=en -b html docs docs/_build/html/en",
+        "uv run --frozen --group docs sphinx-build -E -a -W --keep-going "
+        "-D language=zh_CN -b html docs docs/_build/html/zh_CN",
     )
     workflows = (
         (ROOT / ".github" / "workflows" / "ci.yml", "test"),
@@ -159,7 +161,7 @@ def test_workflows_install_locked_docs_and_build_warning_free_html() -> None:
         }
 
         assert expected_sync in runs
-        assert expected_build in runs
+        assert set(expected_builds) <= runs
 
 
 def test_workflow_smoke_tests_import_the_current_public_types() -> None:

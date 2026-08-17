@@ -1,0 +1,51 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/index.rst:2 92cac7ce08b54db898ef266efe7de02e
+msgid "API reference"
+msgstr "API 参考"
+
+#: ../../reference/index.rst:4 f2cfbde1ef43437c85d6acef1a5675c3
+msgid "The reference uses the installed package's real Python signatures."
+msgstr "本参考使用已安装软件包的真实 Python 签名。"
+
+#: ../../reference/index.rst:6 85d0b72c38fc4c97995b6a434509e832
+msgid ":doc:`info-client` — credential-free reads and metadata helpers."
+msgstr ":doc:`info-client` — 无需凭据的读取和元数据辅助方法。"
+
+#: ../../reference/index.rst:7 2ca89a9eb85d4bddae435d98cf70b348
+msgid ":doc:`async-hyperliquid` — authenticated, metadata-aware workflows."
+msgstr ":doc:`async-hyperliquid` — 已认证且感知元数据的工作流。"
+
+#: ../../reference/index.rst:8 ae252e6ced794014852817c8065b8728
+msgid ":doc:`exchange-client` — Info-independent signed actions."
+msgstr ":doc:`exchange-client` — 独立于 Info 的已签名操作。"
+
+#: ../../reference/index.rst:9 24d11be8201f4bc9b57a9827cf14176c
+msgid ":doc:`types` — exported commands, enums, builders, and response aliases."
+msgstr ":doc:`types` — 导出的命令、枚举、builder 和响应别名。"
+
+#: ../../reference/index.rst:10 8e5fa8f0d65a405983e976db9e3834a5
+msgid ":doc:`response-types` — detailed Info and Exchange response shapes."
+msgstr ":doc:`response-types` — 详细的 Info 和 Exchange 响应结构。"
+
+#: ../../reference/index.rst:11 892f022bf54347c5b427a91a913c4f17
+msgid ":doc:`errors` — package exception hierarchy."
+msgstr ":doc:`errors` — 软件包异常层级。"

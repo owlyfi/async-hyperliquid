@@ -1,0 +1,79 @@
+# Simplified Chinese translations for async-hyperliquid.
+# Copyright (C)
+# This file is distributed under the same license as the async-hyperliquid
+# package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"Last-Translator: Yuki\n"
+"Language: zh_CN\n"
+"Language-Team: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: ../../reference/types.rst:2 bbf46344810d48e4aa9fcdadb2884b25
+msgid "Commands, enums, and exported types"
+msgstr "命令、枚举和导出的类型"
+
+#: ../../reference/types.rst:5 abe81de3e3a34f0d88ee592bee53fc39
+msgid "Enums and identifiers"
+msgstr "枚举和标识符"
+
+#: 34f9b90ad8ca40529092c3106d3b176c async_hyperliquid.types.common.Cloid:1 of
+msgid "A validated 16-byte hexadecimal client order ID."
+msgstr ""
+
+#: ../../reference/types.rst:40 d809cf6825e640c9a249c7be8f02857d
+msgid "Order commands and builders"
+msgstr "订单命令和 builder"
+
+#: ../../reference/types.rst:71 3611d1459c95481eadbef19d07b1407f
+msgid "Option and JSON types"
+msgstr "选项和 JSON 类型"
+
+#: 25a06d6653aa43d2b867aa0e661ec052 4b83950a69ec4e9c83bb0bf0c831b602
+#: 63867d37bc2346e08d6ce29b61f4355e async_hyperliquid.types.ActionResponse:1
+#: async_hyperliquid.types.CancelOrderResponse:1
+#: async_hyperliquid.types.CancelTwapResponse:1
+#: async_hyperliquid.types.DefaultActionResponse:1
+#: async_hyperliquid.types.OrderType:1
+#: async_hyperliquid.types.PlaceOrderResponse:1
+#: async_hyperliquid.types.PlaceTwapResponse:1 b29a69e4539d4c36b406f82078a3c4a8
+#: c339cf6b5fa148b5ab3a407cfa7e0c21 c9e270f7591d4351b3c86e3a075714b8
+#: fdf2acd08edb480ebd6ea54cc45c2560 of
+msgid "Represent a PEP 604 union type"
+msgstr ""
+
+#: 13cbad1176e944a4b885e624069d45f7 15c4b1b1386a40a2863eed4adcd0481a
+#: 1e1346e385664c10aab5d0376df18267 497d9444dd8d43d8a8bc95e37f62a90f
+#: a5535bd18e714494a40fcf48a721a53f async_hyperliquid.types.ActionResponse:3
+#: async_hyperliquid.types.CancelOrderResponse:3
+#: async_hyperliquid.types.CancelTwapResponse:3
+#: async_hyperliquid.types.DefaultActionResponse:3
+#: async_hyperliquid.types.OrderType:3
+#: async_hyperliquid.types.PlaceOrderResponse:3
+#: async_hyperliquid.types.PlaceTwapResponse:3 e964d1c248b14cde916cc331adeb1c42
+#: f77f743be5224888951af1c57d1561d5 of
+msgid "E.g. for int | str"
+msgstr ""
+
+#: ../../reference/types.rst:91 2b4da4d1c50b4c66a93b68c2f5b4651e
+msgid ""
+"``JsonScalar`` is ``str | int | float | bool | None``. ``JsonValue`` "
+"recursively adds JSON arrays and objects, and ``JsonObject`` is "
+"``dict[str, JsonValue]``. These aliases describe untyped protocol "
+"fragments and extension payloads."
+msgstr ""
+"``JsonScalar`` 是 ``str | int | float | bool | None``。``JsonValue`` 递归地添加 JSON 数组和对象，"
+"而 ``JsonObject`` 是 ``dict[str, JsonValue]``。这些别名描述未类型化的协议片段和扩展负载。"
+
+#: ../../reference/types.rst:96 44ed0810b1dd42f484db85c5b067bdba
+msgid "Response aliases"
+msgstr "响应别名"
