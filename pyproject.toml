@@ -1,6 +1,6 @@
 [project]
 name = "async-hyperliquid"
-version = "1.0.0rc1"
+version = "1.0.0"
 requires-python = ">=3.12"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]
@@ -17,7 +17,7 @@ keywords = [
     "defi",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Financial and Insurance Industry",
     "Operating System :: OS Independent",

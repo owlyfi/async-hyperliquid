@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-08-17
+
+### Added
+
+- Publish comprehensive Read the Docs documentation for installation, Info and
+  Exchange workflows, routing, market and asset mapping, reconciliation,
+  migration, project ownership, licensing, and the public API reference.
+- Add a complete Simplified Chinese documentation build using Sphinx gettext,
+  while preserving Python identifiers, signatures, types, code, and autodoc
+  content in English.
+
+### Changed
+
+- Promote the 1.0 API from release candidate to stable without additional
+  runtime contract changes.
+- Gate English and Simplified Chinese documentation in CI, release validation,
+  and source-distribution tests with warnings treated as errors.
+- Publish GitHub Release notes from the exact matching CHANGELOG section and
+  verify the body before and after immutable release publication.
+- Run artifact download actions on the Node 24 runtime.
+
 ## [1.0.0rc1] - 2026-08-04
 
 ### Added

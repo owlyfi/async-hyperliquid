@@ -65,6 +65,8 @@ def test_built_wheel_contract() -> None:
         metadata = wheel.read(metadata_path).decode()
 
     assert "\nRequires-Python: >=3.12\n" in metadata
+    assert "\nClassifier: Development Status :: 5 - Production/Stable\n" in metadata
+    assert "\nClassifier: Development Status :: 4 - Beta\n" not in metadata
 
 
 @pytest.mark.skipif(
