@@ -18,6 +18,12 @@
 - Author email remains absent from rendered documentation.
 - Do not move or replace `v1.0.0`.
 - Use strict warning-as-error English and Chinese builds with network access blocked.
+- Publish the existing parity-gated signing benchmark overall data; do not
+  fabricate or rerun benchmark results for this documentation change.
+- Label the benchmark as a `1.0.0rc1` local CPU reference, not network latency
+  or exchange throughput.
+- Keep the marker-delimited overall content identical in the detailed benchmark
+  manual, root README, and Read the Docs source.
 
 ---
 
@@ -27,6 +33,10 @@
 - `pyproject.toml`: canonical published Documentation project URL.
 - `tests/package/test_readme.py`: parses README Markdown destinations and ties the cache key to package metadata.
 - `tests/package/test_release_workflow.py`: enforces the published project URL contract.
+- `benchmarks/README.md`: detailed benchmark record and canonical overall block.
+- `docs/project/benchmarks.md`: public benchmark context and overall table.
+- `docs/locale/zh_CN/LC_MESSAGES/project/benchmarks.po`: translated benchmark narrative.
+- `tests/package/test_wheel.py`: ensures the new public page and catalog ship.
 - `docs/conf.py`: concise title, Read the Docs locale normalization, page context, and Furo sidebar composition.
 - `docs/_templates/sidebar/language-switcher.html`: accessible page-preserving language links only.
 - `docs/_static/language-switcher.css`: minimal spacing and active-language styling only.
@@ -144,7 +154,145 @@ git add README.md pyproject.toml tests/package/test_readme.py tests/package/test
 git commit -m "docs: refresh published documentation links"
 ```
 
-### Task 2: Render the concise brand and accessible language switch
+### Task 2: Publish the overall signing benchmark at both public entry points
+
+**Files:**
+- Modify: `benchmarks/README.md`
+- Modify: `README.md`
+- Modify: `docs/project/index.rst`
+- Create: `docs/project/benchmarks.md`
+- Create: `docs/locale/zh_CN/LC_MESSAGES/project/benchmarks.po`
+- Modify: `tests/package/test_readme.py`
+- Modify: `tests/package/test_docs.py`
+- Modify: `tests/package/test_wheel.py`
+
+**Interfaces:**
+- Consumes: the existing parity-gated signing benchmark overall values already
+  published in `benchmarks/README.md`.
+- Produces: one marker-delimited Markdown block copied unchanged to all three
+  source entry points, plus rendered English and Simplified Chinese benchmark
+  pages.
+
+- [ ] **Step 1: Write failing consistency and rendered-page tests**
+
+In `tests/package/test_readme.py`, add a strict marker extractor and compare the
+three public copies:
+
+```python
+SIGNING_OVERALL_START = "<!-- signing-benchmark:overall:start -->"
+SIGNING_OVERALL_END = "<!-- signing-benchmark:overall:end -->"
+
+
+def _marked_block(text: str, start: str, end: str) -> str:
+    assert text.count(start) == 1
+    assert text.count(end) == 1
+    return text.split(start, 1)[1].split(end, 1)[0].strip()
+
+
+def test_public_signing_benchmark_overall_blocks_match() -> None:
+    sources = (
+        ROOT / "benchmarks" / "README.md",
+        ROOT / "README.md",
+        ROOT / "docs" / "project" / "benchmarks.md",
+    )
+    blocks = {
+        _marked_block(path.read_text(), SIGNING_OVERALL_START, SIGNING_OVERALL_END)
+        for path in sources
+    }
+
+    assert len(blocks) == 1
+    block = blocks.pop()
+    assert "| async-hyperliquid | 24,641 ops/s | 1.460x |" in block
+    assert "| Official SDK | 16,874 ops/s | 1.000x |" in block
+    assert "| CCXT | 803 ops/s | 0.0476x |" in block
+```
+
+Extend the English and Chinese rendered-document tests in
+`tests/package/test_docs.py` to require `project/benchmarks.html`, the three
+library names, all three throughput/relative values, and these presentation
+contracts:
+
+```python
+assert "Overall comparison" in english_benchmarks_html
+assert "local CPU reference" in english_benchmarks_html
+assert "not network latency or exchange throughput" in english_benchmarks_html
+assert "总体比较" in chinese_benchmarks_html
+assert "本地 CPU 参考结果" in chinese_benchmarks_html
+```
+
+Add `project/benchmarks.po` to `NARRATIVE_CATALOGS`. Extend
+`tests/package/test_wheel.py`'s expected public-doc subset with:
+
+```python
+"docs/project/benchmarks.md",
+"docs/locale/zh_CN/LC_MESSAGES/project/benchmarks.po",
+```
+
+- [ ] **Step 2: Run RED tests**
+
+Run:
+
+```bash
+UV_CACHE_DIR=/private/tmp/async-hyperliquid-docs-nav-uv-cache \
+uv run --frozen pytest -q \
+  tests/package/test_readme.py::test_public_signing_benchmark_overall_blocks_match \
+  tests/package/test_docs.py::test_english_docs_build_with_warnings_as_errors \
+  tests/package/test_docs.py::test_simplified_chinese_docs_translate_narrative_and_preserve_api_names
+```
+
+Expected: the benchmark contract fails because the public copies and markers do
+not exist; rendered-page assertions fail because Sphinx has no benchmark page.
+
+- [ ] **Step 3: Add the three identical overall blocks and benchmark page**
+
+Wrap the existing detailed-manual table and its geometric-mean explanation in:
+
+```markdown
+<!-- signing-benchmark:overall:start -->
+| Library | Geometric-mean throughput | Relative to SDK |
+|---|---:|---:|
+| async-hyperliquid | 24,641 ops/s | 1.460x |
+| Official SDK | 16,874 ops/s | 1.000x |
+| CCXT | 803 ops/s | 0.0476x |
+
+The geometric mean gives each of the five operations equal weight, preventing
+the faster `action_hash` workload from dominating the score.
+<!-- signing-benchmark:overall:end -->
+```
+
+Copy that block without edits into a new README `Benchmarks` section immediately
+after the project introduction and into `docs/project/benchmarks.md`. Outside
+the markers, both public entry points must state that the values are from a
+parity-gated `1.0.0rc1` local CPU reference run and are not network latency or
+exchange throughput. Link each to the detailed `benchmarks/README.md` manual.
+
+Add `benchmarks` to `docs/project/index.rst` immediately after `about`. Generate
+the new gettext catalog through the existing Sphinx workflow and translate all
+new narrative/presentation labels into Simplified Chinese. Keep
+`async-hyperliquid`, `Official SDK`, `CCXT`, `action_hash`, versions, units, and
+all numerical values unchanged.
+
+- [ ] **Step 4: Run GREEN tests**
+
+Run the same focused command. Expected: `3 passed`, both Sphinx builds strict
+and offline with no warnings.
+
+- [ ] **Step 5: Mutation-check the shared content contract**
+
+Temporarily change `24,641` to `24,642` in only `README.md`, run the benchmark
+consistency test, and confirm it fails. Restore the value and rerun to green.
+
+- [ ] **Step 6: Commit Task 2**
+
+```bash
+git add benchmarks/README.md README.md docs/project/index.rst \
+  docs/project/benchmarks.md \
+  docs/locale/zh_CN/LC_MESSAGES/project/benchmarks.po \
+  tests/package/test_readme.py tests/package/test_docs.py tests/package/test_wheel.py
+git commit -m "docs: publish overall signing benchmark"
+```
+
+### Task 3: Render the concise brand and accessible language switch
 
 **Files:**
 - Modify: `tests/package/test_docs.py`
@@ -335,7 +483,7 @@ Temporarily change the `zh-cn` mapping to `zh-cn`, run only the Chinese docs
 test, and confirm it fails because translated narrative text is missing. Restore
 `zh_CN` and rerun to green.
 
-- [ ] **Step 8: Commit Task 2**
+- [ ] **Step 8: Commit Task 3**
 
 ```bash
 git add docs/conf.py docs/_templates/sidebar/language-switcher.html \
@@ -343,13 +491,13 @@ git add docs/conf.py docs/_templates/sidebar/language-switcher.html \
 git commit -m "docs: add documentation language switch"
 ```
 
-### Task 3: Make the external publishing runbook exact
+### Task 4: Make the external publishing runbook exact
 
 **Files:**
 - Modify: `dev-docs/readthedocs-localization.md`
 
 **Interfaces:**
-- Consumes: English project `async-hyperliquid`, Chinese project slug `async-hyperliquid-zh-cn`, repository `owlyfi/async-hyperliquid`, and the `latest` URLs produced by Task 2.
+- Consumes: English project `async-hyperliquid`, Chinese project slug `async-hyperliquid-zh-cn`, repository `owlyfi/async-hyperliquid`, and the `latest` URLs produced by Task 3.
 - Produces: an operator checklist for project creation, translation linking, build monitoring, validation, and rollback.
 
 - [ ] **Step 1: Replace generic account-level instructions with exact values**
@@ -373,16 +521,16 @@ Document these steps explicitly:
 
 Confirm it contains no credentials, email address, placeholder, ambiguous
 project slug, or instruction to mutate `v1.0.0`. No source-text test is added;
-this runbook is for human operators and its real validation occurs in Task 5.
+this runbook is for human operators and its real validation occurs in Task 6.
 
-- [ ] **Step 3: Commit Task 3**
+- [ ] **Step 3: Commit Task 4**
 
 ```bash
 git add dev-docs/readthedocs-localization.md
 git commit -m "docs: document Read the Docs translation publishing"
 ```
 
-### Task 4: Run repository verification and local browser acceptance
+### Task 5: Run repository verification and local browser acceptance
 
 **Files:**
 - Verify only; no intended source changes.
@@ -452,7 +600,7 @@ active language, correct current-page targets, unchanged search/navigation,
 and no horizontal overflow. Use the browser's semantic snapshot for text/links
 and screenshots only for layout validation.
 
-### Task 5: Publish main and configure Read the Docs translation
+### Task 6: Publish main and configure Read the Docs translation
 
 **Files:**
 - External state only after all local gates pass.
@@ -470,7 +618,7 @@ git rev-parse HEAD origin/main
 ```
 
 Require no uncommitted source changes and no unexpected remote commits. If
-origin advanced, merge it before push and rerun Task 4.
+origin advanced, merge it before push and rerun Task 5.
 
 - [ ] **Step 2: Push the reviewed commits**
 
@@ -487,7 +635,7 @@ red.
 - [ ] **Step 4: Create and link the Chinese project**
 
 Using the authorized Read the Docs account, create
-`async-hyperliquid-zh-cn` with the exact Task 3 settings, then add it as a
+`async-hyperliquid-zh-cn` with the exact Task 4 settings, then add it as a
 Translation of `async-hyperliquid`. Do not create API tokens or expose account
 credentials.
 

@@ -6,7 +6,9 @@ Make the published documentation entry points accurate and predictable: the
 README must show the current PyPI release, all public documentation links must
 resolve to the maintained Read the Docs build, the Furo brand title must be
 concise, and readers must be able to switch between English and Simplified
-Chinese from the top of the left navigation.
+Chinese from the top of the left navigation. The README and Read the Docs must
+also surface the existing overall signing benchmark so the project's measured
+advantage is visible without opening the internal benchmark manual first.
 
 This design extends the previously approved Simplified Chinese documentation
 architecture. English sources remain canonical, and committed
@@ -23,6 +25,10 @@ architecture. English sources remain canonical, and committed
 - The English Read the Docs project has no linked translation project, so Read
   the Docs cannot publish a Chinese language path or expose its native language
   metadata.
+- The parity-gated signing benchmark already publishes an overall comparison in
+  `benchmarks/README.md`, but neither the repository README nor Read the Docs
+  surfaces that table. Readers therefore cannot see the measured comparison at
+  either public entry point.
 
 ## Selected architecture
 
@@ -57,6 +63,27 @@ published.
   `https://async-hyperliquid.readthedocs.io/en/latest/` locations.
 - Add contract tests tying the badge cache key to `project.version` and
   rejecting unversioned or obsolete documentation entry points.
+
+### Benchmark overview
+
+- Reuse the existing signing benchmark's `Overall comparison` reference data:
+  `24,641 ops/s` for async-hyperliquid, `16,874 ops/s` for the Official SDK,
+  and `803 ops/s` for CCXT, with relative SDK scores of `1.460x`, `1.000x`,
+  and `0.0476x` respectively.
+- Place the overall table in the repository README immediately after the
+  project introduction and before installation, and add a dedicated
+  `Project > Benchmarks` Read the Docs page.
+- Wrap the table and its equal-weight explanation in identical stable markers
+  in `benchmarks/README.md`, `README.md`, and the public benchmark source page.
+  A package test compares the three blocks byte-for-byte so the numbers cannot
+  drift through manual edits.
+- State at both public entry points that this is a parity-gated local CPU
+  reference run from `1.0.0rc1`, not a network-latency or exchange-throughput
+  claim. Link to the detailed benchmark manual for methodology and full
+  operation-level results.
+- Translate the benchmark page's narrative and presentation labels for the
+  Simplified Chinese build while preserving library names, metric values, and
+  benchmark identifiers in English.
 
 ### Sphinx and Furo
 
@@ -101,7 +128,11 @@ Automated tests must prove:
 - both builds render English and Simplified Chinese links for the same page;
 - the active language is exposed accessibly;
 - Chinese narrative text remains translated while API names and autodoc text
-  remain in English.
+  remain in English;
+- the README, Read the Docs source, and detailed benchmark manual contain the
+  same marker-delimited overall table and equal-weight explanation; and
+- both rendered languages expose the benchmark page with unchanged library
+  names and numerical results.
 
 Browser acceptance covers the root page and one nested page in both languages,
 including desktop and mobile navigation. Online acceptance requires 200
@@ -118,3 +149,6 @@ If the Chinese project cannot build, remove or hide the language fragment while
 leaving the English link/title fixes in place. If the custom sidebar fragment
 regresses Furo layout, remove that one fragment and rely temporarily on Read
 the Docs' native translation UI; translation hosting remains independent.
+The benchmark overview is documentation-only and rolls back by removing the
+two public copies plus their toctree/catalog entries; the detailed validated
+benchmark manual remains the source record.
