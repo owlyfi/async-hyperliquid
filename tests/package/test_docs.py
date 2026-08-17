@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -144,6 +145,12 @@ def test_translation_catalogs_do_not_publish_email_metadata() -> None:
 
 
 def _build_docs(language: str, output_dir: Path) -> None:
+    hosted_language = "zh-cn" if language == "zh_CN" else "en"
+    environment = {
+        **os.environ,
+        "READTHEDOCS_LANGUAGE": hosted_language,
+        "READTHEDOCS_VERSION": "latest",
+    }
     result = subprocess.run(
         [
             "uv",
@@ -158,14 +165,13 @@ def _build_docs(language: str, output_dir: Path) -> None:
             "-a",
             "-W",
             "--keep-going",
-            "-D",
-            f"language={language}",
             "-b",
             "html",
             "docs",
             str(output_dir),
         ],
         cwd=ROOT,
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -180,6 +186,7 @@ def test_english_docs_build_with_warnings_as_errors(tmp_path: Path) -> None:
 
     assert (output_dir / "index.html").is_file()
 
+    english_index_html = (output_dir / "index.html").read_text(encoding="utf-8")
     about_html = (output_dir / "project" / "about.html").read_text(encoding="utf-8")
     benchmarks_html = (output_dir / "project" / "benchmarks.html").read_text(
         encoding="utf-8"
@@ -203,6 +210,15 @@ def test_english_docs_build_with_warnings_as_errors(tmp_path: Path) -> None:
     assert "803 ops/s" in benchmarks_html
     assert "0.0476x" in benchmarks_html
     assert "MIT License" in license_html
+    brand = '<span class="sidebar-brand-text">async-hyperliquid</span>'
+    english_index = "https://async-hyperliquid.readthedocs.io/en/latest/index.html"
+    chinese_index = "https://async-hyperliquid.readthedocs.io/zh-cn/latest/index.html"
+
+    assert brand in english_index_html
+    assert "async-hyperliquid 1.0.0 documentation" not in english_index_html
+    assert english_index in english_index_html
+    assert chinese_index in english_index_html
+    assert 'lang="en" aria-current="page"' in english_index_html
     assert "yuqi.lyle@gmail.com" not in rendered_site
 
 
@@ -212,7 +228,7 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
     output_dir = tmp_path / "zh_CN"
     _build_docs("zh_CN", output_dir)
 
-    index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+    chinese_index_html = (output_dir / "index.html").read_text(encoding="utf-8")
     orders_html = (output_dir / "howto" / "orders.html").read_text(encoding="utf-8")
     async_client_html = (output_dir / "reference" / "async-hyperliquid.html").read_text(
         encoding="utf-8"
@@ -229,7 +245,11 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
         path.read_text(encoding="utf-8") for path in output_dir.rglob("*.html")
     )
 
-    assert "异步、带类型的 Python 客户端" in index_html
+    brand = '<span class="sidebar-brand-text">async-hyperliquid</span>'
+    english_index = "https://async-hyperliquid.readthedocs.io/en/latest/index.html"
+    chinese_index = "https://async-hyperliquid.readthedocs.io/zh-cn/latest/index.html"
+
+    assert "异步、带类型的 Python 客户端" in chinese_index_html
     assert "单笔和批量操作" in orders_html
     assert "错误" in errors_html
     assert "总体比较" in benchmarks_html
@@ -252,4 +272,17 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
         in info_client_html
     )
     assert "A validated 16-byte hexadecimal client order ID." in types_html
+    assert brand in chinese_index_html
+    assert "async-hyperliquid 1.0.0 documentation" not in chinese_index_html
+    assert english_index in chinese_index_html
+    assert chinese_index in chinese_index_html
+    assert 'lang="zh-CN" aria-current="page"' in chinese_index_html
+    assert (
+        "https://async-hyperliquid.readthedocs.io/en/latest/howto/orders.html"
+        in orders_html
+    )
+    assert (
+        "https://async-hyperliquid.readthedocs.io/zh-cn/latest/howto/orders.html"
+        in orders_html
+    )
     assert "yuqi.lyle@gmail.com" not in rendered_site
