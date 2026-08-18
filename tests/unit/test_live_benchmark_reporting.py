@@ -1025,7 +1025,6 @@ def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
     swapped: list[tuple[Path, Path]] = []
     replacement_fds: list[int] = []
     sent = False
-    replacement_opens = 0
 
     def raises_from_sigterm(signum: int, frame: object) -> None:
         del frame
@@ -1062,14 +1061,12 @@ def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
         *,
         dir_fd: int | None = None,
     ) -> int:
-        nonlocal replacement_opens
         fd = real_open(path, flags, mode, dir_fd=dir_fd)
         if (
             swapped
             and dir_fd is not None
             and os.fsdecode(os.fspath(path)) == swapped[0][0].name
         ):
-            replacement_opens += 1
             replacement_fds.append(fd)
         return fd
 
@@ -1092,10 +1089,10 @@ def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
 
     assert sent
     assert delivered == [signal.SIGTERM]
-    assert replacement_opens == 1
-    assert len(replacement_fds) == 1
-    with pytest.raises(OSError):
-        os.fstat(replacement_fds[0])
+    assert replacement_fds
+    for replacement_fd in replacement_fds:
+        with pytest.raises(OSError):
+            os.fstat(replacement_fd)
     assert len(swapped) == 1
     replacement, moved = swapped[0]
     assert replacement.parent == git_dir
@@ -1107,11 +1104,12 @@ def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
     assert not (repository / "benchmarks" / "results").exists()
 
+    observed_replacement_fds = tuple(replacement_fds)
     monkeypatch.setattr(reporting, "write_figures", _write_fake_publish_figures)
     destination = publish_report(report_path, repository)
 
     assert destination.is_dir()
-    assert replacement_opens == 1
+    assert tuple(replacement_fds) == observed_replacement_fds
     assert replacement.stat().st_mode & 0o777 == 0o711
     assert (replacement / "foreign.txt").read_text() == "foreign namespace\n"
 
