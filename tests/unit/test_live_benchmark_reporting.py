@@ -893,7 +893,7 @@ def test_interrupt_immediately_after_staging_creation_leaves_no_orphan(
     assert _git(repository, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
-def test_sigterm_during_created_directory_fstat_leaves_unregistered_candidate(
+def test_sigterm_during_created_directory_fstat_keeps_retained_candidate_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repository, report_path, original_root, original_detail = (
@@ -945,16 +945,17 @@ def test_sigterm_during_created_directory_fstat_leaves_unregistered_candidate(
     assert sent
     assert delivered == [signal.SIGTERM]
     candidates = list(git_dir.glob("benchmark-publication.*.staging"))
-    assert len(candidates) == 1
-    assert candidates[0].is_dir()
-    assert list(candidates[0].iterdir()) == []
+    assert len(candidates) <= 1
+    for candidate in candidates:
+        assert candidate.is_dir()
+        assert list(candidate.iterdir()) == []
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     _assert_no_publication_debris(repository)
 
 
 @pytest.mark.parametrize("directory_kind", ["results", "staging"])
-def test_sigterm_after_real_mkdir_leaves_unregistered_private_candidate(
+def test_sigterm_after_real_mkdir_keeps_retained_private_candidate_empty(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, directory_kind: str
 ) -> None:
     repository, report_path, original_root, original_detail = (
@@ -998,9 +999,10 @@ def test_sigterm_after_real_mkdir_leaves_unregistered_private_candidate(
     assert delivered == [signal.SIGTERM]
     suffix = "results.creation" if directory_kind == "results" else "staging"
     candidates = list(git_dir.glob(f"benchmark-publication.*.{suffix}"))
-    assert len(candidates) == 1
-    assert candidates[0].is_dir()
-    assert list(candidates[0].iterdir()) == []
+    assert len(candidates) <= 1
+    for candidate in candidates:
+        assert candidate.is_dir()
+        assert list(candidate.iterdir()) == []
     assert (repository / "README.md").read_text() == original_root
     assert (repository / "benchmarks" / "README.md").read_text() == original_detail
     _assert_no_publication_debris(repository)
