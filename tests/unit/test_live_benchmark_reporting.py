@@ -5,6 +5,7 @@ import fcntl
 import os
 import signal
 import subprocess
+import threading
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, cast
@@ -38,6 +39,12 @@ from benchmarks.live.results import SampleRecorder, write_report
 
 
 PROVIDERS = ("ccxt", "sdk", "async-hyperliquid")
+
+
+def _send_sigterm_to_current_thread() -> None:
+    # Keep the signal pending on the thread masked by the production code.
+    # A process-directed signal can instead be consumed by an unrelated test thread.
+    signal.pthread_kill(threading.get_ident(), signal.SIGTERM)
 
 
 def _valid_report(*, revision: str = "a" * 40) -> LiveBenchmarkReport:
@@ -929,7 +936,7 @@ def test_sigterm_during_created_directory_fstat_keeps_retained_candidate_empty(
         value = real_fstat(fd)
         if fd == created_fd and not sent:
             sent = True
-            os.kill(os.getpid(), signal.SIGTERM)
+            _send_sigterm_to_current_thread()
         return value
 
     previous_handler = signal.signal(signal.SIGTERM, raises_system_exit)
@@ -984,7 +991,7 @@ def test_sigterm_after_real_mkdir_keeps_retained_private_candidate_empty(
         )
         if matches and not sent:
             sent = True
-            os.kill(os.getpid(), signal.SIGTERM)
+            _send_sigterm_to_current_thread()
 
     previous_handler = signal.signal(signal.SIGTERM, raises_system_exit)
     monkeypatch.setattr(os, "mkdir", mkdir_then_sigterm)
@@ -1054,7 +1061,7 @@ def test_pending_sigterm_after_post_mkdir_swap_never_claims_replacement(
             (candidate / "foreign.txt").write_text("foreign namespace\n")
             candidate.chmod(0o711)
             swapped.append((candidate, moved))
-            os.kill(os.getpid(), signal.SIGTERM)
+            _send_sigterm_to_current_thread()
 
     def record_replacement_open(
         path: str | os.PathLike[str],
