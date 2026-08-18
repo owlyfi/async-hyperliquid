@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 16:18+0800\n"
-"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"POT-Creation-Date: 2026-08-18 18:57+0800\n"
+"PO-Revision-Date: 2026-08-18 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
 "Language-Team: zh_CN\n"
@@ -18,95 +18,253 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../howto/transfers-administration.rst:2 d302dcef0c5d4d7b87512571a2935947
+#: ../../howto/transfers-administration.rst:2 744545004bbc4ea4b3487502ad565ace
 msgid "Transfers and administration"
 msgstr "转账与管理"
 
-#: ../../howto/transfers-administration.rst:6 6d8a61affc3e4454a5e29d6989f3b5a4
+#: ../../howto/transfers-administration.rst:6 0dd59b3bc440446abce1a5f73a8084bb
 msgid ""
 "The methods on this page can move funds, spend fees, change account "
-"authority, alter protocol state, or perform irreversible conversions. "
-"They are listed for discovery only. Do not invoke them from copied "
-"examples. Confirm the selected network, execution address, destination, "
-"units, permissions, and rollback procedure in your own application before"
-" signing."
+"authority, alter protocol state, or perform irreversible conversions. The"
+" transfer examples are executable signed-action fragments: copying and "
+"running one can move real assets. Confirm the network, execution address,"
+" destination, units, permissions, and recovery procedure before signing, "
+"and start on testnet."
 msgstr ""
-"本页方法可转移资金、花费费用、改变账户权限、更改协议状态或执行不可逆转换。"
-"它们仅供发现使用。不要从复制的示例中调用它们。签名前，请在自己的应用中确认所选网络、执行地址、"
-"目标地址、单位、权限和回滚程序。"
+"本页方法可转移资金、花费费用、改变账户权限、更改协议状态或执行不可逆转换。转账示例是可执行的签名操作片段：复制并运行其中一个就可能转移真实资产。签名前请确认网络、执行地址、目标地址、单位、权限和恢复流程，并从"
+" testnet 开始。"
 
-#: ../../howto/transfers-administration.rst:13 8ac726651f834a12b5f113dcb8428d55
+#: ../../howto/transfers-administration.rst:13 93739c7040c3415eb3551ddc2df90658
 msgid "Fund movement"
 msgstr "资金转移"
 
-#: ../../howto/transfers-administration.rst:15 23570d6629754568bb2c6ae1ce67c0d7
+#: ../../howto/transfers-administration.rst:15 e95aee8a0a324b7b892e0b4cc74a8391
 msgid "Coin-resolving methods live on ``AsyncHyperliquid``:"
 msgstr "解析 coin 的方法位于 ``AsyncHyperliquid``："
 
-#: ../../howto/transfers-administration.rst:17 e0084ec093ed4023964c9dbba4bd18f3
+#: ../../howto/transfers-administration.rst:17 f43c48ac361548f0a9b82719483a3b5c
 msgid "``spot_transfer`` sends a spot token after resolving its token metadata;"
 msgstr "``spot_transfer`` 在解析 token 元数据后发送一个 spot token；"
 
-#: ../../howto/transfers-administration.rst:18 4d82ad8c5dd14e6e893551862015302f
+#: ../../howto/transfers-administration.rst:18 fca475521b5943ea8305362f75d5bf0b
 msgid "``send_asset`` moves a token between DEX contexts or destinations;"
 msgstr "``send_asset`` 在 DEX 上下文或目标地址之间转移 token；"
 
-#: ../../howto/transfers-administration.rst:19 481708aefa01493aa7c824b37468713e
+#: ../../howto/transfers-administration.rst:19 2a4c1da7f7a74b23a50302d2941ccb97
 msgid "``agent_send_asset`` submits the agent-signed variant;"
 msgstr "``agent_send_asset`` 提交 agent 签名的变体；"
 
-#: ../../howto/transfers-administration.rst:20 f2a309b0524c4552bbfb9a072e9aa75d
+#: ../../howto/transfers-administration.rst:20 517678c0366d48f8b8a63495454c70ec
 msgid ""
 "``send_to_evm_with_data`` sends a token to an external-chain recipient "
 "with caller-supplied encoding, chain ID, gas limit, and data."
-msgstr ""
-"``send_to_evm_with_data`` 使用调用方提供的编码、链 ID、gas 限制和数据，"
-"将 token 发送给外部链接收方。"
+msgstr "``send_to_evm_with_data`` 使用调用方提供的编码、链 ID、gas 限制和数据，将 token 发送给外部链上的接收方。"
 
-#: ../../howto/transfers-administration.rst:23 e93a76ca413b4cd7bec88d244013c0bd
+#: ../../howto/transfers-administration.rst:23 06796810b16e48b389fc8e5ad758cbaf
 msgid "Info-independent methods live on ``client.exchange``:"
 msgstr "不依赖 Info 的方法位于 ``client.exchange``："
 
-#: ../../howto/transfers-administration.rst:25 c2022ea9a9214d03b370fd099ab5879a
+#: ../../howto/transfers-administration.rst:25 d589c5578c474e93b9cbcb43f62ee20d
 msgid "``usd_transfer`` sends USD;"
 msgstr "``usd_transfer`` 发送 USD；"
 
-#: ../../howto/transfers-administration.rst:26 2d54c4b175664561bb6791b2433a5449
+#: ../../howto/transfers-administration.rst:26 31088225d08a4525b835dd2881e200bc
 msgid "``withdraw`` initiates a withdrawal;"
 msgstr "``withdraw`` 发起提现；"
 
-#: ../../howto/transfers-administration.rst:27 ca400b6ad57c4a819c186e0dac410ae6
+#: ../../howto/transfers-administration.rst:27 35f56caaaf3e40b1b18d3024549f4b2f
 msgid "``usd_class_transfer`` moves USD between spot and perpetual classes;"
 msgstr "``usd_class_transfer`` 在 spot 与 perpetual 类别之间转移 USD；"
 
-#: ../../howto/transfers-administration.rst:28 aa92ca0a030c43babb2335ef31ebb83a
+#: ../../howto/transfers-administration.rst:28 097ef3e050ef475cbd67b7c0bb9c00df
 msgid "``vault_transfer`` deposits to or withdraws from a vault;"
 msgstr "``vault_transfer`` 向 vault 存入或从中提取资金；"
 
-#: ../../howto/transfers-administration.rst:29 089631412a834d2d99d7ad8132670ecf
+#: ../../howto/transfers-administration.rst:29 f59ad278554d459183ed75b169028cb2
 msgid "``hip3_liquidator_transfer`` moves quote notional for a HIP-3 liquidator;"
 msgstr "``hip3_liquidator_transfer`` 为 HIP-3 清算人转移报价名义金额；"
 
-#: ../../howto/transfers-administration.rst:30 9ef95aec9b554cee9a395cb631958cbd
+#: ../../howto/transfers-administration.rst:30 22634152a50040b1b9b5c3d7f8687157
 msgid ""
 "``staking_deposit``, ``staking_withdraw``, and ``token_delegate`` change "
 "staking balances or delegation."
 msgstr "``staking_deposit``、``staking_withdraw`` 和 ``token_delegate`` 更改质押余额或委托。"
 
-#: ../../howto/transfers-administration.rst:33 0f4e9d6bfef4431386327feca3cd4c1d
+#: ../../howto/transfers-administration.rst:33 1e2a71e2f1bb4b9baa7161d7b7e88501
 msgid ""
 "User-signed fund actions do not accept ``expires_after``. A timeout still"
 " leaves their result indeterminate; reconcile balances and ledgers before"
 " replacement."
-msgstr ""
-"用户签名的资金操作不接受 ``expires_after``。超时仍会使其结果不确定；"
-"替换前请核对余额和账本。"
+msgstr "用户签名的资金操作不接受 ``expires_after``。超时仍会使其结果不确定；替换前请核对余额和账本。"
 
-#: ../../howto/transfers-administration.rst:37 1f5aec8ae715425a9c43cfa38fe1ec4b
+#: ../../howto/transfers-administration.rst:37 6fd47fc3fe414664aba4b32c424e6c8a
+msgid "Transfer examples"
+msgstr "转账示例"
+
+#: ../../howto/transfers-administration.rst:39 cc5340320bc341e88c607f37378ecaf4
+msgid ""
+"The examples below are independent ``async main`` fragments, not a "
+"sequence to run. They assume an authenticated testnet ``client`` prepared"
+" as shown in :doc:`../introduction/quickstart`. Supply every value "
+"explicitly through your environment, inspect it before signing, and run "
+"only the one operation you intend. The SDK does not verify that a "
+"destination belongs to you."
+msgstr ""
+"以下示例是相互独立的 ``async main`` 片段，并非要连续运行的操作序列。它们假设已按 "
+":doc:`../introduction/quickstart` 准备好经过身份验证的 testnet "
+"``client``。请通过环境变量显式提供每个值，在签名前检查这些值，并且只运行你明确需要的那一个操作。SDK 不会验证目标地址是否属于你。"
+
+#: ../../howto/transfers-administration.rst:46 4fc0d4d8dc7049b186270bb2ad13e9ab
+msgid "Response check"
+msgstr "响应检查"
+
+#: ../../howto/transfers-administration.rst:48 e5a3199d46f54aa79e8bc17aaee59312
+msgid ""
+"Run the chosen operation after this small response helper. An Exchange "
+"rejection is returned as data instead of raised as a Python exception."
+msgstr "请在这个小型响应 helper 之后运行选定的操作。Exchange 拒绝会作为数据返回，而不是作为 Python 异常抛出。"
+
+#: ../../howto/transfers-administration.rst:59 ddfac1022b4a4984bf59ab7d92824660
+msgid ""
+"Amounts are human-readable units. The SDK truncates excess fractional "
+"digits toward zero when encoding these actions: USD sends, withdrawals, "
+"and class transfers use 2 decimals; vault USD uses 6; HYPE uses 8; and "
+"token transfers use the token's ``weiDecimals`` metadata. Validate or "
+"quantize the input yourself if silent truncation is not acceptable. The "
+"HIP-3 liquidator call instead requires no more than 6 decimal places and "
+"an exact multiple of 1,000 quote tokens."
+msgstr ""
+"数量使用人类可读单位。SDK 编码这些操作时，会朝零方向截断超出精度的小数位：USD 发送、提现和类别转账使用 2 位小数；vault USD "
+"使用 6 位；HYPE 使用 8 位；token 转账使用 token 的 ``weiDecimals`` "
+"元数据。如果不能接受静默截断，请自行验证或量化输入。HIP-3 清算人调用则要求不超过 6 位小数，并且必须是 1,000 个报价 token 的整数倍。"
+
+#: ../../howto/transfers-administration.rst:67 b62038a8f42e457eb0c3dd3734b7a925
+msgid "Direct account transfers"
+msgstr "直接账户转账"
+
+#: ../../howto/transfers-administration.rst:69 910eab13ca7948959e96a8e0e7d8af36
+msgid "Send a spot token after resolving ``coin`` to its token ID and decimals:"
+msgstr "将 ``coin`` 解析为 token ID 和小数精度后发送 spot token："
+
+#: ../../howto/transfers-administration.rst:83 2edb32023cd84c4fbfe5596b36630fe2
+msgid "Send USD directly to another address:"
+msgstr "将 USD 直接发送到另一个地址："
+
+#: ../../howto/transfers-administration.rst:95 8c1c025eacdf481fbf91802862773283
+msgid ""
+"Initiate a withdrawal to an explicit destination. Omitting "
+"``destination`` uses the configured account address, but an explicit "
+"value is easier to audit. The official Exchange API currently documents a"
+" $1 fee and approximately five minutes to finality; verify the current "
+"terms in the `Exchange endpoint`_ before signing:"
+msgstr ""
+"向显式目标地址发起提现。省略 ``destination`` 会使用已配置的账户地址，但显式填写更便于审计。官方 Exchange API "
+"当前记录的费用为 1 美元，完成约需五分钟；签名前请在 `Exchange endpoint`_ 核实最新条件："
+
+#: ../../howto/transfers-administration.rst:112
+#: 38c6ac69de534778ac182e3580c96208
+msgid "DEX and external destinations"
+msgstr "DEX 与外部目标地址"
+
+#: ../../howto/transfers-administration.rst:114
+#: 5b1236e9023f4da0a71f9a980134fbac
+msgid ""
+"Move a token between DEX contexts with a user-signed ``send_asset`` "
+"action. Use ``\"\"`` for the default USDC perpetual DEX and ``\"spot\"`` "
+"for spot. Only the collateral token may move to or from a perpetual DEX; "
+"see `Send Asset`_:"
+msgstr ""
+"使用用户签名的 ``send_asset`` 操作在 DEX 上下文之间移动 token。使用 ``\"\"`` 表示默认 USDC 永续 "
+"DEX，使用 ``\"spot\"`` 表示 spot。只有抵押 token 可以转入或转出永续 DEX；参见 `Send Asset`_："
+
+#: ../../howto/transfers-administration.rst:132
+#: 64cc8354064f494997610b78e9953e21
+msgid ""
+"The agent-signed variant accepts ``expires_after``. The deadline is an "
+"absolute millisecond timestamp and does not make an acknowledged transfer"
+" reversible:"
+msgstr "agent 签名的变体接受 ``expires_after``。该期限是绝对毫秒时间戳，且不会让已经确认的转账变得可逆："
+
+#: ../../howto/transfers-administration.rst:153
+#: cf2356f2df0a40a1b15e075c7cf59418
+msgid ""
+"For an external EVM destination, provide the chain, gas, recipient "
+"encoding, and call data. ``data=\"0x\"`` means no call data; use non-"
+"empty data only after validating the destination contract and payload "
+"outside the SDK:"
+msgstr ""
+"对于外部 EVM 目标，请提供链、gas、接收方编码和调用数据。``data=\"0x\"`` 表示没有调用数据；只有在 SDK "
+"外部验证目标合约和 payload 后，才能使用非空数据："
+
+#: ../../howto/transfers-administration.rst:174
+#: e3b468141b444cc3abd97a832891a616
+msgid "USD classes"
+msgstr "USD 资产类别"
+
+#: ../../howto/transfers-administration.rst:176
+#: f4c8d6c3523047d395ca45c48bef6c46
+msgid ""
+"Move USD from spot to perpetuals with ``to_perp=True``. Use ``False`` for"
+" the reverse direction; do not run both calls merely to test "
+"connectivity:"
+msgstr ""
+"使用 ``to_perp=True`` 将 USD 从 spot 移至 perpetuals。反向移动时使用 "
+"``False``；不要仅为了测试连通性而同时运行两个方向："
+
+#: ../../howto/transfers-administration.rst:189
+#: 27ce379ba1824613896bd6b76ccabc86
+msgid "Vault and HIP-3 transfers"
+msgstr "Vault 与 HIP-3 转账"
+
+#: ../../howto/transfers-administration.rst:191
+#: a695d4c5b10e4916af22fcb1efa8a7af
+msgid ""
+"Deposit USD into a vault with ``is_deposit=True``. Use ``False`` only "
+"when you intend to withdraw from that vault:"
+msgstr "使用 ``is_deposit=True`` 将 USD 存入 vault。仅在你确实要从该 vault 提取时使用 ``False``："
+
+#: ../../howto/transfers-administration.rst:203
+#: fcb861d6257f491f9f873854077f59a4
+msgid ""
+"A HIP-3 liquidator transfer requires a positive amount that is an exact "
+"multiple of 1,000 quote tokens. Use ``is_deposit=False`` for the reverse "
+"direction:"
+msgstr "HIP-3 清算人转账要求数量为 1,000 个报价 token 的正整数倍。反向移动时使用 ``is_deposit=False``："
+
+#: ../../howto/transfers-administration.rst:216
+#: ecaccc39945c4f6bbfa903043bec8b17
+msgid "Staking and delegation"
+msgstr "质押与委托"
+
+#: ../../howto/transfers-administration.rst:218
+#: 5a13e8b0857e4f59a06559b7687779e6
+msgid "Move HYPE into the staking balance:"
+msgstr "将 HYPE 转入质押余额："
+
+#: ../../howto/transfers-administration.rst:227
+#: 5b413c10f84e4e58a631a218bc9d5934
+msgid ""
+"Move HYPE out of the staking balance. This starts a seven-day unstaking "
+"queue; an address may have at most five pending withdrawals:"
+msgstr "将 HYPE 转出质押余额。这会启动一个七天的解除质押队列；每个地址最多可有五笔待处理提现："
+
+#: ../../howto/transfers-administration.rst:237
+#: c8cf28d8527e468fb3061650b8363d9d
+msgid ""
+"Delegate HYPE to a validator. Set ``undelegate=True`` only for the "
+"reverse operation. Delegation to a validator has a one-day lockup; see "
+"`Staking`_:"
+msgstr ""
+"将 HYPE 委托给验证者。仅在执行反向操作时设置 ``undelegate=True``。对某个验证者的委托有一天锁定期；参见 "
+"`Staking`_："
+
+#: ../../howto/transfers-administration.rst:250
+#: c5208464beba42aa8d28c77244baa450
 msgid "Account administration"
 msgstr "账户管理"
 
-#: ../../howto/transfers-administration.rst:39 b9035230c85a4feb925393bef11d7f1f
+#: ../../howto/transfers-administration.rst:252
+#: 61ae42b3cb83455597025baab346edf8
 msgid ""
 "The Exchange client exposes ``set_referrer_code``, "
 "``create_sub_account``, ``use_big_blocks``, ``approve_agent``, "
@@ -116,25 +274,28 @@ msgid ""
 "the current role and abstraction state first, then verify it again "
 "through trusted Info after acknowledgement."
 msgstr ""
-"Exchange 客户端提供 ``set_referrer_code``、``create_sub_account``、``use_big_blocks``、"
-"``approve_agent``、``approve_builder_fee``、``convert_to_multi_sig_user``、账户抽象方法和 agent 抽象方法。"
-"批准和多签更改会改变权限；转换可能没有简单的逆操作。请先读取当前角色和抽象状态，"
-"再在收到确认后通过可信的 Info 再次验证。"
+"Exchange 客户端提供 "
+"``set_referrer_code``、``create_sub_account``、``use_big_blocks``、``approve_agent``、``approve_builder_fee``、``convert_to_multi_sig_user``、账户抽象方法和"
+" agent 抽象方法。批准和多签更改会改变权限；转换可能没有简单的逆操作。请先读取当前角色和抽象状态，再在收到确认后通过可信的 Info "
+"再次验证。"
 
-#: ../../howto/transfers-administration.rst:46 ee3997dec48641509afae21a42c02134
+#: ../../howto/transfers-administration.rst:259
+#: 445600fc138f47e8abe4be12295afd86
 msgid ""
 "``reserve_request_weight`` is a paid action. ``schedule_cancel`` affects "
 "open orders. ``noop`` advances or reserves the client's nonce stream. "
 "None should be used as a generic health check."
 msgstr ""
-"``reserve_request_weight`` 是付费操作。``schedule_cancel`` 会影响开放订单。"
-"``noop`` 推进或保留客户端的 nonce 流。它们都不应用作通用健康检查。"
+"``reserve_request_weight`` 是付费操作。``schedule_cancel`` 会影响开放订单。``noop`` "
+"推进或保留客户端的 nonce 流。它们都不应用作通用健康检查。"
 
-#: ../../howto/transfers-administration.rst:51 83bdabdc54c34272ad7a2e8eda6729b3
+#: ../../howto/transfers-administration.rst:264
+#: 15757359c7b74a519bbd474b7dff96ba
 msgid "Outcome and validator actions"
 msgstr "Outcome 与验证者操作"
 
-#: ../../howto/transfers-administration.rst:53 2f11d0ec5fa042eea2b092985ce383a5
+#: ../../howto/transfers-administration.rst:266
+#: 7ef0619a90464b5f8ddf0dd571535748
 msgid ""
 "``split_outcome``, ``merge_outcome``, ``merge_question``, and "
 "``negate_outcome`` alter outcome-token state. ``vote_risk_free_rate`` and"
@@ -142,20 +303,44 @@ msgid ""
 "actions. ``claim_rewards`` changes claimable state. Validate protocol-"
 "specific eligibility and units outside the SDK before calling them."
 msgstr ""
-"``split_outcome``、``merge_outcome``、``merge_question`` 和 ``negate_outcome`` 会改变 outcome-token 状态。"
-"``vote_risk_free_rate`` 和 ``authorize_aqav2_role`` 是有特权的验证者或管理操作。"
-"``claim_rewards`` 更改可领取状态。调用前请在 SDK 外部验证协议特定的资格和单位。"
+"``split_outcome``、``merge_outcome``、``merge_question`` 和 "
+"``negate_outcome`` 会改变 outcome-token 状态。``vote_risk_free_rate`` 和 "
+"``authorize_aqav2_role`` 是有特权的验证者或管理操作。``claim_rewards`` 更改可领取状态。调用前请在 "
+"SDK 外部验证协议特定的资格和单位。"
 
-#: ../../howto/transfers-administration.rst:60 c91416f2efee40b7b2c0eb49b74ac51b
+#: ../../howto/transfers-administration.rst:273
+#: d72a966bb5d34c09ba49b52952439209
 msgid "Response discipline"
 msgstr "响应规范"
 
-#: ../../howto/transfers-administration.rst:62 ab82ea2d2bd84c589ac50f74829ff64b
+#: ../../howto/transfers-administration.rst:275
+#: 2702295b8e9e47cab8bd549697f739fe
 msgid ""
 "These methods usually return ``DefaultActionResponse``. A returned JSON "
 "object may still have ``status == \"err\"``; that is an Exchange "
 "rejection, not a Python exception. Network ambiguity is handled "
 "separately as described in :doc:`lifecycle-reconciliation`."
 msgstr ""
-"这些方法通常返回 ``DefaultActionResponse``。返回的 JSON 对象仍可能具有 ``status == \"err\"``；"
-"那是 Exchange 拒绝，而不是 Python 异常。网络不确定性按 :doc:`lifecycle-reconciliation` 所述单独处理。"
+"这些方法通常返回 ``DefaultActionResponse``。返回的 JSON 对象仍可能具有 ``status == "
+"\"err\"``；那是 Exchange 拒绝，而不是 Python 异常。网络不确定性按 :doc:`lifecycle-"
+"reconciliation` 所述单独处理。"
+
+#~ msgid "Common inputs"
+#~ msgstr "通用输入"
+
+#~ msgid ""
+#~ "Set the shared token, amount, and "
+#~ "destination first. Amounts are human-"
+#~ "readable token units; the SDK resolves"
+#~ " token metadata and wire precision "
+#~ "where required."
+#~ msgstr "先设置共用的 token、数量和目标地址。数量使用人类可读的 token 单位；SDK 会在需要时解析 token 元数据和 wire 精度。"
+
+#~ msgid ""
+#~ "Move a token between DEX contexts "
+#~ "with a user-signed ``send_asset`` "
+#~ "action:"
+#~ msgstr "通过用户签名的 ``send_asset`` 操作在 DEX 上下文之间移动 token："
+
+#~ msgid "Move HYPE out of the staking balance:"
+#~ msgstr "将 HYPE 转出质押余额："

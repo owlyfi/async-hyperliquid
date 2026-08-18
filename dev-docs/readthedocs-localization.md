@@ -30,7 +30,8 @@ uv run python -m http.server 8000 -d docs/_build/html
 ```
 
 Open `http://localhost:8000/en/` for English or
-`http://localhost:8000/zh_CN/` for Simplified Chinese.
+`http://localhost:8000/zh_CN/` for Simplified Chinese. The custom language links
+stay within this local server when both output directories are built together.
 
 ## Publish and link the hosted projects
 

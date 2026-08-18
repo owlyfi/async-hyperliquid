@@ -1,7 +1,8 @@
 How-to guides
 =============
 
-These guides group public operations by workflow:
+Choose the guide for the outcome you need, then follow its safety and response
+steps before copying an example:
 
 * :doc:`info-queries` covers credential-free market and account reads.
 * :doc:`markets` explains canonical coin names and metadata-derived IDs.
@@ -9,8 +10,8 @@ These guides group public operations by workflow:
   cancellation, and closing.
 * :doc:`routing` explains main accounts, API wallets, subaccounts, vaults, and
   endpoint trust boundaries.
-* :doc:`transfers-administration` identifies fund-moving, paid, administrative,
-  outcome, and validator actions without presenting ready-to-run destructive
-  snippets.
+* :doc:`transfers-administration` covers fund-moving operations with explicit
+  signed-action examples, plus paid, administrative, outcome, and validator
+  actions.
 * :doc:`lifecycle-reconciliation` covers sessions, errors, nonce ownership, and
   ambiguous signed outcomes.

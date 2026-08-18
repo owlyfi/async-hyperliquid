@@ -147,10 +147,25 @@ def test_translation_catalogs_do_not_publish_email_metadata() -> None:
 
 
 def _run_docs(
-    language: str, output_dir: Path, documentation_version: str | None = "latest"
+    language: str,
+    output_dir: Path,
+    documentation_version: str | None = "latest",
+    *,
+    hosted: bool = True,
+    canonical_url: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     hosted_language = "zh-cn" if language == "zh_CN" else "en"
-    environment = {**os.environ, "READTHEDOCS_LANGUAGE": hosted_language}
+    environment = {**os.environ}
+    if hosted:
+        environment["READTHEDOCS"] = "True"
+        environment["READTHEDOCS_LANGUAGE"] = hosted_language
+    else:
+        environment.pop("READTHEDOCS", None)
+        environment.pop("READTHEDOCS_LANGUAGE", None)
+    if canonical_url is None:
+        environment.pop("READTHEDOCS_CANONICAL_URL", None)
+    else:
+        environment["READTHEDOCS_CANONICAL_URL"] = canonical_url
     if documentation_version is None:
         environment.pop("READTHEDOCS_VERSION", None)
     else:
@@ -184,9 +199,20 @@ def _run_docs(
 
 
 def _build_docs(
-    language: str, output_dir: Path, documentation_version: str | None = "latest"
+    language: str,
+    output_dir: Path,
+    documentation_version: str | None = "latest",
+    *,
+    hosted: bool = True,
+    canonical_url: str | None = None,
 ) -> None:
-    result = _run_docs(language, output_dir, documentation_version)
+    result = _run_docs(
+        language,
+        output_dir,
+        documentation_version,
+        hosted=hosted,
+        canonical_url=canonical_url,
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -246,6 +272,30 @@ def test_docs_version_falls_back_to_latest_when_environment_is_absent(
     )
 
 
+def test_local_language_switch_stays_on_the_local_preview(tmp_path: Path) -> None:
+    output_root = tmp_path / "html"
+    _build_docs("en", output_root / "en", hosted=False)
+    _build_docs("zh_CN", output_root / "zh_CN", hosted=False)
+
+    english_index = (output_root / "en" / "index.html").read_text(encoding="utf-8")
+    english_orders = (output_root / "en" / "howto" / "orders.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'href="../zh_CN/index.html"' in english_index
+    assert 'href="../../zh_CN/howto/orders.html"' in english_orders
+    assert "https://async-hyperliquid.readthedocs.io" not in english_orders
+
+
+def test_docs_use_read_the_docs_canonical_url(tmp_path: Path) -> None:
+    output_dir = tmp_path / "canonical"
+    canonical_url = "https://async-hyperliquid.readthedocs.io/en/stable/"
+    _build_docs("en", output_dir, canonical_url=canonical_url)
+
+    index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+    assert f'<link rel="canonical" href="{canonical_url}index.html"' in index_html
+
+
 @pytest.mark.parametrize(
     "documentation_version",
     ["", 'latest"/../../hostile'],
@@ -275,6 +325,9 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
 
     chinese_index_html = (output_dir / "index.html").read_text(encoding="utf-8")
     orders_html = (output_dir / "howto" / "orders.html").read_text(encoding="utf-8")
+    transfers_html = (output_dir / "howto" / "transfers-administration.html").read_text(
+        encoding="utf-8"
+    )
     async_client_html = (output_dir / "reference" / "async-hyperliquid.html").read_text(
         encoding="utf-8"
     )
@@ -296,6 +349,10 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
 
     assert "异步、带类型的 Python 客户端" in chinese_index_html
     assert "单笔和批量操作" in orders_html
+    assert "空头持仓价格设置" in orders_html
+    assert '<span class="n">place_trigger_order</span>' in orders_html
+    assert '<span class="n">usd_transfer</span>' in transfers_html
+    assert "七天的解除质押队列" in transfers_html
     assert "错误" in errors_html
     assert "总体比较" in benchmarks_html
     assert "本地 CPU 参考结果" in benchmarks_html
@@ -310,6 +367,8 @@ def test_simplified_chinese_docs_translate_narrative_and_preserve_api_names(
     assert "0.0476x" in benchmarks_html
     assert "AsyncHyperliquid" in async_client_html
     assert "InfoClient" in info_client_html
+    assert "共享契约" in async_client_html
+    assert "共享契约" in info_client_html
     assert "PlaceOrderRequest" in types_html
     assert "Resource owner plus intent-level order workflows." in async_client_html
     assert (

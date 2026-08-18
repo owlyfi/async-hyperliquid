@@ -170,6 +170,19 @@ def test_workflows_install_locked_docs_and_build_warning_free_html() -> None:
         assert set(expected_builds) <= runs
 
 
+def test_ci_reextracts_translation_catalogs_before_building_docs() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    gettext_build = (
+        "sphinx-build -E -a -W --keep-going -b gettext docs docs/_build/gettext"
+    )
+    catalog_update = "sphinx-intl update -p docs/_build/gettext -l zh_CN -d docs/locale"
+
+    assert gettext_build in workflow
+    assert catalog_update in workflow
+    assert "git diff --exit-code -- docs/locale" in workflow
+    assert workflow.index(gettext_build) < workflow.index("Build English documentation")
+
+
 def test_workflow_smoke_tests_import_the_current_public_types() -> None:
     workflows = "\n".join(
         (ROOT / ".github" / "workflows" / name).read_text()

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"POT-Creation-Date: 2026-08-18 18:48+0800\n"
 "PO-Revision-Date: 2026-08-17 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
@@ -18,16 +18,54 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../reference/info-client.rst:2 ba2741dbbd624af8b554dfd32d4f7537
+#: ../../reference/info-client.rst:2 717ec2a43e15482fa62f33714ead886c
 msgid "InfoClient"
 msgstr ""
 
-#: async_hyperliquid.info.InfoClient:1 b164f8ec51f5454a98c8532f73159860 of
+#: 124bc4db5983470e836ae9100cafa927 async_hyperliquid.info.InfoClient:1 of
 msgid "Asynchronous, credential-free client for Hyperliquid Info endpoints."
 msgstr ""
 
-#: ../../reference/info-client.rst:8 1f63a6171904471ba052394ab30924db
+#: ../../reference/info-client.rst:8 6a6c2c6fcd4a422a86f3021771d70cbd
 msgid ""
 "Info methods return the typed wire shape and do not require credentials. "
 "Account addresses are query parameters; they do not become client state."
 msgstr "Info 方法返回带类型的 wire 结构，且不需要凭据。账户地址是查询参数；不会成为客户端状态。"
+
+#: ../../reference/info-client.rst:12 28ebac28aaf34c17b06aacfeb5238080
+msgid "Shared contract"
+msgstr "共享契约"
+
+#: ../../reference/info-client.rst:14 dbaea45323b54bf0ab278e6213ffc4d4
+msgid ""
+"Use an async context manager, or pair ``open()`` with ``close()``. "
+"Passing an existing ``aiohttp`` session leaves that session owned by the "
+"caller."
+msgstr "请使用 async 上下文管理器，或配对调用 ``open()`` 与 ``close()``。传入现有 ``aiohttp`` session 时，该 session 仍由调用方所有。"
+
+#: ../../reference/info-client.rst:16 9a9a30e5c5ed4e58927f0fc206673292
+msgid ""
+"Timestamps are integer milliseconds. Numeric fields in protocol-shaped "
+"responses remain strings unless a named convenience method, such as "
+"``mark_price()`` or ``mid_price()``, declares a numeric return type."
+msgstr "时间戳为整数毫秒。协议结构响应中的数字字段保持为字符串，除非 ``mark_price()`` 或 ``mid_price()`` 等具名便捷方法声明了数字返回类型。"
+
+#: ../../reference/info-client.rst:19 87ce76dabbce41e18a5a2e232f4d3fea
+msgid ""
+"Metadata helpers cache one coherent metadata snapshot. Call "
+"``refresh_metadata()`` when the application explicitly needs fresh "
+"listings. Separate Info requests are not an atomic account snapshot."
+msgstr "元数据 helper 会缓存一个一致的元数据快照。当应用明确需要最新上市信息时调用 ``refresh_metadata()``。分开的 Info 请求不是原子账户快照。"
+
+#: ../../reference/info-client.rst:22 c4299a9a474d40208d694aa2441f00ec
+msgid ""
+"Local argument errors raise ``ValueError``; transport failures and "
+"malformed upstream shapes raise the package exceptions in :doc:`errors`."
+msgstr "本地参数错误会抛出 ``ValueError``；传输失败和上游结构错误会抛出 :doc:`errors` 中的包异常。"
+
+#: ../../reference/info-client.rst:25 db717ba9566f47faa09aa1847899ea56
+msgid ""
+"Use :doc:`../howto/info-queries` to choose an endpoint by task and "
+":doc:`../howto/markets` for canonical coin names. The signatures below "
+"remain the authoritative parameter and return-type reference."
+msgstr "使用 :doc:`../howto/info-queries` 按任务选择端点，并通过 :doc:`../howto/markets` 了解规范 coin 名称。下方签名仍是参数和返回类型的权威参考。"

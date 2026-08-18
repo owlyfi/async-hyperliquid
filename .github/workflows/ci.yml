@@ -28,6 +28,12 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --dev --group benchmark --group docs
 
+      - name: Check translation catalogs match documentation sources
+        run: |
+          uv run --frozen --group docs sphinx-build -E -a -W --keep-going -b gettext docs docs/_build/gettext
+          uv run --frozen --group docs sphinx-intl update -p docs/_build/gettext -l zh_CN -d docs/locale
+          git diff --exit-code -- docs/locale
+
       - name: Build English documentation
         run: uv run --frozen --group docs sphinx-build -E -a -W --keep-going -D language=en -b html docs docs/_build/html/en
 

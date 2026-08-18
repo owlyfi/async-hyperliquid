@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"POT-Creation-Date: 2026-08-18 18:48+0800\n"
 "PO-Revision-Date: 2026-08-17 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
@@ -18,11 +18,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../reference/async-hyperliquid.rst:2 e52166d86ae34e848cd9d58bcfd997a0
+#: ../../reference/async-hyperliquid.rst:2 9bbda214bb8542f083335ecc4ee704d6
 msgid "AsyncHyperliquid"
 msgstr ""
 
-#: ../../reference/async-hyperliquid.rst:6 961015f09d9d4830946171c3dbea7431
+#: ../../reference/async-hyperliquid.rst:6 d2601955204640b1afed56514e437091
 msgid ""
 "This reference includes methods that place, modify, cancel, and close "
 "orders; change leverage or margin; and move assets. A signature is not a "
@@ -31,21 +31,60 @@ msgid ""
 ":doc:`../howto/lifecycle-reconciliation`. Start on testnet and reconcile "
 "every ambiguous signed outcome before replacement."
 msgstr ""
-"本参考包含下单、修改、取消和关闭订单，更改杠杆或保证金，以及转移资产的方法。签名并非安全流程。"
-"调用这些方法前，请阅读 :doc:`../howto/orders`、:doc:`../howto/routing`、"
-":doc:`../howto/transfers-administration` 和 :doc:`../howto/lifecycle-reconciliation`。"
-"请从 testnet 开始，并在替换前对每个含糊的已签名结果进行对账。"
+"本参考包含下单、修改、取消和关闭订单，更改杠杆或保证金，以及转移资产的方法。签名并非安全流程。调用这些方法前，请阅读 "
+":doc:`../howto/orders`、:doc:`../howto/routing`、:doc:`../howto/transfers-"
+"administration` 和 :doc:`../howto/lifecycle-reconciliation`。请从 testnet "
+"开始，并在替换前对每个含糊的已签名结果进行对账。"
 
-#: 93b5ff567e0c48df8f0b681ae1229a40 async_hyperliquid.client.AsyncHyperliquid:1
+#: 1213cdf5ddd44f5e9e9b5e3fd47d2b07 async_hyperliquid.client.AsyncHyperliquid:1
 #: of
 msgid "Resource owner plus intent-level order workflows."
 msgstr ""
 
-#: ../../reference/async-hyperliquid.rst:17 77a68681846245adb56dc82b5613a6c8
+#: ../../reference/async-hyperliquid.rst:17 4b80c5002a5c4320875b99fc092bd5ee
 msgid ""
 "Use the root client for workflows that resolve coins, metadata, prices, "
 "token precision, or positions. Use ``.info`` for reads and ``.exchange`` "
 "for the Info-independent actions listed in :doc:`exchange-client`."
 msgstr ""
-"对于需要解析币种、元数据、价格、token 精度或持仓的工作流，请使用 root client。"
-"使用 ``.info`` 进行读取，使用 ``.exchange`` 执行 :doc:`exchange-client` 中列出的独立于 Info 的操作。"
+"对于需要解析币种、元数据、价格、token 精度或持仓的工作流，请使用 root client。使用 ``.info`` 进行读取，使用 "
+"``.exchange`` 执行 :doc:`exchange-client` 中列出的独立于 Info 的操作。"
+
+#: ../../reference/async-hyperliquid.rst:22 714ca5b6e5c342d297004363cbab0ecd
+msgid "Shared contract"
+msgstr "共享契约"
+
+#: ../../reference/async-hyperliquid.rst:24 d3c956cd21da4acca3edb338b56a9243
+msgid ""
+"Use the client as an async context manager, or pair ``open()`` with "
+"``close()``. The root client owns the shared HTTP transport."
+msgstr "请将客户端用作 async 上下文管理器，或配对调用 ``open()`` 与 ``close()``。root client 拥有共享的 HTTP transport。"
+
+#: ../../reference/async-hyperliquid.rst:26 bd66b80751464de19aa7e05c24d518b5
+msgid ""
+"Public amounts, prices, and sizes are human-readable ``float`` values. "
+"The client resolves venue metadata before encoding; consult "
+":doc:`../howto/markets` for accepted coin names and precision behavior."
+msgstr "公共数量、价格和 size 使用人类可读的 ``float`` 值。客户端会在编码前解析交易场所元数据；可接受的 coin 名称和精度行为请参见 :doc:`../howto/markets`。"
+
+#: ../../reference/async-hyperliquid.rst:29 e96eca8a58b24b9bb575a06535fb69bc
+msgid ""
+"Signed methods return a typed success-or-rejection union. ``status == "
+"\"err\"`` is returned data, while local validation, transport, and "
+"malformed-response failures raise exceptions. See :doc:`response-types` "
+"and :doc:`errors`."
+msgstr "签名方法返回带类型的成功或拒绝联合类型。``status == \"err\"`` 是返回数据，而本地验证、传输和响应格式错误会抛出异常。参见 :doc:`response-types` 和 :doc:`errors`。"
+
+#: ../../reference/async-hyperliquid.rst:32 d961e2d360a74cb5abdbe39730ff9f7a
+msgid ""
+"A timeout does not prove that a signed action failed. The client does not"
+" retry signed actions automatically; reconcile through trusted Info reads"
+" before replacement."
+msgstr "超时不能证明签名操作失败。客户端不会自动重试签名操作；替换前请通过可信的 Info 查询核对状态。"
+
+#: ../../reference/async-hyperliquid.rst:36 ea4b247661c5496b865b8e9221a2ac0d
+msgid ""
+"The method signatures below are the authoritative parameter and return-"
+"type reference. The order and transfer guides define the required safety "
+"procedure and response handling without repeating it under every method."
+msgstr "下方方法签名是参数和返回类型的权威参考。订单与转账指南定义了必须遵循的安全流程和响应处理，无需在每个方法下重复。"

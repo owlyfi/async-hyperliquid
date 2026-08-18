@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 16:18+0800\n"
+"POT-Creation-Date: 2026-08-18 18:48+0800\n"
 "PO-Revision-Date: 2026-08-17 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
@@ -18,11 +18,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../reference/exchange-client.rst:2 03c643131fb04acc9f7b10421004275c
+#: ../../reference/exchange-client.rst:2 aa59cd37263e43b7baf9b4c1bfe8317b
 msgid "ExchangeClient"
 msgstr ""
 
-#: ../../reference/exchange-client.rst:6 19a9c94d59a040638ce161f1571f15e2
+#: ../../reference/exchange-client.rst:6 841ec32005334533801c3518afa3a6e3
 msgid ""
 "This reference includes fund-moving, paid, authority-changing, outcome, "
 "and validator actions. Some actions are irreversible and user-signed fund"
@@ -31,21 +31,70 @@ msgid ""
 ":doc:`../howto/routing`, :doc:`../howto/transfers-administration`, and "
 ":doc:`../howto/lifecycle-reconciliation` first."
 msgstr ""
-"本参考包含资金转移、付费、权限变更、outcome 和验证者操作。一些操作不可逆，用户签名的资金操作"
-"没有 ``expires_after`` 保护。请勿仅依据方法签名调用方法。请先阅读 :doc:`../howto/orders`、"
-":doc:`../howto/routing`、:doc:`../howto/transfers-administration` 和 "
-":doc:`../howto/lifecycle-reconciliation`。"
+"本参考包含资金转移、付费、权限变更、outcome 和验证者操作。一些操作不可逆，用户签名的资金操作没有 ``expires_after`` "
+"保护。请勿仅依据方法签名调用方法。请先阅读 "
+":doc:`../howto/orders`、:doc:`../howto/routing`、:doc:`../howto/transfers-"
+"administration` 和 :doc:`../howto/lifecycle-reconciliation`。"
 
-#: async_hyperliquid.exchange.ExchangeClient:1 fcaaf3bbb60a401a94b5beef6a97dfcc
+#: 87ae70eaa5da40078239c6842ae45043 async_hyperliquid.exchange.ExchangeClient:1
 #: of
 msgid "Transport-bound signed action client owned by ``AsyncHyperliquid``."
 msgstr ""
 
-#: ../../reference/exchange-client.rst:17 b102081cc9484f25b38ceeed6e139a77
+#: ../../reference/exchange-client.rst:17 4ea01d8a970545648c93aad42f271bbe
 msgid ""
 "Applications normally obtain this object from "
 "``AsyncHyperliquid.exchange`` so it shares lifecycle, transport, routing,"
 " and nonce ownership with the root client."
 msgstr ""
-"应用程序通常从 ``AsyncHyperliquid.exchange`` 获取此对象，使其与 root client 共享生命周期、"
-"传输、路由和 nonce 所有权。"
+"应用程序通常从 ``AsyncHyperliquid.exchange`` 获取此对象，使其与 root client 共享生命周期、传输、路由和"
+" nonce 所有权。"
+
+#: ../../reference/exchange-client.rst:22 2b55dd170d944586a54272fa32a0771c
+msgid "Shared contract"
+msgstr "共享契约"
+
+#: ../../reference/exchange-client.rst:24 bd7027f9bed448a7a2401b5ed4400eeb
+msgid ""
+"Do not construct this class directly. ``AsyncHyperliquid`` supplies the "
+"account, signer, network, routing scope, transport, and monotonic nonce "
+"owner."
+msgstr "不要直接构造此类。``AsyncHyperliquid`` 会提供账户、签名者、网络、路由作用域、transport 和单调 nonce 所有者。"
+
+#: ../../reference/exchange-client.rst:26 6c9c120ce83844fdaed13101c9ef6f8e
+msgid ""
+"Amounts are human-readable units. USD sends, withdrawals, and class "
+"transfers truncate beyond 2 decimals; vault USD uses 6 decimals; HYPE "
+"uses 8; and token transfers use token metadata. See :doc:`../howto"
+"/transfers-administration`."
+msgstr "数量使用人类可读单位。USD 发送、提现和类别转账会截断超过 2 位的小数；vault USD 使用 6 位小数；HYPE 使用 8 位；token 转账使用 token 元数据。参见 :doc:`../howto/transfers-administration`。"
+
+#: ../../reference/exchange-client.rst:29 fff88967225743e495d74ff069b17388
+msgid ""
+"``expires_after`` is an absolute millisecond deadline and is available "
+"only where shown in the signature. It rejects a stale submission; it does"
+" not undo an acknowledged action or make an ambiguous timeout safe to "
+"retry."
+msgstr "``expires_after`` 是绝对毫秒期限，并且只在签名中显示的位置可用。它会拒绝过期提交；不会撤销已确认操作，也不会让不确定的超时变得可以安全重试。"
+
+#: ../../reference/exchange-client.rst:32 985da21854ff41c589f7fec51caa1f1c
+msgid ""
+"Default acknowledgements still return ``status == \"err\"`` for Exchange "
+"rejection. Order, cancel, and TWAP methods also contain operation-"
+"specific status data. Always discriminate the union described in :doc"
+":`response-types`."
+msgstr "Exchange 拒绝时，默认确认仍会返回 ``status == \"err\"``。订单、取消和 TWAP 方法还包含操作特定的状态数据。始终区分 :doc:`response-types` 中描述的联合类型。"
+
+#: ../../reference/exchange-client.rst:36 93cec0f7cefc45cbaa8a41cc7327c90d
+msgid ""
+"These methods do not automatically retry. Reuse one client per execution "
+"address and follow :doc:`../howto/lifecycle-reconciliation` after "
+"uncertain outcomes."
+msgstr "这些方法不会自动重试。每个执行地址复用一个客户端，并在结果不确定后遵循 :doc:`../howto/lifecycle-reconciliation`。"
+
+#: ../../reference/exchange-client.rst:40 4ad193188d1a4abbba46bb9a524375c3
+msgid ""
+"The signatures below are the authoritative parameter and return-type "
+"reference; the linked how-to guides supply the operation-specific safety "
+"procedure."
+msgstr "下方签名是参数和返回类型的权威参考；链接的 how-to 指南提供操作特定的安全流程。"

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 16:18+0800\n"
-"PO-Revision-Date: 2026-08-17 00:00+0800\n"
+"POT-Creation-Date: 2026-08-18 18:57+0800\n"
+"PO-Revision-Date: 2026-08-18 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
 "Language-Team: zh_CN\n"
@@ -18,32 +18,32 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../howto/orders.rst:2 92e4ac91b7b946168b879f3fd14bfdbe
+#: ../../howto/orders.rst:2 bb115ca1505741b6810a062b6346ceba
 msgid "Manage orders and positions"
 msgstr "管理订单与持仓"
 
-#: ../../howto/orders.rst:6 df73cb6102d84a64bf46ab8f0f559f64
+#: ../../howto/orders.rst:6 4019da09379f4ab0b487d6cdb5dc15dc
 msgid ""
 "Every placement, modification, cancellation, TWAP, leverage, margin, or "
 "close call is a real signed action on the selected network. Use testnet "
 "first, inspect the encoded intent, enforce application-level limits, and "
 "reconcile the result before retrying."
 msgstr ""
-"每次下单、修改、取消、TWAP、杠杆、保证金或平仓调用，都是所选网络上的真实签名操作。"
-"请先使用 testnet，检查编码后的意图，实施应用级限制，并在重试前核对结果。"
+"每次下单、修改、取消、TWAP、杠杆、保证金或平仓调用，都是所选网络上的真实签名操作。请先使用 "
+"testnet，检查编码后的意图，实施应用级限制，并在重试前核对结果。"
 
-#: ../../howto/orders.rst:12 442d632dbc644645a7703ceff613375b
+#: ../../howto/orders.rst:12 26c9ae9badef4b4092fbf3a35f499c1b
 msgid "Order requests"
 msgstr "订单请求"
 
-#: ../../howto/orders.rst:14 3c25d96265ef4db3a4a4fce52f116006
+#: ../../howto/orders.rst:14 3e9ef431d8e64127bbdcf0f4adec5ba7
 msgid ""
 "Root-client order workflows resolve metadata and encode prices and sizes."
 " A ``PlaceOrderRequest`` uses one vocabulary for single and batch "
 "operations:"
 msgstr "根客户端订单工作流会解析元数据并编码价格和数量。``PlaceOrderRequest`` 对单笔和批量操作使用同一套字段："
 
-#: ../../howto/orders.rst:34 c3e467fce514427cb6e4c63fe16d2007
+#: ../../howto/orders.rst:34 8761d05a7cea4c3f9d406cc88e0bef57
 msgid ""
 "Submit with ``place_limit_order(request)`` or place a same-asset-class "
 "tuple with ``place_orders(requests)``. A perpetual tuple may span the "
@@ -54,12 +54,13 @@ msgid ""
 "decides whether the order fills. Slippage must be finite and in ``[0, "
 "1)``."
 msgstr ""
-"使用 ``place_limit_order(request)`` 提交，或使用 ``place_orders(requests)`` 下同一资产类别的订单元组。"
-"perpetual 元组可跨基础和 HIP-3 DEX，但不能包含 spot 或 outcome 市场。``place_order(...)`` 是展开的便捷形式。"
-"``place_market_order()`` 和 ``is_market=True`` 根据当前中间价与 ``slippage`` 推导激进的限价；"
-"订单是否成交仍由 Exchange 决定。滑点必须为有限值且处于 ``[0, 1)``。"
+"使用 ``place_limit_order(request)`` 提交，或使用 ``place_orders(requests)`` "
+"下同一资产类别的订单元组。perpetual 元组可跨基础和 HIP-3 DEX，但不能包含 spot 或 outcome "
+"市场。``place_order(...)`` 是展开的便捷形式。``place_market_order()`` 和 "
+"``is_market=True`` 根据当前中间价与 ``slippage`` 推导激进的限价；订单是否成交仍由 Exchange "
+"决定。滑点必须为有限值且处于 ``[0, 1)``。"
 
-#: ../../howto/orders.rst:41 d95f5d44f47141909e59abfc534d06af
+#: ../../howto/orders.rst:41 5161ca14237d4604b89917312bb278b6
 msgid ""
 "``TimeInForce.ALO`` rejects an order that would immediately cross, "
 "``TimeInForce.IOC`` cancels any unfilled remainder, and "
@@ -67,15 +68,15 @@ msgid ""
 "order ID useful for idempotent application tracking. The SDK does not "
 "guarantee server-side deduplication for arbitrary retries."
 msgstr ""
-"``TimeInForce.ALO`` 会拒绝立即穿透的订单，``TimeInForce.IOC`` 取消任何未成交余额，"
-"而 ``TimeInForce.GTC`` 可以挂单。``Cloid`` 是经过验证的 16 字节客户端订单 ID，"
-"可用于幂等的应用跟踪。SDK 不保证对任意重试进行服务端去重。"
+"``TimeInForce.ALO`` 会拒绝立即穿透的订单，``TimeInForce.IOC`` 取消任何未成交余额，而 "
+"``TimeInForce.GTC`` 可以挂单。``Cloid`` 是经过验证的 16 字节客户端订单 ID，可用于幂等的应用跟踪。SDK "
+"不保证对任意重试进行服务端去重。"
 
-#: ../../howto/orders.rst:48 afebeb6e405a48199bd17d2169ee7bdb
+#: ../../howto/orders.rst:48 0f3255f1cd1b45ed898e56c11942ce31
 msgid "Triggers and TP/SL"
 msgstr "触发器与 TP/SL"
 
-#: ../../howto/orders.rst:50 72e57731aecb4c2aa91005add687fac5
+#: ../../howto/orders.rst:50 fa73ee95910b43989ceb0ba1a284c88c
 msgid ""
 "Build trigger options with ``trigger_order_type()`` and submit a "
 "``PlaceOrderRequest`` through ``place_trigger_order()`` or "
@@ -83,25 +84,130 @@ msgid ""
 "``trigger.isMarket`` selects the child execution style."
 msgstr ""
 "使用 ``trigger_order_type()`` 构造触发选项，并通过 ``place_trigger_order()`` 或 "
-"``place_orders()`` 提交 ``PlaceOrderRequest``。触发订单的外层 ``is_market`` 必须为 false；"
-"``trigger.isMarket`` 选择子订单执行方式。"
+"``place_orders()`` 提交 ``PlaceOrderRequest``。触发订单的外层 ``is_market`` 必须为 "
+"false；``trigger.isMarket`` 选择子订单执行方式。"
 
-#: ../../howto/orders.rst:55 2cca5aaf845a41ec8d9c3fbfc2f752e1
+#: ../../howto/orders.rst:55 293a9af30188443c9ae8c3a80c75fc82
 msgid ""
 "For grouped TP/SL, pass ``OrderGrouping.NORMAL_TPSL`` with a non-trigger "
 "parent first and one or more trigger children after it. Position TP/SL "
 "uses ``OrderGrouping.POSITION_TPSL``. Set ``ro=True`` for reductions "
 "where applicable. Do not use the outer market flag with a trigger order."
 msgstr ""
-"对于分组 TP/SL，请先传入带有非触发父订单的 ``OrderGrouping.NORMAL_TPSL``，"
-"其后再传入一个或多个触发子订单。持仓 TP/SL 使用 ``OrderGrouping.POSITION_TPSL``。"
-"在适用的减仓操作中设置 ``ro=True``。请勿将外层市价标志用于触发订单。"
+"对于分组 TP/SL，请先传入带有非触发父订单的 ``OrderGrouping.NORMAL_TPSL``，其后再传入一个或多个触发子订单。持仓"
+" TP/SL 使用 ``OrderGrouping.POSITION_TPSL``。在适用的减仓操作中设置 "
+"``ro=True``。请勿将外层市价标志用于触发订单。"
 
-#: ../../howto/orders.rst:61 7e347e82e56b4488a2515dd95ef109f5
+#: ../../howto/orders.rst:60 5f53077fe3ca49e48034fe53804cb91a
+msgid ""
+"The following snippets are independent ``async main`` fragments. They "
+"assume an authenticated testnet ``client`` prepared as shown in "
+":doc:`../introduction/quickstart` and protect a long BTC perpetual "
+"position. Replace ``size`` with the amount that may actually be reduced. "
+"Do not adapt a long exit to a short position by changing only ``is_buy``;"
+" a buy exit also needs an execution price above its trigger."
+msgstr ""
+"以下代码片段是相互独立的 ``async main`` 片段。它们假设已按 :doc:`../introduction/quickstart` "
+"准备好经过身份验证的 testnet ``client``，并用于保护 BTC 永续合约多头持仓。请将 ``size`` "
+"替换为实际可减仓数量。不要只修改 ``is_buy`` 就把多头退出示例用于空头；买入退出的执行价还必须高于触发价。"
+
+#: ../../howto/orders.rst:68 ../../howto/orders.rst:298
+#: 04516f78f58047d682084f4749e0c04e fada077884264bf4b3a6b973977f46e8
+msgid "Common setup"
+msgstr "通用设置"
+
+#: ../../howto/orders.rst:70 1a99d0a6513d4acd93882ebc69f35879
+msgid ""
+"Read the mark and venue precision instead of hard-coding prices and "
+"sizes. TP/SL orders trigger on the mark price. A market-style trigger "
+"still needs ``px`` in the signed request; the examples use an aggressive "
+"execution price below the sell trigger."
+msgstr ""
+"读取标记价格与交易场所精度，不要硬编码价格和数量。TP/SL 订单由标记价格触发。市价式触发单的签名请求中仍需包含 "
+"``px``；示例使用低于卖出触发价的激进执行价格。"
+
+#: ../../howto/orders.rst:111 fce3934b36a1425eaea441452c56da31
+msgid "Short-position price setup"
+msgstr "空头持仓价格设置"
+
+#: ../../howto/orders.rst:113 5d3c2e0ea66f4a22979653caaaeec3a0
+msgid ""
+"For a short position, use ``is_buy=True`` and keep ``ro=True`` in the "
+"exit requests below. The take-profit trigger is below the mark, the stop-"
+"loss trigger is above it, and both aggressive buy execution prices are "
+"above their triggers:"
+msgstr ""
+"对于空头持仓，请在下方退出请求中使用 ``is_buy=True`` 并保留 "
+"``ro=True``。止盈触发价低于标记价格，止损触发价高于标记价格，两个激进买入执行价都高于各自的触发价："
+
+#: ../../howto/orders.rst:124 92ad9693946f4ca5a863513744115693
+msgid ""
+"Use the corresponding ``short_*`` values in one request shape below; do "
+"not submit the long and short alternatives together. In the attached-"
+"parent shape, a short-entry parent is a sell order (``is_buy=False``), "
+"while its TP/SL exit children are buy orders (``is_buy=True``)."
+msgstr "请在下方一种请求结构中使用对应的 ``short_*`` 值；不要同时提交多头和空头备选方案。在带父订单的结构中，空头入场父订单是卖单（``is_buy=False``），其 TP/SL 退出子订单则是买单（``is_buy=True``）。"
+
+#: ../../howto/orders.rst:130 5b24a69c09994a0fa366bd29769f79be
+msgid "Standalone take profit"
+msgstr "独立止盈"
+
+#: ../../howto/orders.rst:132 1861ae7dbaf341b48adefc9b4e183b4e
+msgid "The default ``OrderGrouping.NA`` places an ungrouped TP trigger:"
+msgstr "默认的 ``OrderGrouping.NA`` 会放置一个未分组的 TP 触发单："
+
+#: ../../howto/orders.rst:153 05b50d57e6474cd8aba544350a18b2f6
+msgid "Standalone stop loss"
+msgstr "独立止损"
+
+#: ../../howto/orders.rst:155 6643b8e4625b4676bfbb5b6a87102a59
+msgid ""
+"An ungrouped SL uses the same request shape with "
+"``TriggerKind.STOP_LOSS``:"
+msgstr "未分组的 SL 使用相同的请求结构，并指定 ``TriggerKind.STOP_LOSS``："
+
+#: ../../howto/orders.rst:176 2cb04f03d145457abf4b3508685587c0
+msgid "TP and SL attached to a parent order"
+msgstr "绑定父订单的 TP 和 SL"
+
+#: ../../howto/orders.rst:178 eff4156db2844ca68306ac76ed9ad921
+msgid ""
+"Put the non-trigger parent first, followed by its TP and SL children. The"
+" Exchange activates the children according to the parent's fill and "
+"cancellation state; inspect all three returned statuses."
+msgstr "先放置非触发父订单，再依次放置其 TP 和 SL 子订单。Exchange 会根据父订单的成交与取消状态激活子订单；请检查返回的全部三个状态。"
+
+#: ../../howto/orders.rst:227 1a7e5e57be7640b0b0b3bce26d866b33
+msgid "Position take profit"
+msgstr "持仓止盈"
+
+#: ../../howto/orders.rst:229 7251d69850644b8bbb77ed6af1398fd3
+msgid "Use ``POSITION_TPSL`` when the TP belongs to an existing position:"
+msgstr "当 TP 属于已有持仓时，使用 ``POSITION_TPSL``："
+
+#: ../../howto/orders.rst:253 d6ba2f5e9ed0439ea34c0ca06c9f8b70
+msgid "Position stop loss"
+msgstr "持仓止损"
+
+#: ../../howto/orders.rst:255 a992a9835e614b81842bf038ef50b92b
+msgid "The corresponding position SL only changes the trigger kind and prices:"
+msgstr "对应的持仓 SL 只需更改触发类型和价格："
+
+#: ../../howto/orders.rst:278 d4ddb7c905914b10a991209d11120192
+msgid ""
+"Set ``trigger_order_type(is_market=False, ...)`` and choose ``px`` as the"
+" child limit price for a limit-style TP/SL. A more aggressive child price"
+" improves its chance of filling after activation but permits more "
+"slippage. Always reconcile the resulting order and position state."
+msgstr ""
+"对于限价式 TP/SL，请设置 ``trigger_order_type(is_market=False, ...)``，并将 ``px`` "
+"选为子订单限价。更激进的子订单价格会提高激活后的成交概率，但也允许更多滑点。请始终核对最终订单与持仓状态。"
+
+#: ../../howto/orders.rst:284 a066951fb4b640a58849585aa33c8536
 msgid "TWAP"
 msgstr "TWAP"
 
-#: ../../howto/orders.rst:63 bb17fd992a5248a9bcaa6a6080560289
+#: ../../howto/orders.rst:286 37352530fa6549b58992baf5a8bfcc8b
 msgid ""
 "``place_twap()`` accepts coin, direction, size, duration in minutes, "
 "optional randomization, and optional reduce-only behavior. It also "
@@ -110,49 +216,104 @@ msgid ""
 "current mark price. TWAP prices are normalized using the resolved venue "
 "precision. Cancel a running TWAP with ``cancel_twap(coin, twap_id)``."
 msgstr ""
-"``place_twap()`` 接受 coin、方向、数量、以分钟为单位的持续时间、可选随机化和可选仅减仓行为。"
-"它还接受可选的 ``trigger_px`` 和 ``stop_px`` 高级价格。触发激活方向通过比较 ``trigger_px`` 与当前标记价格推断。"
-"TWAP 价格会使用已解析的交易场所精度进行规范化。使用 ``cancel_twap(coin, twap_id)`` 取消运行中的 TWAP。"
+"``place_twap()`` 接受 coin、方向、数量、以分钟为单位的持续时间、可选随机化和可选仅减仓行为。它还接受可选的 "
+"``trigger_px`` 和 ``stop_px`` 高级价格。触发激活方向通过比较 ``trigger_px`` "
+"与当前标记价格推断。TWAP 价格会使用已解析的交易场所精度进行规范化。使用 ``cancel_twap(coin, twap_id)`` "
+"取消运行中的 TWAP。"
 
-#: ../../howto/orders.rst:71 21862d624d054cb3a5b2632859149cc5
+#: ../../howto/orders.rst:293 97c35db24edd430eac66a447254f402a
+msgid ""
+"Each block below is a separate ``async main`` fragment and places one "
+"real TWAP. Run only the block you intend. ``trigger_px`` controls when "
+"the TWAP starts; ``stop_px`` is the price boundary that stops the TWAP, "
+"not a TP/SL child order."
+msgstr ""
+"下方每个代码块都是独立的 ``async main`` 片段，并会放置一笔真实 TWAP。只运行你需要的代码块。``trigger_px`` 控制"
+" TWAP 何时开始；``stop_px`` 是停止 TWAP 的价格边界，而不是 TP/SL 子订单。"
+
+#: ../../howto/orders.rst:326 c22abef1b5324ffdbec3dbbf2c841ee0
+msgid "Basic TWAP"
+msgstr "基础 TWAP"
+
+#: ../../howto/orders.rst:328 6ae51ac96caa460a96f1dcfe2a2a00b5
+msgid "Start immediately:"
+msgstr "立即开始："
+
+#: ../../howto/orders.rst:342 be23007d595f4a3bba708421ad5954b9
+msgid "Triggered start"
+msgstr "触发后开始"
+
+#: ../../howto/orders.rst:344 c41a2233614c4bb8ac320cf3ca9baf50
+msgid "Start when the mark reaches ``start_below``:"
+msgstr "标记价格达到 ``start_below`` 时开始："
+
+#: ../../howto/orders.rst:358 0bb93691a6f6495dbbe91511269cca8c
+msgid "Stop boundary"
+msgstr "停止边界"
+
+#: ../../howto/orders.rst:360 12c1741acf05423d8a0f06bb77674cec
+msgid "Start immediately and stop at ``stop_above``:"
+msgstr "立即开始，并在 ``stop_above`` 停止："
+
+#: ../../howto/orders.rst:374 396daaeac3764c908ae8ce3381580abc
+msgid "Triggered start with stop boundary"
+msgstr "触发后开始并设置停止边界"
+
+#: ../../howto/orders.rst:376 4e572d36d689456db04d4077925b1aec
+msgid "Wait for ``start_below``, then stop at ``stop_above``:"
+msgstr "等待 ``start_below``，然后在 ``stop_above`` 停止："
+
+#: ../../howto/orders.rst:392 236e19062c3a4da798486d5b9fea1e7a
+msgid "Cancellation"
+msgstr "取消"
+
+#: ../../howto/orders.rst:394 e29d92044a334555afeefddf87ff9889
+msgid ""
+"Each placement block assigns the validated running ``twap_id``. Retain it"
+" and cancel that one TWAP when it should no longer run:"
+msgstr "每个下单代码块都会赋值经过验证且正在运行的 ``twap_id``。请保留它，并在该 TWAP 不应继续运行时取消这一笔："
+
+#: ../../howto/orders.rst:403 7fc2afee7f604bef8b140cf79e1849c0
 msgid "Cancellation and modification"
 msgstr "取消与修改"
 
-#: ../../howto/orders.rst:73 45db8c0b66a4469286ce8ced835e58cd
+#: ../../howto/orders.rst:405 d29b1bb9c44c47358f7df3ce43401af7
 msgid ""
 "Use ``CancelOrder(coin, oid)`` with ``cancel_order()`` or "
 "``cancel_orders()``. Use ``CancelByCloid(coin, cloid)`` with "
 "``cancel_by_cloid()`` or ``cancel_orders_by_cloid()``. Empty batches are "
 "rejected locally."
 msgstr ""
-"将 ``CancelOrder(coin, oid)`` 与 ``cancel_order()`` 或 ``cancel_orders()`` 搭配使用。"
-"将 ``CancelByCloid(coin, cloid)`` 与 ``cancel_by_cloid()`` 或 ``cancel_orders_by_cloid()`` 搭配使用。"
-"空批次会在本地被拒绝。"
+"将 ``CancelOrder(coin, oid)`` 与 ``cancel_order()`` 或 ``cancel_orders()`` "
+"搭配使用。将 ``CancelByCloid(coin, cloid)`` 与 ``cancel_by_cloid()`` 或 "
+"``cancel_orders_by_cloid()`` 搭配使用。空批次会在本地被拒绝。"
 
-#: ../../howto/orders.rst:77 221a6dfb42e84b6b96c7288f05da5dce
+#: ../../howto/orders.rst:409 2815403bb6ba4974a7f7a2680ee41f54
 msgid ""
 "``ModifyOrderRequest`` identifies the order by integer order ID or "
 "``Cloid`` and contains the complete replacement order. ``modify_order()``"
 " returns a default acknowledgement; ``modify_orders()`` returns per-order"
 " statuses."
 msgstr ""
-"``ModifyOrderRequest`` 通过整数订单 ID 或 ``Cloid`` 标识订单，并包含完整的替换订单。"
-"``modify_order()`` 返回默认确认；``modify_orders()`` 返回每笔订单的状态。"
+"``ModifyOrderRequest`` 通过整数订单 ID 或 ``Cloid`` "
+"标识订单，并包含完整的替换订单。``modify_order()`` 返回默认确认；``modify_orders()`` 返回每笔订单的状态。"
 
-#: ../../howto/orders.rst:81 f456efd0e4cd418d939641669f3e1478
+#: ../../howto/orders.rst:413 c00150a78ef34f31be7e87c7b3f822f2
 msgid ""
 "``client.exchange.schedule_cancel(cancel_at)`` schedules dead-man "
 "cancellation using an absolute millisecond timestamp; passing no "
-"timestamp removes the schedule according to Exchange semantics."
+"timestamp removes the schedule according to Exchange semantics. The "
+"scheduled time must be at least five seconds in the future. At most ten "
+"scheduled cancels may trigger per day; the count resets at 00:00 UTC."
 msgstr ""
-"``client.exchange.schedule_cancel(cancel_at)`` 使用绝对毫秒时间戳安排死手取消；"
-"按 Exchange 语义，不传入时间戳会移除该计划。"
+"``client.exchange.schedule_cancel(cancel_at)`` 使用绝对毫秒时间戳安排死手取消；按 Exchange"
+" 语义，不传入时间戳会移除该计划。计划时间必须至少比当前时间晚五秒。每天最多可触发十次计划取消；计数在 UTC 00:00 重置。"
 
-#: ../../howto/orders.rst:86 c0488ccf8ffb428c8de96eb07716107b
+#: ../../howto/orders.rst:420 250fcfe7e8d844008685aa2f3d06295d
 msgid "Closing and risk settings"
 msgstr "平仓与风险设置"
 
-#: ../../howto/orders.rst:88 dd949ac5d4b747b18e01ea7450a5a0fd
+#: ../../howto/orders.rst:422 dec6e1faf1734f33b968665279d76e82
 msgid ""
 "``close_position()`` and ``close_positions()`` read each full current "
 "position and submit reduce-only market orders. Despite its name, "
@@ -164,26 +325,27 @@ msgid ""
 "trusted Info endpoint. These methods are not partial-close helpers; use "
 "an explicit reduce-only order for a partial reduction."
 msgstr ""
-"``close_position()`` 和 ``close_positions()`` 会读取每笔完整的当前持仓，并提交仅减仓市价订单。"
-"尽管名称如此，``close_all_positions(dexs=None)`` 不会发现全部 HIP-3 DEX。"
-"它使用 ``AsyncHyperliquid`` 上配置的 ``dexs``；构造函数默认值是 ``(\"\",)``，只扫描基础 perpetual DEX。"
-"请在构造函数中或 ``close_all_positions(dexs=)`` 调用中显式包含每个目标 HIP-3 DEX。"
-"通过可信的 Info 端点重新查询最终持仓。这些方法不是部分平仓辅助方法；部分减仓请使用明确的仅减仓订单。"
+"``close_position()`` 和 ``close_positions()`` "
+"会读取每笔完整的当前持仓，并提交仅减仓市价订单。尽管名称如此，``close_all_positions(dexs=None)`` 不会发现全部 "
+"HIP-3 DEX。它使用 ``AsyncHyperliquid`` 上配置的 ``dexs``；构造函数默认值是 "
+"``(\"\",)``，只扫描基础 perpetual DEX。请在构造函数中或 ``close_all_positions(dexs=)`` "
+"调用中显式包含每个目标 HIP-3 DEX。通过可信的 Info "
+"端点重新查询最终持仓。这些方法不是部分平仓辅助方法；部分减仓请使用明确的仅减仓订单。"
 
-#: ../../howto/orders.rst:98 9f679b4d19614294a3ae9fac9ba4eccd
+#: ../../howto/orders.rst:432 5d1e1550991f4585a6beb1be1ed18be0
 msgid ""
 "``update_leverage()`` and ``update_isolated_margin()`` resolve the coin's"
 " asset ID before signing. Treat both as risk-changing operations and "
 "verify resulting account state independently."
 msgstr ""
-"``update_leverage()`` 和 ``update_isolated_margin()`` 会在签名前解析 coin 的 asset ID。"
-"请将两者都视为改变风险的操作，并独立验证得到的账户状态。"
+"``update_leverage()`` 和 ``update_isolated_margin()`` 会在签名前解析 coin 的 asset"
+" ID。请将两者都视为改变风险的操作，并独立验证得到的账户状态。"
 
-#: ../../howto/orders.rst:103 10424e5c230a4c098b366a4ecec20c42
+#: ../../howto/orders.rst:437 f450ae36b8e54099a9e01d54f5fdd957
 msgid "Responses"
 msgstr "响应"
 
-#: ../../howto/orders.rst:105 1ba5621776b347089b83da29aa19db4f
+#: ../../howto/orders.rst:439 a5844a8caa2a44ae8c2ce1b553e94d93
 msgid ""
 "Transport success does not imply action success. Inspect the top-level "
 "``response[\"status\"]``. Only when it is ``\"ok\"`` should an "
@@ -194,7 +356,14 @@ msgid ""
 " envelope. See :doc:`../reference/response-types` and :doc:`lifecycle-"
 "reconciliation`."
 msgstr ""
-"传输成功并不表示操作成功。请检查顶层 ``response[\"status\"]``。仅当其为 ``\"ok\"`` 时，"
-"应用才应检查 ``response[\"response\"][\"data\"][\"statuses\"]`` 中的每项是否为挂单、已成交、"
-"等待或错误状态。当顶层状态为 ``\"err\"`` 时，``response[\"response\"]`` 是拒绝字符串而非成功封装。"
-"参见 :doc:`../reference/response-types` 和 :doc:`lifecycle-reconciliation`。"
+"传输成功并不表示操作成功。请检查顶层 ``response[\"status\"]``。仅当其为 ``\"ok\"`` 时，应用才应检查 "
+"``response[\"response\"][\"data\"][\"statuses\"]`` "
+"中的每项是否为挂单、已成交、等待或错误状态。当顶层状态为 ``\"err\"`` 时，``response[\"response\"]`` "
+"是拒绝字符串而非成功封装。参见 :doc:`../reference/response-types` 和 :doc:`lifecycle-"
+"reconciliation`。"
+
+#~ msgid ""
+#~ "For a response whose TWAP status "
+#~ "is ``running``, retain its ``twapId`` "
+#~ "and use it for cancellation:"
+#~ msgstr "对于 TWAP 状态为 ``running`` 的响应，请保留其 ``twapId`` 并用于取消："

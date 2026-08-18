@@ -34,12 +34,14 @@ gettext_uuid = True
 
 exclude_patterns = ["_build"]
 html_theme = "furo"
+html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 
 _HOSTED_TO_SPHINX_LANGUAGE = {"en": "en", "zh-cn": "zh_CN"}
 _SPHINX_TO_HOSTED_LANGUAGE = {
     value: key for key, value in _HOSTED_TO_SPHINX_LANGUAGE.items()
 }
 _READTHEDOCS_VERSION = os.environ.get("READTHEDOCS_VERSION", "latest")
+_IS_READTHEDOCS = os.environ.get("READTHEDOCS") == "True"
 if not re.fullmatch(r"[a-z0-9._-]+", _READTHEDOCS_VERSION, flags=re.ASCII):
     raise RuntimeError(
         "READTHEDOCS_VERSION must be a non-empty Read the Docs version slug"
@@ -73,7 +75,7 @@ html_sidebars = {
 
 
 def _add_documentation_context(app, pagename, templatename, context, doctree):
-    del pagename, templatename, doctree
+    del templatename, doctree
     rendered_language = app.config.language or "en"
     try:
         context["documentation_language"] = _SPHINX_TO_HOSTED_LANGUAGE[
@@ -84,6 +86,8 @@ def _add_documentation_context(app, pagename, templatename, context, doctree):
             f"unsupported Sphinx documentation language: {rendered_language}"
         ) from exc
     context["documentation_version"] = _READTHEDOCS_VERSION
+    context["documentation_is_hosted"] = _IS_READTHEDOCS
+    context["documentation_root_prefix"] = "../" * (pagename.count("/") + 1)
 
 
 def setup(app):
