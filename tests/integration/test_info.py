@@ -134,6 +134,40 @@ async def test_user_fills(info: IntegrationInfoClient, master_address: str) -> N
     assert isinstance(await info.user_fills(master_address), list)
 
 
+async def test_user_fills_reversed(
+    info: IntegrationInfoClient, master_address: str
+) -> None:
+    recent = await info.user_fills(master_address)
+    timestamps = sorted({fill["time"] for fill in recent})
+    if len(timestamps) < 4:
+        pytest.skip("Need four fill timestamps to verify a complete interior window")  # type: ignore
+
+    # Exclude the oldest timestamp (possibly truncated) and newest timestamp
+    # (possibly still receiving fills), so the reference window is complete.
+    start_time, end_time = timestamps[-3:-1]
+    expected = [fill for fill in recent if start_time <= fill["time"] <= end_time]
+    fills = await info.user_fills(
+        master_address, start_time=start_time, end_time=end_time, reversed=True
+    )
+    assert isinstance(fills, list)
+    assert sorted(fill["tid"] for fill in fills) == sorted(
+        fill["tid"] for fill in expected
+    )
+    assert all(start_time <= fill["time"] <= end_time for fill in fills)
+    assert all(
+        earlier["time"] >= later["time"] for earlier, later in zip(fills, fills[1:])
+    )
+
+
+async def test_extra_agents(info: IntegrationInfoClient, master_address: str) -> None:
+    agents = await info.extra_agents(master_address)
+    assert isinstance(agents, list)
+    for agent in agents:
+        assert isinstance(agent["name"], str)
+        assert isinstance(agent["address"], str)
+        assert isinstance(agent["validUntil"], int)
+
+
 async def test_user_rate_limit(
     info: IntegrationInfoClient, master_address: str
 ) -> None:

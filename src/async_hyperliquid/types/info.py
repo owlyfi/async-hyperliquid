@@ -50,6 +50,15 @@ class UserFill(TypedDict):
 UserFills: TypeAlias = list[UserFill]
 
 
+class ExtraAgent(TypedDict):
+    name: str
+    address: str
+    validUntil: int
+
+
+ExtraAgents: TypeAlias = list[ExtraAgent]
+
+
 class UserRateLimit(TypedDict):
     cumVlm: str
     nRequestsUsed: int

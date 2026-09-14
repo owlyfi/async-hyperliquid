@@ -15,6 +15,7 @@ EXPECTED_INFO_REQUESTS = {
     "delegatorHistory",
     "delegatorRewards",
     "delegatorSummary",
+    "extraAgents",
     "frontendOpenOrders",
     "fundingHistory",
     "historicalOrders",

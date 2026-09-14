@@ -36,6 +36,7 @@ from .types.info import (
     Candles,
     ClearinghouseState,
     Delegations,
+    ExtraAgents,
     FrontendOpenOrders,
     FundingRates,
     HistoricalOrders,
@@ -178,11 +179,14 @@ class InfoClient:
         aggregate_by_time: bool = False,
         start_time: int | None = None,
         end_time: int | None = None,
+        reversed: bool = False,
     ) -> UserFills:
         payload: JsonObject
         if start_time is None:
             if end_time is not None:
                 raise ValueError("end_time requires start_time")
+            if reversed:
+                raise ValueError("reversed requires start_time")
             payload = {
                 "type": "userFills",
                 "user": account_address,
@@ -199,12 +203,18 @@ class InfoClient:
             }
             if end_time is not None:
                 payload["endTime"] = end_time
+            if reversed:
+                payload["reversed"] = True
         value = await self._post(payload)
         return cast(UserFills, _expect_list(value, request_type))
 
     async def user_rate_limit(self, account_address: str) -> UserRateLimit:
         value = await self._post({"type": "userRateLimit", "user": account_address})
         return cast(UserRateLimit, _expect_object(value, "userRateLimit"))
+
+    async def extra_agents(self, account_address: str) -> ExtraAgents:
+        value = await self._post({"type": "extraAgents", "user": account_address})
+        return cast(ExtraAgents, _expect_list(value, "extraAgents"))
 
     async def order_status(
         self, account_address: str, order_id: int | str, *, dex: str = ""

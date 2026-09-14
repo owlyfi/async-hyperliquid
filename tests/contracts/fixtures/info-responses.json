@@ -124,6 +124,13 @@
     "totalPendingWithdrawal": "0.0",
     "undelegated": "0.0"
   },
+  "extraAgents": [
+    {
+      "name": "trading-agent",
+      "address": "0x2222222222222222222222222222222222222222",
+      "validUntil": 1800000000000
+    }
+  ],
   "frontendOpenOrders": [
     {
       "children": [],

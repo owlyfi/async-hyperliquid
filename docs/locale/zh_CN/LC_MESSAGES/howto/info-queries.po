@@ -67,7 +67,7 @@ msgstr ""
 "请显式传入投资组合所有者、subaccount 或 vault 地址。API wallet 地址标识签名角色，"
 "通常并不拥有自己的投资组合。"
 
-#: ../../howto/info-queries.rst:48 f3f2780980904ac8a09bde8170642eb0
+#: ../../howto/info-queries.rst:49 f3f2780980904ac8a09bde8170642eb0
 msgid ""
 "``account_state()`` combines spot state, base perpetual state, and the "
 "requested HIP-3 DEX states. ``positions()`` flattens position entries "
@@ -78,7 +78,7 @@ msgstr ""
 "``positions()`` 会将这些 DEX 中的持仓条目展平。仅需一个交易场所时，请使用 "
 "``perp_account_state()`` 或 ``spot_account_state()``。"
 
-#: ../../howto/info-queries.rst:53 3db753f82924490992fb4df2293e57fe
+#: ../../howto/info-queries.rst:54 3db753f82924490992fb4df2293e57fe
 msgid ""
 "Other account methods cover historical orders and TWAP fills; portfolio, "
 "fees, rate limits, referrals, and ledger updates; subaccounts and vault "
@@ -90,11 +90,11 @@ msgstr ""
 "subaccount 与 vault 权益；质押摘要、历史、奖励和委托；以及账户抽象状态。"
 "确切签名请参见 :doc:`../reference/info-client`。"
 
-#: ../../howto/info-queries.rst:59 444ad963d04846dab2ccc1c3216b5de2
+#: ../../howto/info-queries.rst:60 444ad963d04846dab2ccc1c3216b5de2
 msgid "Time ranges"
 msgstr "时间范围"
 
-#: ../../howto/info-queries.rst:61 bd492e33a2b44a899052b55bdca5a801
+#: ../../howto/info-queries.rst:62 bd492e33a2b44a899052b55bdca5a801
 msgid ""
 "Timestamps are integer milliseconds. ``user_fills()`` requires "
 "``start_time`` when ``end_time`` is supplied. Funding and non-funding "
@@ -103,11 +103,22 @@ msgstr ""
 "时间戳为整数毫秒。提供 ``end_time`` 时，``user_fills()`` 需要 ``start_time``。"
 "资金费率和非资金费率账本方法需要开始时间，并接受可选的结束时间。"
 
-#: ../../howto/info-queries.rst:66 d8d6df7564c24ddea735ab97225e857c
+#: ../../howto/info-queries.rst:66
+msgid ""
+"Pass ``reversed=True`` with ``start_time`` to request the newest page of "
+"fills within a time range. The client sends ``reversed`` to "
+"``userFillsByTime`` and preserves the upstream response order. Omitting "
+"it keeps the existing request behavior:"
+msgstr ""
+"将 ``reversed=True`` 与 ``start_time`` 一起传入，可请求时间范围内最新的一页成交。"
+"客户端将 ``reversed`` 发送给 ``userFillsByTime``，并保留上游响应的顺序。"
+"省略该参数时，请求行为保持不变："
+
+#: ../../howto/info-queries.rst:82 d8d6df7564c24ddea735ab97225e857c
 msgid "Response handling"
 msgstr "响应处理"
 
-#: ../../howto/info-queries.rst:68 454dc9c7bfab480f99f80062176d3265
+#: ../../howto/info-queries.rst:84 454dc9c7bfab480f99f80062176d3265
 msgid ""
 "Wire numeric fields such as prices, sizes, and balances remain strings in"
 " detailed response types. Convert them with ``Decimal`` when exact "

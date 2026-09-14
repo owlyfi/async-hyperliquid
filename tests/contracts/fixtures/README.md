@@ -17,3 +17,8 @@ when the endpoint legitimately permits them.
 
 Fixtures are contract examples, not live test credentials or replayable signed
 requests.
+
+The `extraAgents` example was added on 2026-09-14 from owly-be's
+`src/owly/utils/hl_info.py:get_extra_agents` and the official Python SDK's
+`Info.extra_agents` contract (`name`, `address`, and integer `validUntil`).
+Its wallet address and timestamp are synthetic.

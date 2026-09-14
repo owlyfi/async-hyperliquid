@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/owlyfi/async-hyperliquid/actions/workflows/ci.yml/badge.svg)](https://github.com/owlyfi/async-hyperliquid/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/async-hyperliquid/badge/?version=latest)](https://async-hyperliquid.readthedocs.io/en/latest/)
-[![PyPI](https://img.shields.io/pypi/v/async-hyperliquid.svg?v=1.0.0)](https://pypi.org/project/async-hyperliquid/)
+[![PyPI](https://img.shields.io/pypi/v/async-hyperliquid.svg?v=1.1.0)](https://pypi.org/project/async-hyperliquid/)
 
 `async-hyperliquid` is a typed, asynchronous Python client for the Hyperliquid
 REST API. It provides credential-free market and account queries through

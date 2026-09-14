@@ -1,6 +1,6 @@
 from typing import Literal, assert_type
 
-from async_hyperliquid import AsyncHyperliquid
+from async_hyperliquid import AsyncHyperliquid, InfoClient
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import (
     BaseOrderRequest,
@@ -21,12 +21,28 @@ from async_hyperliquid.types.exchange import (
 )
 from async_hyperliquid.types.info import (
     AllMids,
+    ExtraAgent,
+    ExtraAgents,
     L2Book,
     L2Level,
     PerpMetaAndContexts,
     SpotMetaAndContexts,
+    UserFills,
     UserRateLimit,
 )
+
+
+async def check_info_account_types(info: InfoClient, address: str) -> None:
+    agents = await info.extra_agents(address)
+    assert_type(agents, ExtraAgents)
+    assert_type(agents[0], ExtraAgent)
+    assert_type(agents[0]["name"], str)
+    assert_type(agents[0]["address"], str)
+    assert_type(agents[0]["validUntil"], int)
+    assert_type(
+        await info.user_fills(address, start_time=0, end_time=2, reversed=True),
+        UserFills,
+    )
 
 
 def check_v1_contract_types(

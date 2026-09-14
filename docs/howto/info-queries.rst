@@ -43,6 +43,7 @@ address identifies a signing role and normally has no portfolio of its own.
        state = await info.account_state(account_address, dexs=("", "xyz"))
        orders = await info.open_orders(account_address, frontend=True)
        fills = await info.user_fills(account_address, aggregate_by_time=True)
+       agents = await info.extra_agents(account_address)
        status = await info.order_status(account_address, order_id)
 
 ``account_state()`` combines spot state, base perpetual state, and the requested
@@ -61,6 +62,21 @@ Time ranges
 Timestamps are integer milliseconds. ``user_fills()`` requires ``start_time``
 when ``end_time`` is supplied. Funding and non-funding ledger methods require a
 start time and accept an optional end time.
+
+Pass ``reversed=True`` with ``start_time`` to request the newest page of fills
+within a time range. The client sends ``reversed`` to ``userFillsByTime`` and
+preserves the upstream response order. Omitting it keeps the existing request
+behavior:
+
+.. code-block:: python
+
+   async with InfoClient() as info:
+       fills = await info.user_fills(
+           account_address,
+           start_time=0,
+           end_time=end_time_ms,
+           reversed=True,
+       )
 
 Response handling
 -----------------

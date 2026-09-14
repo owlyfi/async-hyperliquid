@@ -122,6 +122,7 @@ async def test_all_info_endpoints_match_the_frozen_request_and_response_contract
         == responses["userFillsByTime"]
     )
     assert await info.user_rate_limit(ADDRESS) == responses["userRateLimit"]
+    assert await info.extra_agents(ADDRESS) == responses["extraAgents"]
     assert await info.order_status(ADDRESS, 1) == responses["orderStatus"]
     assert await info.l2_book("BTC", n_sig_figs=5, mantissa=2) == responses["l2Book"]
     assert (
@@ -195,6 +196,93 @@ async def test_all_info_endpoints_match_the_frozen_request_and_response_contract
         "startTime": 1,
         "endTime": 2,
     }
+    assert by_type["extraAgents"] == {"type": "extraAgents", "user": ADDRESS}
+
+
+@pytest.mark.parametrize("reversed", [False, True])
+@pytest.mark.parametrize("end_time", [None, 2])
+@pytest.mark.parametrize("times", [(2, 1), (1, 2), (2, 0, 1)])
+async def test_user_fills_requests_page_direction(
+    reversed: bool, end_time: int | None, times: tuple[int, ...]
+) -> None:
+    fill = cast(JsonObject, cast(list[JsonValue], load_responses()["userFills"])[0])
+    response: JsonValue = [dict(fill, time=time) for time in times]
+    transport = RecordingTransport({"userFillsByTime": response})
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    assert (
+        await info.user_fills(
+            ADDRESS,
+            aggregate_by_time=True,
+            start_time=0,
+            end_time=end_time,
+            reversed=reversed,
+        )
+        == response
+    )
+
+    expected: JsonObject = {
+        "type": "userFillsByTime",
+        "user": ADDRESS,
+        "aggregateByTime": True,
+        "startTime": 0,
+    }
+    if end_time is not None:
+        expected["endTime"] = 2
+    if reversed:
+        expected["reversed"] = True
+    assert transport.requests == [("https://provider.example/info", expected)]
+
+
+async def test_user_fills_false_keeps_recent_request() -> None:
+    transport = RecordingTransport({"userFills": []})
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    assert await info.user_fills(ADDRESS, reversed=False) == []
+    assert transport.requests == [
+        (
+            "https://provider.example/info",
+            {"type": "userFills", "user": ADDRESS, "aggregateByTime": False},
+        )
+    ]
+
+
+@pytest.mark.parametrize("end_time,reversed", [(2, False), (None, True), (2, True)])
+async def test_user_fills_requires_start_before_sending(
+    end_time: int | None, reversed: bool
+) -> None:
+    transport = RecordingTransport()
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    with pytest.raises(ValueError, match="requires start_time"):
+        await info.user_fills(ADDRESS, end_time=end_time, reversed=reversed)
+    assert transport.requests == []
+
+
+async def test_extra_agents_returns_empty_list() -> None:
+    transport = RecordingTransport({"extraAgents": []})
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    assert await info.extra_agents(ADDRESS) == []
+
+
+@pytest.mark.parametrize("response", [None, {}, "error"])
+async def test_extra_agents_rejects_invalid_response(response: JsonValue) -> None:
+    transport = RecordingTransport({"extraAgents": response})
+    info = InfoClient._from_transport(
+        cast(_HttpTransport, transport), info_url="https://provider.example/info"
+    )
+
+    with pytest.raises(ProtocolError, match="extraAgents"):
+        await info.extra_agents(ADDRESS)
 
 
 async def test_endpoint_boundary_rejects_the_wrong_top_level_shape() -> None:
