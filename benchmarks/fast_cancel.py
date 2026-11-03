@@ -89,10 +89,9 @@ def format_table(samples: dict[bool, list[int]]) -> str:
 
 
 def _cancelled(response: CancelOrderResponse) -> bool:
-    return (
-        response["status"] == "ok"
-        and response["response"]["data"]["statuses"] == ["success"]
-    )
+    return response["status"] == "ok" and response["response"]["data"]["statuses"] == [
+        "success"
+    ]
 
 
 async def _place_round(
