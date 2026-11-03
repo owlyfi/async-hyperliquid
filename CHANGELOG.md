@@ -5,13 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-03
 
 ### Added
 
 - Add `fast=True` to `cancel_order()`, `cancel_orders()`, `cancel_by_cloid()`, and
   `cancel_orders_by_cloid()` to send Hyperliquid's fast-cancel `f` flag; the flag
-  is omitted when `fast=False`.
+  is omitted when `fast=False`. The exchange rejects fast cancels of trigger
+  orders per status, so `fast` stays opt-in.
+- Add testnet integration coverage for fast cancels and a diagnostic
+  `benchmarks/fast_cancel.py` comparing fast and non-fast cancel latency.
 
 ## [1.1.0] - 2026-09-14
 

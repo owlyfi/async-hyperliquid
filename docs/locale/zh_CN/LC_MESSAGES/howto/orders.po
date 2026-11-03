@@ -288,6 +288,18 @@ msgstr ""
 "搭配使用。将 ``CancelByCloid(coin, cloid)`` 与 ``cancel_by_cloid()`` 或 "
 "``cancel_orders_by_cloid()`` 搭配使用。空批次会在本地被拒绝。"
 
+#: ../../howto/orders.rst:409
+msgid ""
+"All four cancel methods accept ``fast=True``, which sends Hyperliquid's "
+"``f`` flag. The exchange rejects fast cancels that target trigger orders,"
+" and a future network upgrade will prioritize fast cancels in the "
+"mempool. With the default ``fast=False`` the flag is omitted from the "
+"signed action."
+msgstr ""
+"四个撤单方法都接受 ``fast=True``，用于发送 Hyperliquid 的 ``f`` 标志。"
+"交易所会拒绝针对触发单（trigger order）的快速撤单；未来的网络升级会在 mempool "
+"中优先处理快速撤单。默认 ``fast=False`` 时，签名的 action 中不包含该标志。"
+
 #: ../../howto/orders.rst:409 2815403bb6ba4974a7f7a2680ee41f54
 msgid ""
 "``ModifyOrderRequest`` identifies the order by integer order ID or "
