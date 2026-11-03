@@ -514,6 +514,43 @@ async def test_singular_cancel_and_trigger_actions_use_their_exact_contracts(
     }
 
 
+async def test_fast_cancels_append_f_flag_last_and_omit_it_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = RecordingTransport(load_exchange_response("cancel_success"))
+    client = build_client(transport)
+    monkeypatch.setattr(exchange_module, "time_ns", lambda: NONCE * 1_000_000)
+    cloid = Cloid("0x" + "12" * 16)
+
+    await client.cancel_order(CancelOrder("BTC", 12), fast=True)
+    action = cast(JsonObject, transport.requests[-1][1]["action"])
+    assert action == {"type": "cancel", "cancels": [{"a": 0, "o": 12}], "f": True}
+    assert list(action) == ["type", "cancels", "f"]
+
+    await client.cancel_orders((CancelOrder("BTC", 12),), fast=True)
+    action = cast(JsonObject, transport.requests[-1][1]["action"])
+    assert list(action) == ["type", "cancels", "f"]
+    assert action["f"] is True
+
+    await client.cancel_by_cloid(CancelByCloid("BTC", cloid), fast=True)
+    action = cast(JsonObject, transport.requests[-1][1]["action"])
+    assert action == {
+        "type": "cancelByCloid",
+        "cancels": [{"asset": 0, "cloid": cloid}],
+        "f": True,
+    }
+    assert list(action) == ["type", "cancels", "f"]
+
+    await client.cancel_orders_by_cloid((CancelByCloid("BTC", cloid),), fast=True)
+    action = cast(JsonObject, transport.requests[-1][1]["action"])
+    assert list(action) == ["type", "cancels", "f"]
+
+    await client.cancel_orders((CancelOrder("BTC", 12),), fast=False)
+    assert "f" not in cast(JsonObject, transport.requests[-1][1]["action"])
+    await client.cancel_orders_by_cloid((CancelByCloid("BTC", cloid),), fast=False)
+    assert "f" not in cast(JsonObject, transport.requests[-1][1]["action"])
+
+
 async def test_public_market_batch_uses_one_mid_lookup_and_one_post() -> None:
     transport = RecordingTransport(load_exchange_response("order_filled"))
     client = build_client(transport)

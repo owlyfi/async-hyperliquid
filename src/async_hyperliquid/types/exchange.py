@@ -144,6 +144,7 @@ class EncodedCancel(TypedDict):
 class CancelAction(TypedDict):
     type: Literal["cancel"]
     cancels: list[EncodedCancel]
+    f: NotRequired[Literal[True]]
 
 
 class EncodedCancelByCloid(TypedDict):
@@ -154,6 +155,7 @@ class EncodedCancelByCloid(TypedDict):
 class CancelByCloidAction(TypedDict):
     type: Literal["cancelByCloid"]
     cancels: list[EncodedCancelByCloid]
+    f: NotRequired[Literal[True]]
 
 
 class EncodedModify(TypedDict):

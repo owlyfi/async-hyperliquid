@@ -332,12 +332,22 @@ class AsyncHyperliquid:
         )
 
     async def cancel_order(
-        self, order: CancelOrder, *, expires_after: int | None = None
+        self,
+        order: CancelOrder,
+        *,
+        fast: bool = False,
+        expires_after: int | None = None,
     ) -> CancelOrderResponse:
-        return await self.cancel_orders((order,), expires_after=expires_after)
+        return await self.cancel_orders(
+            (order,), fast=fast, expires_after=expires_after
+        )
 
     async def cancel_orders(
-        self, orders: Sequence[CancelOrder], *, expires_after: int | None = None
+        self,
+        orders: Sequence[CancelOrder],
+        *,
+        fast: bool = False,
+        expires_after: int | None = None,
     ) -> CancelOrderResponse:
         commands = tuple(orders)
         if not commands:
@@ -350,16 +360,26 @@ class AsyncHyperliquid:
             for order, market in zip(commands, markets, strict=True)
         )
         return await self._exchange._submit_cancels(
-            cancels, expires_after=expires_after
+            cancels, fast=fast, expires_after=expires_after
         )
 
     async def cancel_by_cloid(
-        self, order: CancelByCloid, *, expires_after: int | None = None
+        self,
+        order: CancelByCloid,
+        *,
+        fast: bool = False,
+        expires_after: int | None = None,
     ) -> CancelOrderResponse:
-        return await self.cancel_orders_by_cloid((order,), expires_after=expires_after)
+        return await self.cancel_orders_by_cloid(
+            (order,), fast=fast, expires_after=expires_after
+        )
 
     async def cancel_orders_by_cloid(
-        self, orders: Sequence[CancelByCloid], *, expires_after: int | None = None
+        self,
+        orders: Sequence[CancelByCloid],
+        *,
+        fast: bool = False,
+        expires_after: int | None = None,
     ) -> CancelOrderResponse:
         commands = tuple(orders)
         if not commands:
@@ -372,7 +392,7 @@ class AsyncHyperliquid:
             for order, market in zip(commands, markets, strict=True)
         )
         return await self._exchange._submit_cloid_cancels(
-            cancels, expires_after=expires_after
+            cancels, fast=fast, expires_after=expires_after
         )
 
     @staticmethod

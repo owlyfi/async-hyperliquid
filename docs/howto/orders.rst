@@ -406,6 +406,11 @@ Use ``CancelOrder(coin, oid)`` with ``cancel_order()`` or ``cancel_orders()``.
 Use ``CancelByCloid(coin, cloid)`` with ``cancel_by_cloid()`` or
 ``cancel_orders_by_cloid()``. Empty batches are rejected locally.
 
+All four cancel methods accept ``fast=True``, which sends Hyperliquid's ``f``
+flag. The exchange rejects fast cancels that target trigger orders, and a future
+network upgrade will prioritize fast cancels in the mempool. With the default
+``fast=False`` the flag is omitted from the signed action.
+
 ``ModifyOrderRequest`` identifies the order by integer order ID or ``Cloid`` and
 contains the complete replacement order. ``modify_order()`` returns a default
 acknowledgement; ``modify_orders()`` returns per-order statuses.
