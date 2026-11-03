@@ -251,8 +251,16 @@ def _build_metadata(
     )
 
 
+def _is_outcome_coin(coin: str) -> bool:
+    return coin.startswith(("#", "+"))
+
+
+def _is_known_coin(snapshot: _MetadataSnapshot, coin: str) -> bool:
+    return _is_outcome_coin(coin) or coin in snapshot.coin_by_alias
+
+
 def _outcome_market_info(coin: str) -> _MarketInfo | None:
-    if not coin.startswith(("#", "+")):
+    if not _is_outcome_coin(coin):
         return None
     raw_encoding = coin[1:]
     if not raw_encoding.isascii() or not raw_encoding.isdecimal():

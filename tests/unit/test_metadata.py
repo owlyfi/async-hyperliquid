@@ -280,6 +280,75 @@ async def test_outcome_market_rejects_invalid_encoding(coin: str) -> None:
         await info._market_info(coin)
 
 
+async def test_unknown_coin_refreshes_metadata_once() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+    assert await info.asset_id("BTC") == 0
+
+    perp_meta = cast(JsonObject, transport.all_perp_metas[0])
+    universe = cast(list[JsonValue], perp_meta["universe"])
+    universe.append({"name": "ETH", "szDecimals": 4, "maxLeverage": 25})
+
+    assert await info.asset_id("ETH") == 1
+    assert await info.coin_name("ETH") == "ETH"
+    assert transport.counts == {"perpDexs": 2, "allPerpMetas": 2, "spotMeta": 2}
+
+
+async def test_still_unknown_coin_raises_after_one_refresh() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+    await info.refresh_metadata()
+
+    with pytest.raises(ValueError, match="unknown market"):
+        await info.asset_id("DOGE")
+    assert transport.counts["allPerpMetas"] == 2
+
+
+async def test_cold_miss_loads_metadata_only_once() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+
+    with pytest.raises(ValueError, match="unknown market"):
+        await info.asset_id("DOGE")
+    assert transport.counts == {"perpDexs": 1, "allPerpMetas": 1, "spotMeta": 1}
+
+
+async def test_failed_refresh_after_a_miss_keeps_the_unknown_coin_error() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+    await info.refresh_metadata()
+    original_snapshot = info._metadata
+
+    transport.fail_type = "spotMeta"
+    with pytest.raises(ValueError, match="unknown market"):
+        await info.asset_id("DOGE")
+    assert info._metadata is original_snapshot
+
+    transport.fail_type = None
+    assert await info.asset_id("BTC") == 0
+
+
+async def test_known_and_outcome_coins_do_not_refresh_metadata() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+
+    assert await info.asset_id("BTC") == 0
+    assert await info.asset_id("#10") == 100_000_010
+    assert transport.counts["allPerpMetas"] == 1
+
+
+async def test_concurrent_misses_share_one_metadata_refresh() -> None:
+    transport = MetadataTransport()
+    info = build_info(transport)
+    await info.refresh_metadata()
+
+    readers = [asyncio.create_task(info.coin_name("DOGE")) for _ in range(10)]
+    results = await asyncio.gather(*readers, return_exceptions=True)
+
+    assert all(isinstance(result, ValueError) for result in results)
+    assert transport.counts["allPerpMetas"] == 2
+
+
 async def test_spot_token_metadata_returns_an_isolated_snapshot() -> None:
     info = build_info(MetadataTransport())
 

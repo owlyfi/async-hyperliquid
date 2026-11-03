@@ -17,7 +17,8 @@ helpers instead of deriving protocol offsets in application code.
 The first metadata lookup loads one immutable snapshot. Concurrent cold
 lookups share that load. ``refresh_metadata()`` atomically replaces the last
 complete snapshot; malformed or inconsistent metadata is rejected before it is
-published.
+published. A lookup for a coin missing from the cached snapshot reloads
+metadata once before raising ``ValueError``.
 
 Coin forms
 ----------

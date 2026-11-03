@@ -733,6 +733,17 @@ async def test_twap_below_market_precision_fails_before_signing(
     assert transport.requests == []
 
 
+async def test_zero_size_twap_fails_before_signing() -> None:
+    transport = RecordingTransport(load_exchange_response("twap_order_running"))
+    client = build_client(transport)
+
+    with pytest.raises(ValueError, match="TWAP size must be greater than zero"):
+        await client.place_twap("BTC", True, 0.0, 5)
+
+    assert client.exchange._last_nonce == 0
+    assert transport.requests == []
+
+
 async def test_spot_twap_rejects_reduce_only_before_signing() -> None:
     transport = RecordingTransport(load_exchange_response("twap_order_running"))
     client = build_client(transport)

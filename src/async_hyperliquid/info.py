@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Sequence
 from types import TracebackType
 from typing import Literal, Self, cast, overload
@@ -23,9 +24,10 @@ from ._internal.metadata import (
     _MarketInfo,
     _MetadataSnapshot,
     _build_metadata,
+    _is_known_coin,
     _market_info,
 )
-from .errors import ProtocolError
+from .errors import HyperliquidError, ProtocolError
 from .types import CandleInterval, JsonObject, JsonValue, Network
 from .types.info import (
     AccountState,
@@ -71,6 +73,9 @@ from .types.info import (
     VaultDetails,
     VaultEquities,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class InfoClient:
@@ -506,15 +511,32 @@ class InfoClient:
             snapshot = await self._load_metadata()
             self._metadata = snapshot
 
-    async def coin_name(self, coin: str) -> str:
+    async def _metadata_for(self, *coins: str) -> _MetadataSnapshot:
+        cold = self._metadata is None
         snapshot = await self._ensure_metadata()
+        if cold or all(_is_known_coin(snapshot, coin) for coin in coins):
+            return snapshot
+        async with self._get_metadata_lock():
+            # Concurrent misses on the same stale snapshot share one reload.
+            if self._metadata is snapshot:
+                try:
+                    self._metadata = await self._load_metadata()
+                except (HyperliquidError, TimeoutError):
+                    # Keep the miss a ValueError raised by the caller's lookup.
+                    logger.debug("metadata refresh after a miss failed", exc_info=True)
+                    return snapshot
+            # Refreshes only replace a published snapshot, never clear it.
+            return cast(_MetadataSnapshot, self._metadata)
+
+    async def coin_name(self, coin: str) -> str:
+        snapshot = await self._metadata_for(coin)
         name = snapshot.coin_by_alias.get(coin)
         if name is None:
             raise ValueError(f"unknown coin: {coin}")
         return name
 
     async def coin_symbol(self, coin: str) -> str:
-        snapshot = await self._ensure_metadata()
+        snapshot = await self._metadata_for(coin)
         name = snapshot.coin_by_alias.get(coin)
         if name is None:
             raise ValueError(f"unknown coin: {coin}")
@@ -530,14 +552,14 @@ class InfoClient:
         return (await self._market_info(coin)).size_decimals
 
     async def _market_info(self, coin: str) -> _MarketInfo:
-        return _market_info(await self._ensure_metadata(), coin)
+        return _market_info(await self._metadata_for(coin), coin)
 
     async def _market_infos(self, coins: Sequence[str]) -> tuple[_MarketInfo, ...]:
-        snapshot = await self._ensure_metadata()
+        snapshot = await self._metadata_for(*coins)
         return tuple(_market_info(snapshot, coin) for coin in coins)
 
     async def spot_token_metadata(self, coin: str) -> SpotToken:
-        snapshot = await self._ensure_metadata()
+        snapshot = await self._metadata_for(coin)
         name = snapshot.coin_by_alias.get(coin)
         token = None if name is None else snapshot.spot_token_by_coin.get(name)
         if token is None:
@@ -548,7 +570,7 @@ class InfoClient:
         return (await self.spot_token_metadata(coin))["tokenId"]
 
     async def mark_price(self, coin: str) -> float:
-        snapshot = await self._ensure_metadata()
+        snapshot = await self._metadata_for(coin)
         name = snapshot.coin_by_alias.get(coin)
         if name is None:
             raise ValueError(f"unknown coin: {coin}")

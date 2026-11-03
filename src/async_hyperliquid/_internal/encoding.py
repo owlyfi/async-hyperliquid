@@ -19,8 +19,10 @@ def _round_size(value: float, size_decimals: int) -> float | int:
 
 def _normalize_size(value: float, size_decimals: int) -> float | int:
     size = float(value)
-    if not math.isfinite(size) or size <= 0:
-        raise ValueError("size must be finite and greater than zero")
+    if not math.isfinite(size) or size < 0:
+        raise ValueError("size must be finite and non-negative")
+    if size == 0:
+        return 0
     rounded = _round_size(size, size_decimals)
     if rounded <= 0:
         raise ValueError("order size is below market precision")
@@ -49,13 +51,15 @@ def _normalize_price(
     value: float | str, *, max_decimals: int, is_outcome: bool
 ) -> float | int:
     price = float(value)
+    if not math.isfinite(price) or price <= 0:
+        raise ValueError("price must be finite and greater than zero")
     if is_outcome and not OUTCOME_MIN_PRICE <= price <= OUTCOME_MAX_PRICE:
         raise ValueError("outcome price must be between 0.00001 and 0.99999 USDC")
     rounded = _round_price(
         price, OUTCOME_PRICE_DECIMALS if is_outcome else max_decimals
     )
     if rounded <= 0:
-        raise ValueError("order value is below market precision")
+        raise ValueError("order price is below market precision")
     return rounded
 
 

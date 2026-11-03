@@ -13,6 +13,13 @@ The first lookup loads metadata. Concurrent cold lookups share one load;
 `refresh_metadata()` explicitly replaces the last complete snapshot. A partial
 or inconsistent response is rejected without publishing partial state.
 
+A lookup for a coin missing from the cached snapshot reloads metadata once
+before raising, so markets listed after the first load resolve without an
+explicit refresh. If that reload fails, the last snapshot stays in place and the
+lookup still raises `ValueError`. Misses are not cached: every lookup of an
+unknown coin repeats the reload, so validate user input before it reaches a hot
+path.
+
 ## Asset spaces
 
 | Market | Asset ID |

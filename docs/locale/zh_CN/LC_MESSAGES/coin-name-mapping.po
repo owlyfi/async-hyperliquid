@@ -63,6 +63,19 @@ msgstr ""
 "首次查询会加载元数据。并发冷查询共享同一次加载；`refresh_metadata()` 会显式替换最近一次完整快照。"
 "不完整或不一致的响应会被拒绝，且不会发布部分状态。"
 
+#: ../../coin-name-mapping.md:16
+msgid ""
+"A lookup for a coin missing from the cached snapshot reloads metadata "
+"once before raising, so markets listed after the first load resolve "
+"without an explicit refresh. If that reload fails, the last snapshot stays "
+"in place and the lookup still raises `ValueError`. Misses are not cached: "
+"every lookup of an unknown coin repeats the reload, so validate user input "
+"before it reaches a hot path."
+msgstr ""
+"若查询的 coin 不在缓存快照中，会先重新加载一次元数据再抛出错误，因此首次加载之后新上线的市场无需显式刷新即可解析。"
+"如果这次重新加载失败，会保留上一次的快照，查询仍然抛出 `ValueError`。未命中的结果不会被缓存："
+"每次查询未知 coin 都会重新加载一次，因此请在用户输入进入热路径之前先做校验。"
+
 #: ../../coin-name-mapping.md:16 667c70e0123949059329339edf3f8ca6
 msgid "Asset spaces"
 msgstr "资产编号空间"
