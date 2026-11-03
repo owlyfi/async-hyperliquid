@@ -296,8 +296,25 @@ def test_order_encoding_rejects_size_below_market_precision() -> None:
         encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
 
 
-@pytest.mark.parametrize("size", [float("nan"), float("inf"), 0.0, -0.01])
-def test_order_encoding_rejects_non_positive_or_non_finite_size(size: float) -> None:
+def test_order_encoding_accepts_zero_size() -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": False,
+        "sz": 0.0,
+        "px": 100_000.0,
+        "is_market": False,
+        "ro": True,
+    }
+
+    encoded = encode_order(
+        order, asset=0, size_decimals=5, is_spot=False, is_outcome=False
+    )
+
+    assert encoded["s"] == "0"
+
+
+@pytest.mark.parametrize("size", [float("nan"), float("inf"), -0.01])
+def test_order_encoding_rejects_negative_or_non_finite_size(size: float) -> None:
     order: PlaceOrderRequest = {
         "coin": "BTC",
         "is_buy": True,
@@ -306,7 +323,7 @@ def test_order_encoding_rejects_non_positive_or_non_finite_size(size: float) -> 
         "is_market": False,
     }
 
-    with pytest.raises(ValueError, match="size must be finite and greater than zero"):
+    with pytest.raises(ValueError, match="size must be finite and non-negative"):
         encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
 
 
@@ -319,7 +336,21 @@ def test_order_encoding_rejects_price_below_market_precision() -> None:
         "is_market": False,
     }
 
-    with pytest.raises(ValueError, match="order value is below market precision"):
+    with pytest.raises(ValueError, match="order price is below market precision"):
+        encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
+
+
+@pytest.mark.parametrize("price", [float("nan"), float("inf"), 0.0, -1.0])
+def test_order_encoding_rejects_non_positive_or_non_finite_price(price: float) -> None:
+    order: PlaceOrderRequest = {
+        "coin": "BTC",
+        "is_buy": True,
+        "sz": 0.01,
+        "px": price,
+        "is_market": False,
+    }
+
+    with pytest.raises(ValueError, match="price must be finite and greater than zero"):
         encode_order(order, asset=0, size_decimals=5, is_spot=False, is_outcome=False)
 
 

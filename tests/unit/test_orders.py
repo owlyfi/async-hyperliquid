@@ -7,6 +7,7 @@ import pytest
 from async_hyperliquid import AsyncHyperliquid, InfoClient
 from async_hyperliquid._internal.metadata import _MarketInfo
 from async_hyperliquid.client import _market_order, _market_price
+from async_hyperliquid.errors import ProtocolError
 from async_hyperliquid.exchange import ExchangeClient
 from async_hyperliquid.types import (
     Builder,
@@ -103,6 +104,12 @@ def test_outcome_market_price_stays_in_domain(
     assert _market_price(
         mid, is_buy=is_buy, slippage=0.05, is_outcome=True
     ) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("mid", [0.0, -1.0, float("nan"), float("inf")])
+def test_market_price_rejects_invalid_mid(mid: float) -> None:
+    with pytest.raises(ProtocolError, match="mid price must be finite"):
+        _market_price(mid, is_buy=True, slippage=0.05, is_outcome=False)
 
 
 def test_root_place_order_keeps_the_expanded_compatibility_signature() -> None:

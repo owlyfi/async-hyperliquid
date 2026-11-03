@@ -57,6 +57,8 @@ def _coin_dex(coin: str) -> str:
 def _market_price(
     mid: float, *, is_buy: bool, slippage: float, is_outcome: bool
 ) -> float:
+    if not math.isfinite(mid) or mid <= 0:
+        raise ProtocolError("mid price must be finite and greater than zero")
     price = mid * (1 + slippage if is_buy else 1 - slippage)
     if not is_outcome:
         return price
@@ -484,6 +486,8 @@ class AsyncHyperliquid:
         if market.is_spot and reduce_only:
             raise ValueError("spot orders cannot be reduce-only")
         rounded_size = _normalize_size(size, market.size_decimals)
+        if rounded_size == 0:
+            raise ValueError("TWAP size must be greater than zero")
         details: EncodedTwapDetails | None = None
         if trigger_px is not None or stop_px is not None:
             encoded_trigger_px = (
