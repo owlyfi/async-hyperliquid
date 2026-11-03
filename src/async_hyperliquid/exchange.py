@@ -195,24 +195,34 @@ class ExchangeClient:
         return await self._submit_action(action, "order", expires_after=expires_after)
 
     async def _submit_cancels(
-        self, cancels: Sequence[EncodedCancel], *, expires_after: int | None = None
+        self,
+        cancels: Sequence[EncodedCancel],
+        *,
+        fast: bool = False,
+        expires_after: int | None = None,
     ) -> CancelOrderResponse:
         encoded = list(cancels)
         if not encoded:
             raise ValueError("orders must not be empty")
         action = CancelAction(type="cancel", cancels=encoded)
+        if fast:
+            # Hyperliquid rejects actions hashed with f=false, so only send f=true.
+            action["f"] = True
         return await self._submit_action(action, "cancel", expires_after=expires_after)
 
     async def _submit_cloid_cancels(
         self,
         cancels: Sequence[EncodedCancelByCloid],
         *,
+        fast: bool = False,
         expires_after: int | None = None,
     ) -> CancelOrderResponse:
         encoded = list(cancels)
         if not encoded:
             raise ValueError("orders must not be empty")
         action = CancelByCloidAction(type="cancelByCloid", cancels=encoded)
+        if fast:
+            action["f"] = True
         return await self._submit_action(action, "cancel", expires_after=expires_after)
 
     async def _post_envelope(

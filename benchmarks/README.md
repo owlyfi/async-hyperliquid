@@ -207,6 +207,30 @@ Artifacts: [sanitized JSON](results/20260805T192621Z/report.json), [sample CSV](
 These measurements describe one testnet run, not exchange capacity. Shared-IP traffic, geography, testnet load, dependency versions, and network conditions can change results.
 <!-- live-exchange-benchmark:detail:end -->
 
+## Fast-cancel benchmark
+
+`benchmarks/fast_cancel.py` compares single-order `cancel_order()` latency with
+`fast=False` and `fast=True` on testnet. It uses the same `.env.local`
+credentials and safety checks as the live Exchange benchmark (testnet only,
+`HL_SK` must derive `HL_AK`, roles validated before any order).
+
+Each round places `--orders` resting BTC ALO buys at `mid * 0.9` (about 12 USDC
+each) in one batch, then cancels them sequentially, alternating the two methods;
+the method that goes first swaps every round. Only the cancel request is timed,
+pacing sleeps excluded. Any non-success cancel aborts the run, and remaining
+orders are cancelled on exit.
+
+```bash
+uv run --frozen --group benchmark python benchmarks/fast_cancel.py \
+  --rounds 30 --warmups 3 --orders 10
+```
+
+The output is a plain-text table of n, mean, p50, p90, p99, min and max in ms.
+Hyperliquid currently documents no effect for `fast` other than rejecting
+trigger orders, so the two methods are expected to match today; the benchmark
+is a baseline for the future mempool-priority upgrade. It is diagnostic only
+and does not produce publishable artifacts.
+
 ## Signing benchmark
 
 This benchmark compares Hyperliquid signing and order-payload construction in
