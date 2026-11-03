@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Accept `sz=0` in order and modify requests; it is encoded as `"0"` and left to
+  the exchange to validate. Negative sizes are still rejected, and `place_twap()`
+  still requires a positive size.
+- Reload metadata once when a lookup misses the cached snapshot, so markets
+  listed after the first load resolve without `refresh_metadata()`. A failed
+  reload keeps the last snapshot and the lookup still raises `ValueError`.
+- Reject non-finite or non-positive order prices with
+  `price must be finite and greater than zero`; a positive price that rounds to
+  zero now reports `order price is below market precision`.
+- Market orders raise `ProtocolError` when the mid price is not finite and
+  positive, instead of reporting an invalid order price.
+
 ## [1.2.0] - 2026-11-03
 
 ### Added
