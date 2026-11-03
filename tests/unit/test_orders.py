@@ -546,8 +546,10 @@ async def test_singular_cancel_methods_delegate_to_their_plural_owner(
     oid = CancelOrder("BTC", 7)
     by_cloid = CancelByCloid("BTC", Cloid("0x" + "12" * 16))
 
-    await client.cancel_order(oid)
-    await client.cancel_by_cloid(by_cloid)
+    await client.cancel_order(oid, fast=True)
+    await client.cancel_by_cloid(by_cloid, fast=True)
 
-    cancel_orders.assert_awaited_once_with((oid,), expires_after=None)
-    cancel_orders_by_cloid.assert_awaited_once_with((by_cloid,), expires_after=None)
+    cancel_orders.assert_awaited_once_with((oid,), fast=True, expires_after=None)
+    cancel_orders_by_cloid.assert_awaited_once_with(
+        (by_cloid,), fast=True, expires_after=None
+    )
