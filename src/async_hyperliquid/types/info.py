@@ -162,6 +162,46 @@ class TwapSliceFill(TypedDict):
 TwapSliceFills: TypeAlias = list[TwapSliceFill]
 
 
+class TwapTrigger(TypedDict):
+    px: str
+    above: bool
+
+
+class TwapState(TypedDict):
+    coin: str
+    user: str
+    side: Literal["A", "B"]
+    sz: str
+    executedSz: str
+    executedNtl: str
+    minutes: int
+    reduceOnly: bool
+    randomize: bool
+    timestamp: int
+    trigger: TwapTrigger | None
+    stopPx: str | None
+
+
+TwapHistoryStatusValue: TypeAlias = Literal[
+    "waitingForTrigger", "activated", "finished", "terminated", "stopped", "error"
+]
+
+
+class TwapHistoryStatus(TypedDict):
+    status: TwapHistoryStatusValue
+    description: NotRequired[str]
+
+
+class TwapHistoryEntry(TypedDict):
+    time: int
+    state: TwapState
+    status: TwapHistoryStatus
+    twapId: int
+
+
+TwapHistory: TypeAlias = list[TwapHistoryEntry]
+
+
 class VaultEquity(TypedDict):
     vaultAddress: str
     equity: str

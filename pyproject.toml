@@ -1,6 +1,6 @@
 [project]
 name = "async-hyperliquid"
-version = "1.2.1"
+version = "1.3.0"
 requires-python = ">=3.12"
 description = "Async Hyperliquid client using aiohttp"
 authors = [{ name = "Yuki", email = "yuqi.lyle@gmail.com" }]

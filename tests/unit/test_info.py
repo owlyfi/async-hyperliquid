@@ -132,6 +132,7 @@ async def test_all_info_endpoints_match_the_frozen_request_and_response_contract
     assert await info.max_builder_fee(ADDRESS, ADDRESS) == responses["maxBuilderFee"]
     assert await info.historical_orders(ADDRESS) == responses["historicalOrders"]
     assert await info.twap_slice_fills(ADDRESS) == responses["userTwapSliceFills"]
+    assert await info.twap_history(ADDRESS) == responses["twapHistory"]
     assert await info.sub_accounts(ADDRESS) == responses["subAccounts"]
     assert await info.vault_details(ADDRESS, user=ADDRESS) == responses["vaultDetails"]
     assert await info.vault_equities(ADDRESS) == responses["userVaultEquities"]

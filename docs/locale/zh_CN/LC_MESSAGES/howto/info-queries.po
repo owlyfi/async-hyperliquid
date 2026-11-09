@@ -80,13 +80,13 @@ msgstr ""
 
 #: ../../howto/info-queries.rst:54 3db753f82924490992fb4df2293e57fe
 msgid ""
-"Other account methods cover historical orders and TWAP fills; portfolio, "
-"fees, rate limits, referrals, and ledger updates; subaccounts and vault "
-"equities; staking summaries, history, rewards, and delegations; and "
+"Other account methods cover historical orders, TWAP history and TWAP fills; "
+"portfolio, fees, rate limits, referrals, and ledger updates; subaccounts and "
+"vault equities; staking summaries, history, rewards, and delegations; and "
 "account-abstraction state. See :doc:`../reference/info-client` for exact "
 "signatures."
 msgstr ""
-"其他账户方法涵盖历史订单和 TWAP 成交；投资组合、费用、速率限制、推荐和账本更新；"
+"其他账户方法涵盖历史订单、TWAP 历史和 TWAP 成交；投资组合、费用、速率限制、推荐和账本更新；"
 "subaccount 与 vault 权益；质押摘要、历史、奖励和委托；以及账户抽象状态。"
 "确切签名请参见 :doc:`../reference/info-client`。"
 

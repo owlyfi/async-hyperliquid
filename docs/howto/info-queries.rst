@@ -51,10 +51,11 @@ HIP-3 DEX states. ``positions()`` flattens position entries from those DEXs.
 Use ``perp_account_state()`` or ``spot_account_state()`` when only one venue is
 needed.
 
-Other account methods cover historical orders and TWAP fills; portfolio, fees,
-rate limits, referrals, and ledger updates; subaccounts and vault equities;
-staking summaries, history, rewards, and delegations; and account-abstraction
-state. See :doc:`../reference/info-client` for exact signatures.
+Other account methods cover historical orders, TWAP history and TWAP fills;
+portfolio, fees, rate limits, referrals, and ledger updates; subaccounts and
+vault equities; staking summaries, history, rewards, and delegations; and
+account-abstraction state. See :doc:`../reference/info-client` for exact
+signatures.
 
 Time ranges
 -----------

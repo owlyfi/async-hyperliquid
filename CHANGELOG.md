@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-09
+
+### Added
+
+- Add `InfoClient.twap_history()` for Hyperliquid's `twapHistory` request: every
+  TWAP status change for an account, the same entries as the `userTwapHistory`
+  websocket snapshot. Typed as `TwapHistory`; statuses include
+  `waitingForTrigger` and `stopped` for TWAPs placed with `trigger_px` or
+  `stop_px`. Entry `time` is in seconds, unlike the millisecond `state.timestamp`.
+
 ## [1.2.1] - 2026-11-03
 
 ### Changed

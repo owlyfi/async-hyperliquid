@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: async-hyperliquid 1.0.0rc1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-18 18:48+0800\n"
+"POT-Creation-Date: 2026-11-09 16:14+0800\n"
 "PO-Revision-Date: 2026-08-17 00:00+0800\n"
 "Last-Translator: Yuki\n"
 "Language: zh_CN\n"
@@ -18,54 +18,76 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: ../../reference/info-client.rst:2 717ec2a43e15482fa62f33714ead886c
+#: ../../reference/info-client.rst:2 7384f942b5244e0db35187c934a86bf9
 msgid "InfoClient"
 msgstr ""
 
-#: 124bc4db5983470e836ae9100cafa927 async_hyperliquid.info.InfoClient:1 of
-msgid "Asynchronous, credential-free client for Hyperliquid Info endpoints."
-msgstr ""
+#: ../../reference/info-client.rst:5 e81ecd4b90c745c7b7b87db72bc9b4e3
+msgid "Shared contract"
+msgstr "共享契约"
 
-#: ../../reference/info-client.rst:8 6a6c2c6fcd4a422a86f3021771d70cbd
+#: ../../reference/info-client.rst:7 91484d1a86fe447481caf98db3e0b8f7
 msgid ""
 "Info methods return the typed wire shape and do not require credentials. "
 "Account addresses are query parameters; they do not become client state."
 msgstr "Info 方法返回带类型的 wire 结构，且不需要凭据。账户地址是查询参数；不会成为客户端状态。"
 
-#: ../../reference/info-client.rst:12 28ebac28aaf34c17b06aacfeb5238080
-msgid "Shared contract"
-msgstr "共享契约"
-
-#: ../../reference/info-client.rst:14 dbaea45323b54bf0ab278e6213ffc4d4
+#: ../../reference/info-client.rst:10 c83944ae59554bf497fbf87f5211b220
 msgid ""
 "Use an async context manager, or pair ``open()`` with ``close()``. "
 "Passing an existing ``aiohttp`` session leaves that session owned by the "
 "caller."
-msgstr "请使用 async 上下文管理器，或配对调用 ``open()`` 与 ``close()``。传入现有 ``aiohttp`` session 时，该 session 仍由调用方所有。"
+msgstr ""
+"请使用 async 上下文管理器，或配对调用 ``open()`` 与 ``close()``。传入现有 ``aiohttp`` session "
+"时，该 session 仍由调用方所有。"
 
-#: ../../reference/info-client.rst:16 9a9a30e5c5ed4e58927f0fc206673292
+#: ../../reference/info-client.rst:12 ae22ec1315ee4ca0af0f8e63cd7497f7
 msgid ""
 "Timestamps are integer milliseconds. Numeric fields in protocol-shaped "
 "responses remain strings unless a named convenience method, such as "
 "``mark_price()`` or ``mid_price()``, declares a numeric return type."
-msgstr "时间戳为整数毫秒。协议结构响应中的数字字段保持为字符串，除非 ``mark_price()`` 或 ``mid_price()`` 等具名便捷方法声明了数字返回类型。"
+msgstr ""
+"时间戳为整数毫秒。协议结构响应中的数字字段保持为字符串，除非 ``mark_price()`` 或 ``mid_price()`` "
+"等具名便捷方法声明了数字返回类型。"
 
-#: ../../reference/info-client.rst:19 87ce76dabbce41e18a5a2e232f4d3fea
+#: ../../reference/info-client.rst:15 c1fbde4cd2c048f58b253c7db6342d3e
 msgid ""
 "Metadata helpers cache one coherent metadata snapshot. Call "
 "``refresh_metadata()`` when the application explicitly needs fresh "
 "listings. Separate Info requests are not an atomic account snapshot."
-msgstr "元数据 helper 会缓存一个一致的元数据快照。当应用明确需要最新上市信息时调用 ``refresh_metadata()``。分开的 Info 请求不是原子账户快照。"
+msgstr ""
+"元数据 helper 会缓存一个一致的元数据快照。当应用明确需要最新上市信息时调用 ``refresh_metadata()``。分开的 Info"
+" 请求不是原子账户快照。"
 
-#: ../../reference/info-client.rst:22 c4299a9a474d40208d694aa2441f00ec
+#: ../../reference/info-client.rst:18 2cbbf99b5c2442c1b84b1425d5912398
 msgid ""
 "Local argument errors raise ``ValueError``; transport failures and "
 "malformed upstream shapes raise the package exceptions in :doc:`errors`."
 msgstr "本地参数错误会抛出 ``ValueError``；传输失败和上游结构错误会抛出 :doc:`errors` 中的包异常。"
 
-#: ../../reference/info-client.rst:25 db717ba9566f47faa09aa1847899ea56
+#: ../../reference/info-client.rst:21 ca8cdf277d9f4fc7a0f9e6527ae038df
 msgid ""
 "Use :doc:`../howto/info-queries` to choose an endpoint by task and "
 ":doc:`../howto/markets` for canonical coin names. The signatures below "
 "remain the authoritative parameter and return-type reference."
-msgstr "使用 :doc:`../howto/info-queries` 按任务选择端点，并通过 :doc:`../howto/markets` 了解规范 coin 名称。下方签名仍是参数和返回类型的权威参考。"
+msgstr ""
+"使用 :doc:`../howto/info-queries` 按任务选择端点，并通过 :doc:`../howto/markets` 了解规范 "
+"coin 名称。下方签名仍是参数和返回类型的权威参考。"
+
+#: 3cdf651a80ba4df388eba046fe986a7c async_hyperliquid.info.InfoClient:1 of
+msgid "Asynchronous, credential-free client for Hyperliquid Info endpoints."
+msgstr ""
+
+#: async_hyperliquid.info.InfoClient.twap_history:1
+#: b1ed26391002464fa5f95403718e416a of
+msgid "Return every TWAP status change recorded for ``account_address``."
+msgstr ""
+
+#: 93085e501cdf423c921c80d6056ed8da
+#: async_hyperliquid.info.InfoClient.twap_history:3 of
+msgid ""
+"The same entries as the ``userTwapHistory`` websocket snapshot, in no "
+"guaranteed order. ``time`` is in seconds; ``state.timestamp`` is the "
+"TWAP's start time in milliseconds and is shared by all of its entries."
+msgstr ""
+
