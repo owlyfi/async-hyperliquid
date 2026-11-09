@@ -37,6 +37,7 @@ EXPECTED_INFO_REQUESTS = {
     "spotMetaAndAssetCtxs",
     "subAccounts",
     "tokenDetails",
+    "twapHistory",
     "userAbstraction",
     "userDexAbstraction",
     "userFees",

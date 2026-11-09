@@ -210,6 +210,14 @@ async def test_twap_slice_fills(
     assert isinstance(await info.twap_slice_fills(master_address), list)
 
 
+async def test_twap_history(info: IntegrationInfoClient, master_address: str) -> None:
+    history = await info.twap_history(master_address)
+    assert isinstance(history, list)
+    for entry in history:
+        assert set(entry) >= {"time", "state", "status", "twapId"}
+        assert isinstance(entry["state"]["timestamp"], int)
+
+
 async def test_sub_accounts(info: IntegrationInfoClient, master_address: str) -> None:
     result = await info.sub_accounts(master_address)
     assert result is None or isinstance(result, list)

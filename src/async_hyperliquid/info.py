@@ -64,6 +64,7 @@ from .types.info import (
     StakingSummary,
     SubAccounts,
     TokenDetails,
+    TwapHistory,
     TwapSliceFills,
     UserAbstractionState,
     UserFees,
@@ -276,6 +277,16 @@ class InfoClient:
             {"type": "userTwapSliceFills", "user": account_address}
         )
         return cast(TwapSliceFills, _expect_list(value, "userTwapSliceFills"))
+
+    async def twap_history(self, account_address: str) -> TwapHistory:
+        """Return every TWAP status change recorded for ``account_address``.
+
+        The same entries as the ``userTwapHistory`` websocket snapshot, in no
+        guaranteed order. ``time`` is in seconds; ``state.timestamp`` is the
+        TWAP's start time in milliseconds and is shared by all of its entries.
+        """
+        value = await self._post({"type": "twapHistory", "user": account_address})
+        return cast(TwapHistory, _expect_list(value, "twapHistory"))
 
     async def sub_accounts(self, account_address: str) -> SubAccounts | None:
         value = await self._post({"type": "subAccounts", "user": account_address})

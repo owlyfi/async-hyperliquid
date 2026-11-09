@@ -544,6 +544,117 @@
     "totalSupply": "1000000.0",
     "weiDecimals": 8
   },
+  "twapHistory": [
+    {
+      "time": 1787379847,
+      "state": {
+        "coin": "BTC",
+        "user": "0x0000000000000000000000000000000000000000",
+        "side": "B",
+        "sz": "0.002",
+        "executedSz": "0.0",
+        "executedNtl": "0.0",
+        "minutes": 5,
+        "reduceOnly": false,
+        "randomize": false,
+        "timestamp": 1787379847833,
+        "trigger": null,
+        "stopPx": null
+      },
+      "status": {
+        "status": "activated"
+      },
+      "twapId": 21000
+    },
+    {
+      "time": 1787380149,
+      "state": {
+        "coin": "BTC",
+        "user": "0x0000000000000000000000000000000000000000",
+        "side": "B",
+        "sz": "0.002",
+        "executedSz": "0.002",
+        "executedNtl": "155.4",
+        "minutes": 5,
+        "reduceOnly": false,
+        "randomize": false,
+        "timestamp": 1787379847833,
+        "trigger": null,
+        "stopPx": null
+      },
+      "status": {
+        "status": "finished"
+      },
+      "twapId": 21000
+    },
+    {
+      "time": 1787381000,
+      "state": {
+        "coin": "BTC",
+        "user": "0x0000000000000000000000000000000000000000",
+        "side": "A",
+        "sz": "0.002",
+        "executedSz": "0.0",
+        "executedNtl": "0.0",
+        "minutes": 5,
+        "reduceOnly": false,
+        "randomize": false,
+        "timestamp": 1787381000123,
+        "trigger": {
+          "px": "65160.0",
+          "above": false
+        },
+        "stopPx": "65170.0"
+      },
+      "status": {
+        "status": "waitingForTrigger"
+      },
+      "twapId": 21001
+    },
+    {
+      "time": 1787381060,
+      "state": {
+        "coin": "BTC",
+        "user": "0x0000000000000000000000000000000000000000",
+        "side": "A",
+        "sz": "0.002",
+        "executedSz": "0.0004",
+        "executedNtl": "26.1",
+        "minutes": 5,
+        "reduceOnly": false,
+        "randomize": false,
+        "timestamp": 1787381000123,
+        "trigger": null,
+        "stopPx": "65170.0"
+      },
+      "status": {
+        "status": "stopped"
+      },
+      "twapId": 21001
+    },
+    {
+      "time": 1787382000,
+      "state": {
+        "coin": "BTC",
+        "user": "0x0000000000000000000000000000000000000000",
+        "side": "B",
+        "sz": "0.002",
+        "executedSz": "0.0",
+        "executedNtl": "0.0",
+        "minutes": 5,
+        "reduceOnly": true,
+        "randomize": false,
+        "timestamp": 1787382000456,
+        "trigger": null,
+        "stopPx": null
+      },
+      "status": {
+        "status": "error",
+        "description": "Reduce only order would increase position."
+      },
+      "twapId": 21002
+    }
+  ],
   "userAbstraction": "disabled",
   "userDexAbstraction": false,
   "userFees": {
